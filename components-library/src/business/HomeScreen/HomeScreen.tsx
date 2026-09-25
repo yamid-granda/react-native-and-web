@@ -2,12 +2,6 @@ import { Text, View } from "react-native";
 import { Button } from "../../common/Button/Button";
 import { useCounterStore } from "./useCounterStore";
 
-/**
- * Full screen shared between web-application and mobile-application —
- * rendered unmodified via react-native-web (Next.js) and natively (Expo).
- * A "business" component (an app screen), as opposed to "common" (generic,
- * reusable UI primitives like Button).
- */
 export function HomeScreen() {
   const { count, increment } = useCounterStore();
 

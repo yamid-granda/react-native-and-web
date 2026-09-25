@@ -8,12 +8,7 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-/**
- * React Navigation lives only here, inside mobile-application. Next.js App
- * Router owns all web routing — only screen/page *content* (built from
- * shared components-library primitives) is shared between the two apps,
- * not navigation chrome.
- */
+// Navigation lives only here; web routing is Next.js App Router's job (README).
 export function RootNavigator() {
   return (
     <NavigationContainer>

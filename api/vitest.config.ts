@@ -1,12 +1,8 @@
 import { defineConfig } from "vitest/config";
 import swc from "unplugin-swc";
 
-/**
- * Nest relies on `emitDecoratorMetadata` (reflect-metadata) for
- * constructor-based dependency injection. Vitest's default esbuild
- * transform doesn't emit that metadata correctly, so tests are compiled
- * through SWC instead via unplugin-swc — the standard Nest+Vitest pairing.
- */
+// esbuild (Vitest's default) doesn't emit emitDecoratorMetadata correctly for
+// Nest's DI, so tests compile through SWC instead.
 export default defineConfig({
   test: {
     globals: true,

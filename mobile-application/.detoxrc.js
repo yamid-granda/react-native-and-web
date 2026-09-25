@@ -1,13 +1,5 @@
-/**
- * Detox needs a real built native app — Expo Go isn't enough. Run
- * `pnpm prebuild` once first (generates ios/ and android/, gitignored,
- * via expo-detox-config-plugin), then check the generated
- * ios/<name>.xcworkspace and its scheme name and update the
- * `build`/`binaryPath` entries below to match if they differ from the
- * defaults assumed here.
- *
- * @type {Detox.DetoxConfig}
- */
+// Needs a real built app (`pnpm prebuild` first) — see README for setup steps.
+/** @type {Detox.DetoxConfig} */
 module.exports = {
   testRunner: {
     args: {

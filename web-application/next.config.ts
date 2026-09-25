@@ -2,14 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { NextConfig } from "next";
 
-// nativewind's cssInterop unconditionally registers a SafeAreaView wrapper
-// by `require("react-native-safe-area-context")`, but that package's build
-// still statically imports a native-only codegen spec
-// (`react-native/Libraries/Utilities/codegenNativeComponent`) with no
-// react-native-web equivalent, breaking the bundle. None of our pages render
-// SafeAreaProvider/SafeAreaView, so a plain View standing in for it is
-// enough to satisfy the registration. Same stub components-library's
-// Storybook config uses — see the comment there.
+// Stubs react-native-safe-area-context, which breaks web bundling; see README.
 const safeAreaContextStubPath = path.resolve(
   __dirname,
   "../components-library/stubs/react-native-safe-area-context.js",
