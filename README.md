@@ -9,16 +9,21 @@ this, not just configured on paper).
 
 ## Stack
 
-- **`components-library`** — shared UI. Components are written with React
-  Native primitives (`View`, `Text`, `Pressable`) styled with
-  [NativeWind](https://www.nativewind.dev) (Tailwind `className`s). On web
-  they render through [react-native-web](https://necolas.github.io/react-native-web/);
-  on native, through Expo. This is the actual mechanism that maximizes
-  sharing between the two apps — the same `Button` component renders,
-  unmodified, on both.
+- **`components-library`** — shared UI, in two Storybook categories:
+  - `src/common/` — generic, reusable primitives (`Button`).
+  - `src/business/` — full app screens (`HomeScreen`, used unmodified as
+    both mobile-application's Home tab and web-application's `/` page,
+    including its Zustand-backed counter state).
+
+  Components are written with React Native primitives (`View`, `Text`,
+  `Pressable`) styled with [NativeWind](https://www.nativewind.dev)
+  (Tailwind `className`s). On web they render through
+  [react-native-web](https://necolas.github.io/react-native-web/); on
+  native, through Expo. This is the actual mechanism that maximizes sharing
+  between the two apps.
 - **`web-application`** — Next.js 16, App Router, SSR (Turbopack).
 - **`mobile-application`** — Expo SDK 57 (managed), React Navigation,
-  TanStack Query, Zustand.
+  TanStack Query.
 - **`api`** — NestJS 12 (ESM) + Prisma 7 (driver adapters) + PostgreSQL.
 - pnpm workspaces + Turborepo for task orchestration/caching.
 - Vitest for unit/component tests (web-flavored RN components, plain

@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "zustand": "^5.0.15"
   },
   "peerDependencies": {
     "nativewind": "^4.2.0",
