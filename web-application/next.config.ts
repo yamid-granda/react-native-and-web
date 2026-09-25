@@ -11,6 +11,14 @@ const safeAreaContextStubPath = path.resolve(
 // plain OS path — plain paths get misread as project-root-relative.
 const safeAreaContextStubUrl = pathToFileURL(safeAreaContextStubPath).href
 
+// Turbopack's `resolveExtensions` (below) doesn't get react-native-svg to
+// its web build — see the stub for why — so route it there directly. Unlike
+// the safe-area-context stub above, this one is reached from a browser
+// chunk: a file:// URL resolveAlias target gets treated as an external,
+// which Turbopack's browser chunking doesn't support, so this stays a plain
+// project-root-relative path instead.
+const reactNativeSvgStubPath = "../components-library/stubs/react-native-svg.js"
+
 const nextConfig: NextConfig = {
   // react-native / react-native-web / nativewind ship untranspiled source;
   // Next.js needs to run its own transforms over them.
@@ -27,8 +35,25 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       "react-native-safe-area-context": safeAreaContextStubUrl,
+      "react-native-svg": reactNativeSvgStubPath,
       "react-native": "react-native-web",
     },
+    // Mirrors the webpack `resolve.extensions` below, for project files that
+    // ship their own `.web.*` variant. Turbopack only applies this to
+    // project files, not to node_modules — react-native-svg needs the
+    // resolveAlias above instead.
+    resolveExtensions: [
+      ".web.tsx",
+      ".web.ts",
+      ".web.jsx",
+      ".web.js",
+      ".tsx",
+      ".ts",
+      ".jsx",
+      ".js",
+      ".mjs",
+      ".json",
+    ],
   },
   // Only exercised if the app is built/run with `--no-turbopack`.
   webpack: (config) => {
