@@ -18,6 +18,48 @@ const config: StorybookConfig = {
         new URL("../stubs/react-native-safe-area-context.js", import.meta.url),
       ),
       "react-native": "react-native-web",
+      // react-native-svg's package.json "main" points at its native
+      // (Flow-typed, requireNativeComponent-based) CJS build; only its
+      // ESM tree has a browser-safe ReactNativeSVG.web.js, so point there
+      // directly instead of relying on Metro-only platform-extension
+      // resolution.
+      "react-native-svg": "react-native-svg/lib/module/ReactNativeSVG.web.js",
+    }
+    viteConfig.resolve.extensions = [
+      ".web.js",
+      ".web.ts",
+      ".web.tsx",
+      ".mjs",
+      ".js",
+      ".mts",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".json",
+    ]
+    // esbuild's dep-optimizer bundles react-native-svg with its own
+    // separate resolveExtensions (doesn't inherit the .web.js-first list
+    // above), so its internal extension-less relative imports (e.g.
+    // "./elements") resolve to the native, fabric/codegen-importing
+    // files instead of the *.web.js ones. Mirror the list here too; the
+    // package must stay in the optimizer (not excluded) so esbuild still
+    // does its usual CJS->ESM interop for react-native-svg's few
+    // `module.exports`-style files (e.g. lib/extract/transform.js).
+    viteConfig.optimizeDeps ??= {}
+    viteConfig.optimizeDeps.esbuildOptions = {
+      ...viteConfig.optimizeDeps.esbuildOptions,
+      resolveExtensions: [
+        ".web.js",
+        ".web.ts",
+        ".web.tsx",
+        ".mjs",
+        ".js",
+        ".mts",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".json",
+      ],
     }
     return viteConfig
   },
