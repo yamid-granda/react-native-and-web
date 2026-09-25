@@ -1,0 +1,24 @@
+packages:
+  - "components-library"
+  - "web-application"
+  - "mobile-application"
+  - "api"
+
+catalog:
+  typescript: ^6.0.3
+  prettier: ^3.4.0
+  vitest: ^5.0.0
+  # Pinned to Expo SDK 57's exact peer requirements (mobile-application),
+  # and shared verbatim by web-application/components-library so pnpm's
+  # hoisting dedupes to one instance instead of nesting version-conflict
+  # copies — which broke Vitest/jsdom rendering (two live React instances).
+  react: 19.2.3
+  react-dom: 19.2.3
+  react-native: 0.86.3
+
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - sharp

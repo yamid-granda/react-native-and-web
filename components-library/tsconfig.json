@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "nativewind",
+    "types": ["react", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": ["src", "*.ts", "*.tsx", ".storybook"]
+}

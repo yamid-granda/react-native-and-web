@@ -1,0 +1,19 @@
+// Connection URL lives in prisma.config.ts (CLI/migrate) and is passed to
+// PrismaClient via a driver adapter at runtime (src/prisma/prisma.service.ts)
+// — Prisma ORM 7 no longer reads `url` from this block.
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+// Placeholder model, only here to prove `prisma migrate dev` and client
+// generation work end-to-end. No business logic in this boilerplate.
+model Example {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+}
