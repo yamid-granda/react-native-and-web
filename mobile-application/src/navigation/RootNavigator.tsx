@@ -1,4 +1,5 @@
-import { NavigationContainer } from "@react-navigation/native"
+import { useColorScheme } from "react-native"
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { HomeScreen } from "@rnw/components-library"
 
@@ -10,8 +11,10 @@ const Stack = createNativeStackNavigator<RootStackParamList>()
 
 // Navigation lives only here; web routing is Next.js App Router's job (README).
 export function RootNavigator() {
+  const colorScheme = useColorScheme()
+
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack.Navigator>
         <Stack.Screen
           name="Home"
