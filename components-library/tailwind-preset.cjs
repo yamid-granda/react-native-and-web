@@ -12,6 +12,14 @@ module.exports = {
           DEFAULT: "#2563eb",
           dark: "#1d4ed8",
         },
+        // Values come from each app's --color-* custom properties (see
+        // README "Architecture boundaries"), which flip for dark mode —
+        // components use these instead of dark: variants.
+        background: "rgb(var(--color-background) / <alpha-value>)",
+        foreground: "rgb(var(--color-foreground) / <alpha-value>)",
+        muted: "rgb(var(--color-muted) / <alpha-value>)",
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        "surface-muted": "rgb(var(--color-surface-muted) / <alpha-value>)",
       },
     },
   },

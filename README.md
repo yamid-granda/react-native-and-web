@@ -210,6 +210,21 @@ or it'll boot but fail to reach Postgres.
   live React instances — this actually happened once while setting this
   up, symptom: components render as an empty `<div />` with an `act()`
   warning about "Root").
+- **Dark mode is driven by CSS variables, not `dark:` classes.**
+  `tailwind-preset.cjs` maps semantic color names (`background`,
+  `foreground`, `muted`, `surface`, `surface-muted`) to
+  `rgb(var(--color-x) / <alpha-value>)`; components use those names
+  (`bg-surface`, `text-muted`, ...) instead of pairing a light utility with
+  a `dark:` variant. Each app's global stylesheet
+  (`web-application/app/globals.css`, `mobile-application/global.css`,
+  `components-library/global.css`) declares the actual `--color-*` values
+  for light and redefines them for dark — web/mobile under
+  `@media (prefers-color-scheme: dark)` (OS-driven, `darkMode: "media"`),
+  Storybook under a `.dark` class instead (`darkMode: "class"` in its own
+  `tailwind.config.cjs`) so its backgrounds-addon toolbar can toggle
+  dark mode manually, independent of the host OS (see
+  `.storybook/preview.tsx`). One-off colors that don't change with the
+  scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
 
 ## Other commands
 

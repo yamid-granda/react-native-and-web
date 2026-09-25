@@ -1,3 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * See README "Architecture boundaries" for the dark-mode convention.
+ * Storybook alone toggles via a `.dark` class (its tailwind.config.cjs
+ * sets darkMode: "class") instead of the OS media query, so the
+ * backgrounds-addon toolbar can switch it manually — see preview.tsx.
+ */
+:root {
+  --color-background: 250 250 250; /* zinc-50 */
+  --color-foreground: 24 24 27; /* zinc-900 */
+  --color-muted: 113 113 122; /* zinc-500 */
+  --color-surface: 255 255 255; /* white */
+  --color-surface-muted: 244 244 245; /* zinc-100 */
+}
+
+:root.dark {
+  --color-background: 9 9 11; /* zinc-950 */
+  --color-foreground: 250 250 250; /* zinc-50 */
+  --color-muted: 161 161 170; /* zinc-400 */
+  --color-surface: 24 24 27; /* zinc-900 */
+  --color-surface-muted: 39 39 42; /* zinc-800 */
+}

@@ -8,12 +8,10 @@ export function HomeScreen() {
   return (
     <View
       testID="home-screen"
-      className="min-h-screen flex-1 items-center justify-center gap-6 bg-zinc-50 p-8 dark:bg-zinc-950"
+      className="min-h-screen flex-1 items-center justify-center gap-6 bg-background p-8"
     >
-      <Text className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">
-        react-native-and-web
-      </Text>
-      <Text className="max-w-xs text-center text-zinc-600 dark:text-zinc-400">
+      <Text className="text-3xl font-semibold text-foreground">react-native-and-web</Text>
+      <Text className="max-w-xs text-center text-muted">
         This screen is the exact same @rnw/components-library component, rendered by the Next.js web
         app (via react-native-web) and the Expo app.
       </Text>

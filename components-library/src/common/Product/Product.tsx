@@ -35,21 +35,21 @@ export function Product({
     <ClassNamePressable
       accessibilityRole="button"
       onPress={onPress}
-      className={cn("w-48 gap-2 rounded-lg bg-white p-3 shadow-sm active:opacity-80", className)}
+      className={cn("w-48 gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80", className)}
     >
       {imageUrl ? (
         <ClassNameImage
           source={{ uri: imageUrl }}
           accessibilityLabel={title}
           resizeMode="cover"
-          className="h-32 w-full rounded-md bg-zinc-100"
+          className="h-32 w-full rounded-md bg-surface-muted"
         />
       ) : null}
-      <Text numberOfLines={1} className="text-sm font-semibold text-zinc-900">
+      <Text numberOfLines={1} className="text-sm font-semibold text-foreground">
         {title}
       </Text>
       {description ? (
-        <Text numberOfLines={2} className="text-xs text-zinc-500">
+        <Text numberOfLines={2} className="text-xs text-muted">
           {description}
         </Text>
       ) : null}
