@@ -1,4 +1,6 @@
 export { Button } from "./common/Button/Button"
 export type { ButtonProps } from "./common/Button/Button"
+export { Product } from "./common/Product/Product"
+export type { ProductProps } from "./common/Product/Product"
 export { HomeScreen } from "./business/HomeScreen/HomeScreen"
 export { cn } from "./utils/cn"
