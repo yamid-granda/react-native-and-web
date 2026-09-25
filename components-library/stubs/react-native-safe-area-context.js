@@ -5,8 +5,8 @@
 // that react-native-web has no equivalent for, breaking esbuild's dep
 // optimizer. None of these stories render SafeAreaProvider/SafeAreaView, so
 // a plain View standing in for it is enough to satisfy the registration.
-import { View } from "react-native-web";
+import { View } from "react-native-web"
 
-export const SafeAreaProvider = View;
-export const SafeAreaView = View;
-export const useSafeAreaInsets = () => ({ top: 0, right: 0, bottom: 0, left: 0 });
+export const SafeAreaProvider = View
+export const SafeAreaView = View
+export const useSafeAreaInsets = () => ({ top: 0, right: 0, bottom: 0, left: 0 })

@@ -7,7 +7,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "lint": "eslint .",
+    "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
     "test:e2e": "vitest run test",

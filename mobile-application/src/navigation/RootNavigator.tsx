@@ -1,12 +1,12 @@
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { HomeScreen } from "@rnw/components-library";
+import { NavigationContainer } from "@react-navigation/native"
+import { createNativeStackNavigator } from "@react-navigation/native-stack"
+import { HomeScreen } from "@rnw/components-library"
 
 export type RootStackParamList = {
-  Home: undefined;
-};
+  Home: undefined
+}
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>()
 
 // Navigation lives only here; web routing is Next.js App Router's job (README).
 export function RootNavigator() {
@@ -20,5 +20,5 @@ export function RootNavigator() {
         />
       </Stack.Navigator>
     </NavigationContainer>
-  );
+  )
 }

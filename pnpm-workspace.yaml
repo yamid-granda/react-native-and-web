@@ -6,7 +6,6 @@ packages:
 
 catalog:
   typescript: ^6.0.3
-  prettier: ^3.4.0
   vitest: ^5.0.0
   # Pinned to Expo SDK 57's exact peer requirements (mobile-application),
   # and shared verbatim by web-application/components-library so pnpm's

@@ -1,7 +1,7 @@
-"use client";
+"use client"
 
-import { HomeScreen } from "@rnw/components-library";
+import { HomeScreen } from "@rnw/components-library"
 
 export default function Home() {
-  return <HomeScreen />;
+  return <HomeScreen />
 }

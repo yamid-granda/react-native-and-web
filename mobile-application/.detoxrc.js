@@ -45,4 +45,4 @@ module.exports = {
       app: "android.debug",
     },
   },
-};
+}

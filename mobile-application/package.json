@@ -9,7 +9,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint",
+    "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild",
     "test:e2e": "detox test -c ios.debug",

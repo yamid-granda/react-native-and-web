@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config"
 
 /** Plain TypeScript utils: no DOM, no RN, just logic. */
 export default defineConfig({
@@ -8,4 +8,4 @@ export default defineConfig({
     globals: true,
     include: ["src/utils/**/*.test.ts"],
   },
-});
+})

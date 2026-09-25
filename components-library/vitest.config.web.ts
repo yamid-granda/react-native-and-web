@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config"
+import react from "@vitejs/plugin-react"
 
 // Renders RN-primitive components through react-native-web into jsdom, like
 // Next.js does at runtime. jsxImportSource is forced to plain "react" since
@@ -19,4 +19,4 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.web.ts"],
     include: ["src/**/*.web.test.tsx"],
   },
-});
+})

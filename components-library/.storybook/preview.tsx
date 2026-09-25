@@ -1,10 +1,10 @@
-import type { Preview } from "@storybook/react";
-import "../global.css";
+import type { Preview } from "@storybook/react"
+import "../global.css"
 
 const preview: Preview = {
   parameters: {
     controls: { expanded: true },
   },
-};
+}
 
-export default preview;
+export default preview

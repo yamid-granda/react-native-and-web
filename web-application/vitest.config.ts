@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config"
+import react from "@vitejs/plugin-react"
 
 // Tests this app's own integration of the shared component library, distinct
 // from components-library's own suites. jsxImportSource forced to "react"
@@ -17,4 +17,4 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["tests/**/*.test.tsx"],
   },
-});
+})
