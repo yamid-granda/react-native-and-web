@@ -15,10 +15,14 @@
     "test:e2e:mobile": "turbo run test:e2e --filter=@rnw/mobile-application",
     "typecheck": "turbo run typecheck",
     "format": "biome format --write .",
-    "format:check": "biome format ."
+    "format:check": "biome format .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "husky": "^9.1.7",
     "turbo": "^2.11.0",
     "typescript": "catalog:"
   }

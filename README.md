@@ -226,6 +226,17 @@ or it'll boot but fail to reach Postgres.
   `.storybook/preview.tsx`). One-off colors that don't change with the
   scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
 
+## Commit messages
+
+Commits must follow [Conventional Commits
+v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) (`type(scope):
+description`, e.g. `fix(api): handle missing health check env var`). A
+`commit-msg` git hook (`.husky/commit-msg`, installed via the root
+`prepare` script when you run `pnpm install`) runs commitlint against
+`commitlint.config.js` and rejects any commit whose message doesn't
+conform — for every workspace, since the hook runs once per commit at the
+repo root regardless of which package the commit touches.
+
 ## Other commands
 
 ```bash
