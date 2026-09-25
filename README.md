@@ -41,13 +41,76 @@ this, not just configured on paper).
 pnpm install   # onlyBuiltDependencies in pnpm-workspace.yaml pre-approves
                # Prisma/esbuild/sharp's postinstall scripts — no manual
                # `pnpm approve-builds` step needed
+```
 
+Then see [Development](#development) below to run everything.
+
+## Development
+
+Each of these starts its own dev server. Run them in separate terminals, or
+jump to [All four together](#all-four-together) to start every one of them
+with a single command.
+
+### Web app — Next.js
+
+```bash
+pnpm --filter @rnw/web-application dev
+```
+
+→ http://localhost:3000
+
+### Mobile app — Expo
+
+```bash
+pnpm --filter @rnw/mobile-application start
+```
+
+Opens Expo dev tools with a QR code for Expo Go. To target a platform
+directly instead:
+
+```bash
+pnpm --filter @rnw/mobile-application ios
+pnpm --filter @rnw/mobile-application android
+```
+
+### API — NestJS
+
+Needs Postgres running, once:
+
+```bash
 cp api/.env.example api/.env
 docker compose up -d
 pnpm --filter @rnw/api prisma migrate dev
-
-pnpm dev   # runs web-application, mobile-application, and api dev servers via turbo
 ```
+
+Then:
+
+```bash
+pnpm --filter @rnw/api dev
+```
+
+→ http://localhost:3001 (`GET /health`)
+
+### Storybook — components-library
+
+```bash
+pnpm --filter @rnw/components-library storybook
+```
+
+→ http://localhost:6006
+
+### All four together
+
+```bash
+pnpm dev
+```
+
+Runs web-application, mobile-application, api, and Storybook together via
+Turborepo (`turbo run dev`), output interleaved in one terminal — each
+package defines a matching `"dev"` script (`next dev`, `expo start`,
+`nest start --watch`, `storybook dev -p 6006`). The API's `/health` check
+still needs the `cp .env` + `docker compose up -d` step above done first,
+or it'll boot but fail to reach Postgres.
 
 ## Architecture boundaries and known gotchas (read before "fixing" these)
 
@@ -143,19 +206,15 @@ pnpm dev   # runs web-application, mobile-application, and api dev servers via t
   up, symptom: components render as an empty `<div />` with an `act()`
   warning about "Root").
 
-## Common commands
+## Other commands
 
 ```bash
-pnpm turbo run build --dry-run          # inspect the task graph
+pnpm turbo run build --dry-run             # inspect the task graph
 pnpm turbo run lint typecheck test build   # everything, cached
 
-pnpm --filter @rnw/components-library storybook          # http://localhost:6006
-pnpm --filter @rnw/components-library build-storybook     # static export
-pnpm --filter @rnw/web-application dev                    # http://localhost:3000
-pnpm --filter @rnw/mobile-application start                # Metro / Expo Go
+pnpm --filter @rnw/components-library build-storybook   # static Storybook export
 pnpm --filter @rnw/mobile-application prebuild && npx expo export --platform ios  # bundle check, no simulator
-pnpm --filter @rnw/api dev                                 # http://localhost:3001
 
-pnpm --filter @rnw/web-application test:e2e                # Playwright
+pnpm --filter @rnw/web-application test:e2e     # Playwright
 pnpm --filter @rnw/mobile-application test:e2e:build && pnpm --filter @rnw/mobile-application test:e2e  # Detox
 ```
