@@ -3,20 +3,26 @@ import { Pressable, Text, type PressableProps, type TextProps } from "react-nati
 import type { IconProps } from "../../icons/types"
 
 // react-native-web-only `href`, untyped in RN (README).
-const LinkPressable = Pressable as ComponentType<PressableProps & { href?: string; className?: string }>
+const LinkPressable = Pressable as ComponentType<
+  PressableProps & { href?: string; className?: string }
+>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 
 export type MainNavProps = {
-  href: string
+  // href drives real navigation on web (react-native-web renders it as an
+  // <a>); native has no such mechanism, so it navigates via onPress instead.
+  href?: string
+  onPress?: () => void
   icon: ComponentType<IconProps>
   title: string
 }
 
-export function MainNav({ href, icon: Icon, title }: MainNavProps) {
+export function MainNav({ href, onPress, icon: Icon, title }: MainNavProps) {
   return (
     <LinkPressable
-      accessibilityRole="link"
+      accessibilityRole={href ? "link" : "button"}
       href={href}
+      onPress={onPress}
       className="min-w-14 items-center justify-center gap-1 rounded-xl px-3 py-2 text-muted active:bg-brand/10 active:text-brand"
     >
       <Icon size={22} />

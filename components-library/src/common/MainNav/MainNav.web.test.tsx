@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { HomeIcon } from "../../icons/HomeIcon/HomeIcon"
 import { MarketplaceIcon } from "../../icons/MarketplaceIcon/MarketplaceIcon"
 import { MainNav } from "./MainNav"
@@ -19,5 +19,13 @@ describe("MainNav (web, via react-native-web)", () => {
     expect(() =>
       render(<MainNav href="/marketplace" icon={MarketplaceIcon} title="Marketplace" />),
     ).not.toThrow()
+  })
+
+  it("renders as a button and calls onPress when there is no href (native usage)", () => {
+    const onPress = vi.fn()
+    render(<MainNav onPress={onPress} icon={HomeIcon} title="Home" />)
+    expect(screen.getByRole("button")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button"))
+    expect(onPress).toHaveBeenCalledTimes(1)
   })
 })
