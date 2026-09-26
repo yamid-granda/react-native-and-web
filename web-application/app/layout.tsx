@@ -26,8 +26,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full">
         <SsrStylesWrapper>
           <Providers>
+            <div className="pb-20">{children}</div>
             <NavHeader />
-            {children}
           </Providers>
         </SsrStylesWrapper>
       </body>
