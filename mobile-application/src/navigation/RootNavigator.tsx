@@ -55,12 +55,8 @@ const TAB_ICONS: Record<keyof RootTabParamList, ComponentType<IconProps>> = {
   Cart: CartIcon,
 }
 
-// Renders the exact same BottomNav component web-application uses (see
-// components-library's BottomNav — this repo's whole point is sharing UI,
-// not just similar-looking parallel implementations per platform).
-// Reimplements React Navigation's own default tab-press handling
-// (https://reactnavigation.org/docs/bottom-tab-navigator/#tabbar) since a
-// custom tabBar bypasses its built-in button/onPress wiring entirely.
+// see root README "Architecture boundaries" for why this reimplements
+// React Navigation's own default tab-press handling
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const items = state.routes.map((route, index) => ({
     key: route.key,

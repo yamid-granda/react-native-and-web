@@ -45,11 +45,7 @@ function IconBaseImpl({
   )
 }
 
-// Registers className support the same way NativeWind registers its own
-// core components for a color that arrives via a plain prop rather than a
-// style object (see react-native-css-interop's own ActivityIndicator
-// registration). Without this, a className/currentColor has no meaning to
-// react-native-svg on native — only real CSS (web) resolves it (README).
+// see README "Architecture boundaries" for why this registration exists
 export const IconBase = cssInterop(IconBaseImpl, {
   className: { target: "style", nativeStyleToProp: { color: true } },
 })

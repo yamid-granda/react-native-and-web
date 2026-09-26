@@ -25,10 +25,7 @@ export function MainNav({ href, onPress, icon: Icon, title }: MainNavProps) {
       onPress={onPress}
       className="min-w-14 items-center justify-center gap-1 rounded-xl px-3 py-2 active:bg-brand/10"
     >
-      {/* Pressable's render-prop `pressed` state (core RN API, works
-          identically on web and native) drives the color directly, instead
-          of a CSS-only trick like currentColor/group-active that react-
-          native-svg and this NativeWind version can't resolve on native. */}
+      {/* pressed drives the color directly; see README "Architecture boundaries" */}
       {({ pressed }) => (
         <>
           <Icon size={22} className={pressed ? "text-brand" : "text-muted"} />

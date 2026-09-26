@@ -127,10 +127,19 @@ or it'll boot but fail to reach Postgres.
   hydrated (confirmed: `curl localhost:3000` returns real markup with the
   button's Tailwind classes and an SSR-injected react-native-web
   stylesheet) — just not RSC-streamed for those subtrees.
-- **Routing is not unified across platforms.** React Navigation lives only
-  in `mobile-application`; Next.js App Router owns all web routing. Only
-  screen/page *content* is shared, not navigation chrome. This is
-  intentional, not an oversight.
+- **Routing is not unified across platforms, but the nav bar UI now is.**
+  React Navigation lives only in `mobile-application`; Next.js App Router
+  owns all web routing — each platform's own routing/navigation state
+  stays separate, intentionally. What *is* shared: the bottom nav bar
+  itself (`components-library`'s `BottomNav`/`MainNav`), rendered by each
+  platform's own integration rather than reimplemented per platform —
+  `web-application` renders it directly, fixed to the bottom of the root
+  layout; `mobile-application` renders it via React Navigation's `tabBar`
+  prop on a custom `TabBar` (`src/navigation/RootNavigator.tsx`), which
+  reimplements React Navigation's own default tab-press handling
+  ([docs](https://reactnavigation.org/docs/bottom-tab-navigator/#tabbar))
+  since supplying a custom `tabBar` bypasses its built-in button/onPress
+  wiring entirely.
 - **`react-native-safe-area-context` is stubbed** (`components-library/stubs/`)
   for any Vite/webpack-bundled web context (Storybook, `web-application`'s
   `next.config.ts`). NativeWind's cssInterop unconditionally registers a
@@ -231,13 +240,46 @@ or it'll boot but fail to reach Postgres.
   of a `<div>`, but RN's own `PressableProps`/`ViewProps` types don't know
   about this react-native-web-only behavior.
 - **react-native-web's `Text` hardcodes `color: 'black'`** instead of
-  inheriting it (`exports/Text/index.js`), so a plain-color `Text` nested
-  inside a colored/interactive ancestor (e.g. `MainNav`'s label, which needs
-  to track the link's `text-muted`/`active:text-brand` press state) won't
-  pick that color up by default. Give that `Text` `text-current` (`color:
-  currentColor`) instead of its own color utility, so it resolves against
-  the ancestor's actual computed color, the same mechanism `IconBase`'s
-  `currentColor` default already relies on.
+  inheriting it (`exports/Text/index.js`). `MainNav` used to work around
+  this by giving its label `text-current` (`color: currentColor`) so it
+  would resolve against the ancestor `Pressable`'s actual computed color —
+  that only works on web. `currentColor` has no CSS cascade to resolve
+  against on native (react-native-svg's `stroke` prop and RN's `Text`
+  don't understand it as anything but a literal, meaningless string);
+  confirmed by NativeWind's own compiler, which flags `text-current` as an
+  `IncompatibleNativeValue` and silently emits no style rule for it at all.
+  The natural cross-platform fix, NativeWind's `group`/`group-active`
+  variant, also isn't implemented in the installed version — verified: no
+  `"group"` handling anywhere in `react-native-css-interop`'s source.
+  `MainNav` instead reads `Pressable`'s own `pressed` render-prop (core RN
+  API, identical on both platforms) and picks `text-muted`/`text-brand`
+  directly for both the icon and the label — no CSS-inheritance trick, no
+  platform branching, same code on both platforms.
+- **`IconBase` registers with `nativewind`'s `cssInterop`** so a
+  `className`/token color (e.g. `text-muted`) resolves to a real `stroke`
+  color on native, not just on web: `cssInterop(IconBaseImpl, { className:
+  { target: "style", nativeStyleToProp: { color: true } } })` — the same
+  recipe `react-native-css-interop` uses to register its own
+  `ActivityIndicator` (a component whose color also arrives via a plain
+  prop, not a `style` object; see `react-native-css-interop`'s
+  `components.js`).
+- **Rendering a `cssInterop`-wrapped component isn't reachable under
+  Vitest**, for the same reason `vitest.config.web.ts` already forces
+  `jsxImportSource: "react"` instead of NativeWind's own JSX runtime
+  (below): calling into `cssInterop`'s real runtime crashes trying to load
+  react-native internals, the same class of failure as the
+  `react-native-svg` one below, just at render time instead of import
+  time. `components-library` and `web-application`'s Vitest setup files
+  each mock `nativewind`'s `cssInterop` as an identity function so
+  `IconBase` still renders in tests via its plain `color`-prop fallback;
+  real Metro/Next builds use the real `cssInterop` untouched.
+- **Storybook's esbuild dep-optimizer needs an explicit JSX loader for
+  `react-native-css-interop`.** Its `dist/doctor.js` ships inline JSX in a
+  plain `.js` file, which esbuild's default `.js` loader can't parse ("The
+  JSX syntax extension is not currently enabled") — `.storybook/main.ts`
+  sets `optimizeDeps.esbuildOptions.loader: { ".js": "jsx" }` to fix it,
+  the same way it already overrides `resolveExtensions` for
+  `react-native-svg`.
 
 ## Commit messages
 
