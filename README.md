@@ -230,13 +230,14 @@ or it'll boot but fail to reach Postgres.
   `Pressable` wraps) recognizes an `href` prop and renders an `<a>` instead
   of a `<div>`, but RN's own `PressableProps`/`ViewProps` types don't know
   about this react-native-web-only behavior.
-- **RN has no page-level "fixed" position.** Its `ViewStyle["position"]`
-  type only allows `"absolute" | "relative" | "static"` — `"fixed"` is a
-  react-native-web/CSS-only value that RNW's `View` passes straight through
-  to the DOM. `MainNav` (`components-library/src/storybook/MainNav/`) picks
-  `"fixed"` via `Platform.OS === "web"` and falls back to `"absolute"`
-  pinned to all edges on native, RN's only mechanism for pinning content to
-  its nearest positioned ancestor.
+- **react-native-web's `Text` hardcodes `color: 'black'`** instead of
+  inheriting it (`exports/Text/index.js`), so a plain-color `Text` nested
+  inside a colored/interactive ancestor (e.g. `MainNav`'s label, which needs
+  to track the link's `text-muted`/`active:text-brand` press state) won't
+  pick that color up by default. Give that `Text` `text-current` (`color:
+  currentColor`) instead of its own color utility, so it resolves against
+  the ancestor's actual computed color, the same mechanism `IconBase`'s
+  `currentColor` default already relies on.
 
 ## Commit messages
 
