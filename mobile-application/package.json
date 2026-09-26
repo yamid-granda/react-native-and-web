@@ -22,6 +22,7 @@
     "@rnw/components-library": "workspace:*",
     "@tanstack/react-query": "^5.103.0",
     "expo": "~57.0.25",
+    "expo-constants": "~57.0.19",
     "expo-status-bar": "~57.0.1",
     "nativewind": "^4.2.7",
     "react": "catalog:",
