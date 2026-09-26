@@ -2,15 +2,12 @@ import type { ComponentType } from "react"
 import { useColorScheme } from "react-native"
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
+import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs"
 import {
-  createBottomTabNavigator,
-  type BottomTabBarButtonProps,
-} from "@react-navigation/bottom-tabs"
-import {
+  BottomNav,
   CartIcon,
   HomeIcon,
   HomeScreen,
-  MainNav,
   MarketplaceIcon,
   type IconProps,
 } from "@rnw/components-library"
@@ -52,14 +49,36 @@ function MarketplaceStack() {
 
 const Tab = createBottomTabNavigator<RootTabParamList>()
 
-// icon/title are fixed per tab; MainNav already renders both, so the
-// built-in tab bar icon/label are turned off (tabBarShowLabel: false below,
-// tabBarIcon left unset) to avoid rendering them twice.
-function tabBarButton(icon: ComponentType<IconProps>, title: string) {
-  return function TabBarButton({ onPress }: BottomTabBarButtonProps) {
-    const handlePress = onPress as (() => void) | undefined
-    return <MainNav icon={icon} title={title} onPress={handlePress} />
-  }
+const TAB_ICONS: Record<keyof RootTabParamList, ComponentType<IconProps>> = {
+  Home: HomeIcon,
+  Marketplace: MarketplaceIcon,
+  Cart: CartIcon,
+}
+
+// Renders the exact same BottomNav component web-application uses (see
+// components-library's BottomNav — this repo's whole point is sharing UI,
+// not just similar-looking parallel implementations per platform).
+// Reimplements React Navigation's own default tab-press handling
+// (https://reactnavigation.org/docs/bottom-tab-navigator/#tabbar) since a
+// custom tabBar bypasses its built-in button/onPress wiring entirely.
+function TabBar({ state, navigation }: BottomTabBarProps) {
+  const items = state.routes.map((route, index) => ({
+    key: route.key,
+    title: route.name,
+    icon: TAB_ICONS[route.name as keyof RootTabParamList],
+    onPress: () => {
+      const event = navigation.emit({
+        type: "tabPress",
+        target: route.key,
+        canPreventDefault: true,
+      })
+      if (state.index !== index && !event.defaultPrevented) {
+        navigation.navigate(route.name)
+      }
+    },
+  }))
+
+  return <BottomNav items={items} />
 }
 
 // Navigation lives only here; web routing is Next.js App Router's job (README).
@@ -69,27 +88,12 @@ export function RootNavigator() {
   return (
     <NavigationContainer theme={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarStyle: { flexDirection: "row", justifyContent: "center", gap: 4 },
-        }}
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <TabBar {...props} />}
       >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ tabBarButton: tabBarButton(HomeIcon, "Home") }}
-        />
-        <Tab.Screen
-          name="Marketplace"
-          component={MarketplaceStack}
-          options={{ tabBarButton: tabBarButton(MarketplaceIcon, "Marketplace") }}
-        />
-        <Tab.Screen
-          name="Cart"
-          component={CartScreen}
-          options={{ tabBarButton: tabBarButton(CartIcon, "Cart") }}
-        />
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Marketplace" component={MarketplaceStack} />
+        <Tab.Screen name="Cart" component={CartScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   )
