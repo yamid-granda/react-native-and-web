@@ -25,7 +25,7 @@ export type ProductListScreenProps = {
   onSelectProduct?: (id: string) => void
 }
 
-// same substring-match approach as IconGallery's search
+// same substring-match approach as IconsGallery's search
 function matchesQuery(query: string, product: ProductData) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true

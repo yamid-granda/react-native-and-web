@@ -37,7 +37,7 @@ function matchesQuery(query: string, name: string, keywords: string[]) {
   )
 }
 
-export function IconGallery() {
+export function IconsGallery() {
   const [query, setQuery] = useState("")
   const [copiedName, setCopiedName] = useState<string | null>(null)
 
@@ -82,13 +82,10 @@ export function IconGallery() {
               className="text-center text-xs font-medium text-foreground"
               numberOfLines={1}
             >
-              {name}
+              {name.replace(/Icon$/, "")}
             </ClassNameText>
             <ClassNameText
-              className={cn(
-                "text-center text-[10px] text-muted",
-                copiedName === name && "text-brand",
-              )}
+              className={cn("text-center text-xs text-muted", copiedName === name && "text-brand")}
               numberOfLines={1}
             >
               {copiedName === name ? "Copied!" : keywords.slice(0, 2).join(", ")}
