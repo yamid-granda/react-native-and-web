@@ -1,10 +1,17 @@
 import type { ComponentType } from "react"
-import { Pressable, type PressableProps } from "react-native"
+import { Platform, Pressable, type PressableProps, type ViewStyle } from "react-native"
 import type { IconProps } from "../../icons/types"
 
-// react-native-web renders a Pressable with `href` set as a real <a>
-// (see View's supportedProps); RN's types don't know about it.
+// react-native-web-only `href`, untyped in RN (README).
 const LinkPressable = Pressable as ComponentType<PressableProps & { href?: string }>
+
+// RN has no "fixed" position (README); native falls back to "absolute".
+const fixedToBottomStyle: ViewStyle = {
+  position: (Platform.OS === "web" ? "fixed" : "absolute") as ViewStyle["position"],
+  bottom: 0,
+  left: 0,
+  right: 0,
+}
 
 export type MainNavProps = {
   href: string
@@ -13,7 +20,7 @@ export type MainNavProps = {
 
 export function MainNav({ href, icon: Icon }: MainNavProps) {
   return (
-    <LinkPressable accessibilityRole="link" href={href}>
+    <LinkPressable accessibilityRole="link" href={href} style={fixedToBottomStyle}>
       <Icon />
     </LinkPressable>
   )

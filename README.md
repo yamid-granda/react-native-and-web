@@ -225,6 +225,18 @@ or it'll boot but fail to reach Postgres.
   dark mode manually, independent of the host OS (see
   `.storybook/preview.tsx`). One-off colors that don't change with the
   scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
+- **`MainNav` casts `Pressable` locally to accept `href`**, same reasoning
+  as the `Button.tsx` cast above: react-native-web's `View` (which
+  `Pressable` wraps) recognizes an `href` prop and renders an `<a>` instead
+  of a `<div>`, but RN's own `PressableProps`/`ViewProps` types don't know
+  about this react-native-web-only behavior.
+- **RN has no page-level "fixed" position.** Its `ViewStyle["position"]`
+  type only allows `"absolute" | "relative" | "static"` — `"fixed"` is a
+  react-native-web/CSS-only value that RNW's `View` passes straight through
+  to the DOM. `MainNav` (`components-library/src/storybook/MainNav/`) picks
+  `"fixed"` via `Platform.OS === "web"` and falls back to `"absolute"`
+  pinned to all edges on native, RN's only mechanism for pinning content to
+  its nearest positioned ancestor.
 
 ## Commit messages
 
