@@ -25,10 +25,7 @@ function withDefaultStroke(children: ReactNode, color: NonNullable<IconProps["co
   })
 }
 
-// unlike currentColor, doesn't need an ancestor to set a CSS `color`
-const DEFAULT_COLOR = "rgb(var(--color-foreground))"
-
-export function IconBase({ size = FRAME_SIZE, color = DEFAULT_COLOR, children, ...props }: IconBaseProps) {
+export function IconBase({ size = FRAME_SIZE, color = "currentColor", children, ...props }: IconBaseProps) {
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${FRAME_SIZE} ${FRAME_SIZE}`} fill="none" {...props}>
       {withDefaultStroke(children, color)}
