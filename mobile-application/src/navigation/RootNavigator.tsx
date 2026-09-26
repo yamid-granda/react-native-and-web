@@ -1,44 +1,65 @@
 import type { ComponentType } from "react"
-import { Pressable, Text, useColorScheme, type PressableProps, type TextProps } from "react-native"
+import { useColorScheme } from "react-native"
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
-import { HomeScreen } from "@rnw/components-library"
+import {
+  createBottomTabNavigator,
+  type BottomTabBarButtonProps,
+} from "@react-navigation/bottom-tabs"
+import {
+  CartIcon,
+  HomeIcon,
+  HomeScreen,
+  MainNav,
+  MarketplaceIcon,
+  type IconProps,
+} from "@rnw/components-library"
 import { MarketplaceScreen } from "../screens/MarketplaceScreen"
 import { ProductDetailScreen } from "../screens/ProductDetailScreen"
 import { CartScreen } from "../screens/CartScreen"
 
-// see components-library's Button.tsx / README "Architecture boundaries"
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
-const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
+export type MarketplaceStackParamList = {
+  List: undefined
+  ProductDetail: { productId: string }
+}
 
-export type RootStackParamList = {
+export type RootTabParamList = {
   Home: undefined
   Marketplace: undefined
-  ProductDetail: { productId: string }
   Cart: undefined
 }
 
-const Stack = createNativeStackNavigator<RootStackParamList>()
+const MarketplaceStackNavigator = createNativeStackNavigator<MarketplaceStackParamList>()
 
-type NavigateTo<T extends keyof RootStackParamList> = { navigate: (screen: T) => void }
-
-function MarketplaceHeaderButton({ navigation }: { navigation: NavigateTo<"Marketplace"> }) {
+// Nested inside the Marketplace tab so the bottom nav stays visible on the
+// product detail screen too, not just the list.
+function MarketplaceStack() {
   return (
-    <ClassNamePressable
-      accessibilityRole="button"
-      onPress={() => navigation.navigate("Marketplace")}
-    >
-      <ClassNameText className="font-semibold text-brand">Marketplace</ClassNameText>
-    </ClassNamePressable>
+    <MarketplaceStackNavigator.Navigator>
+      <MarketplaceStackNavigator.Screen
+        name="List"
+        component={MarketplaceScreen}
+        options={{ headerShown: false }}
+      />
+      <MarketplaceStackNavigator.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+        options={{ title: "Product" }}
+      />
+    </MarketplaceStackNavigator.Navigator>
   )
 }
 
-function CartHeaderButton({ navigation }: { navigation: NavigateTo<"Cart"> }) {
-  return (
-    <ClassNamePressable accessibilityRole="button" onPress={() => navigation.navigate("Cart")}>
-      <ClassNameText className="font-semibold text-brand">Cart</ClassNameText>
-    </ClassNamePressable>
-  )
+const Tab = createBottomTabNavigator<RootTabParamList>()
+
+// icon/title are fixed per tab; MainNav already renders both, so the
+// built-in tab bar icon/label are turned off (tabBarShowLabel: false below,
+// tabBarIcon left unset) to avoid rendering them twice.
+function tabBarButton(icon: ComponentType<IconProps>, title: string) {
+  return function TabBarButton({ onPress }: BottomTabBarButtonProps) {
+    const handlePress = onPress as (() => void) | undefined
+    return <MainNav icon={icon} title={title} onPress={handlePress} />
+  }
 }
 
 // Navigation lives only here; web routing is Next.js App Router's job (README).
@@ -47,33 +68,29 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer theme={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack.Navigator>
-        <Stack.Screen
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarStyle: { flexDirection: "row", justifyContent: "center", gap: 4 },
+        }}
+      >
+        <Tab.Screen
           name="Home"
           component={HomeScreen}
-          options={({ navigation }) => ({
-            title: "react-native-and-web",
-            headerRight: () => <MarketplaceHeaderButton navigation={navigation} />,
-          })}
+          options={{ tabBarButton: tabBarButton(HomeIcon, "Home") }}
         />
-        <Stack.Screen
+        <Tab.Screen
           name="Marketplace"
-          component={MarketplaceScreen}
-          options={({ navigation }) => ({
-            title: "Marketplace",
-            headerRight: () => <CartHeaderButton navigation={navigation} />,
-          })}
+          component={MarketplaceStack}
+          options={{ tabBarButton: tabBarButton(MarketplaceIcon, "Marketplace") }}
         />
-        <Stack.Screen
-          name="ProductDetail"
-          component={ProductDetailScreen}
-          options={({ navigation }) => ({
-            title: "Product",
-            headerRight: () => <CartHeaderButton navigation={navigation} />,
-          })}
+        <Tab.Screen
+          name="Cart"
+          component={CartScreen}
+          options={{ tabBarButton: tabBarButton(CartIcon, "Cart") }}
         />
-        <Stack.Screen name="Cart" component={CartScreen} options={{ title: "Cart" }} />
-      </Stack.Navigator>
+      </Tab.Navigator>
     </NavigationContainer>
   )
 }

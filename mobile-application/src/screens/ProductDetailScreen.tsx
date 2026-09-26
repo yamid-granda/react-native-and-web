@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 import { ProductDetailScreen as ProductDetailView } from "@rnw/components-library"
-import type { RootStackParamList } from "../navigation/RootNavigator"
+import type { MarketplaceStackParamList } from "../navigation/RootNavigator"
 import { fetchProduct } from "../api/client"
 
-type Props = NativeStackScreenProps<RootStackParamList, "ProductDetail">
+type Props = NativeStackScreenProps<MarketplaceStackParamList, "ProductDetail">
 
 export function ProductDetailScreen({ route }: Props) {
   const { productId } = route.params

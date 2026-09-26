@@ -16,6 +16,7 @@
     "test:e2e:build": "detox build -c ios.debug"
   },
   "dependencies": {
+    "@react-navigation/bottom-tabs": "^7.19.2",
     "@react-navigation/native": "^7.4.1",
     "@react-navigation/native-stack": "^7.19.2",
     "@rnw/components-library": "workspace:*",
