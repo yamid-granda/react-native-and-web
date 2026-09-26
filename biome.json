@@ -56,7 +56,12 @@
   },
   "overrides": [
     {
-      "includes": ["api/src/**"],
+      "includes": ["api/src/**", "api/test/**"],
+      "javascript": {
+        "parser": {
+          "unsafeParameterDecoratorsEnabled": true
+        }
+      },
       "linter": {
         "rules": {
           "style": {
