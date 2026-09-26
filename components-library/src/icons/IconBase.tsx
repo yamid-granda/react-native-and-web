@@ -1,5 +1,5 @@
 import { Children, cloneElement, isValidElement, type ReactNode } from "react"
-import { Platform, useColorScheme } from "react-native"
+import { cssInterop } from "nativewind"
 import Svg from "react-native-svg"
 import type { IconProps } from "./types"
 
@@ -9,10 +9,6 @@ export type IconBaseProps = IconProps & {
 
 const FRAME_SIZE = 24
 const STROKE_WIDTH = 2
-
-// Matches --color-foreground in globals.css (web-application/mobile-application).
-const FOREGROUND_LIGHT = "rgb(24 24 27)"
-const FOREGROUND_DARK = "rgb(250 250 250)"
 
 // Every icon's shapes share the same stroke styling, so IconBase applies
 // it to each child by default — a child that sets its own stroke* prop
@@ -30,20 +26,12 @@ function withDefaultStroke(children: ReactNode, color: NonNullable<IconProps["co
   })
 }
 
-export function IconBase({ size = FRAME_SIZE, color, children, ...props }: IconBaseProps) {
-  const colorScheme = useColorScheme()
-  // "currentColor" resolves via real CSS inheritance on web (react-native-web
-  // renders a DOM <svg>), but react-native-svg has no such cascade on native
-  // — it falls back to SVG's spec default of black, ignoring dark mode
-  // entirely. Resolve an explicit color there instead.
-  const resolvedColor =
-    color ??
-    (Platform.OS === "web"
-      ? "currentColor"
-      : colorScheme === "dark"
-        ? FOREGROUND_DARK
-        : FOREGROUND_LIGHT)
-
+function IconBaseImpl({
+  size = FRAME_SIZE,
+  color = "currentColor",
+  children,
+  ...props
+}: IconBaseProps) {
   return (
     <Svg
       width={size}
@@ -52,7 +40,16 @@ export function IconBase({ size = FRAME_SIZE, color, children, ...props }: IconB
       fill="none"
       {...props}
     >
-      {withDefaultStroke(children, resolvedColor)}
+      {withDefaultStroke(children, color)}
     </Svg>
   )
 }
+
+// Registers className support the same way NativeWind registers its own
+// core components for a color that arrives via a plain prop rather than a
+// style object (see react-native-css-interop's own ActivityIndicator
+// registration). Without this, a className/currentColor has no meaning to
+// react-native-svg on native — only real CSS (web) resolves it (README).
+export const IconBase = cssInterop(IconBaseImpl, {
+  className: { target: "style", nativeStyleToProp: { color: true } },
+})

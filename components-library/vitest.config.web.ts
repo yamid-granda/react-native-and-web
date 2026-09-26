@@ -16,7 +16,18 @@ export default defineConfig({
     // relies on Metro's RN platform-extension resolution to pick the
     // right one; Vite doesn't do that by default, so the plain .js file
     // (native, Flow-typed) gets bundled instead and fails to parse.
-    extensions: [".web.js", ".web.ts", ".web.tsx", ".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
+    extensions: [
+      ".web.js",
+      ".web.ts",
+      ".web.tsx",
+      ".mjs",
+      ".js",
+      ".mts",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".json",
+    ],
   },
   test: {
     name: "web",

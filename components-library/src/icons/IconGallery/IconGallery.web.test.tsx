@@ -34,7 +34,9 @@ describe("IconGallery (web, via react-native-web)", () => {
 
   it("shows a no-results message when nothing matches", () => {
     render(<IconGallery />)
-    fireEvent.change(screen.getByLabelText("Search icons"), { target: { value: "zzz-not-a-keyword" } })
+    fireEvent.change(screen.getByLabelText("Search icons"), {
+      target: { value: "zzz-not-a-keyword" },
+    })
     expect(screen.getByText(/No icons match/)).toBeInTheDocument()
   })
 

@@ -4,4 +4,5 @@ import type { SvgProps } from "react-native-svg"
 // (same 24x24 frame/viewBox, same size/color props).
 export type IconProps = Omit<SvgProps, "width" | "height" | "viewBox"> & {
   size?: number
+  className?: string
 }

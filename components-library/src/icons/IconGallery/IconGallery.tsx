@@ -31,7 +31,10 @@ const COPIED_LABEL_TIMEOUT_MS = 1200
 function matchesQuery(query: string, name: string, keywords: string[]) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
-  return name.toLowerCase().includes(normalized) || keywords.some((keyword) => keyword.includes(normalized))
+  return (
+    name.toLowerCase().includes(normalized) ||
+    keywords.some((keyword) => keyword.includes(normalized))
+  )
 }
 
 export function IconGallery() {
@@ -75,11 +78,17 @@ export function IconGallery() {
             className="w-28 items-center gap-2 rounded-lg border border-surface-muted bg-surface p-3 text-foreground active:opacity-70"
           >
             <Component size={28} />
-            <ClassNameText className="text-center text-xs font-medium text-foreground" numberOfLines={1}>
+            <ClassNameText
+              className="text-center text-xs font-medium text-foreground"
+              numberOfLines={1}
+            >
               {name}
             </ClassNameText>
             <ClassNameText
-              className={cn("text-center text-[10px] text-muted", copiedName === name && "text-brand")}
+              className={cn(
+                "text-center text-[10px] text-muted",
+                copiedName === name && "text-brand",
+              )}
               numberOfLines={1}
             >
               {copiedName === name ? "Copied!" : keywords.slice(0, 2).join(", ")}
