@@ -22,4 +22,9 @@ describe("Product (web, via react-native-web)", () => {
     fireEvent.click(screen.getByText("Wireless Headphones"))
     expect(onPress).toHaveBeenCalledTimes(1)
   })
+
+  it("exposes a testID keyed by product id, for e2e targeting", () => {
+    render(<Product {...props} />)
+    expect(screen.getByTestId("product-card-1")).toBeInTheDocument()
+  })
 })

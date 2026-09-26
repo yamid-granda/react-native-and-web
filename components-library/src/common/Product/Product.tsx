@@ -1,23 +1,17 @@
 import type { ComponentType } from "react"
 import { Image, Pressable, Text, type ImageProps, type PressableProps } from "react-native"
 import { cn } from "../../utils/cn"
+import { formatPrice } from "../../utils/formatPrice"
+import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 const ClassNameImage = Image as ComponentType<ImageProps & { className?: string }>
 
-export type ProductProps = {
-  id: string
-  title: string
-  description?: string
-  price: number
-  currency?: string
-  imageUrl?: string
-  onPress?: () => void
-  className?: string
-}
+export type ProductProps = ProductData & { onPress?: () => void; className?: string }
 
 export function Product({
+  id,
   title,
   description,
   price,
@@ -26,13 +20,9 @@ export function Product({
   onPress,
   className,
 }: ProductProps) {
-  const formattedPrice = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-  }).format(price)
-
   return (
     <ClassNamePressable
+      testID={`product-card-${id}`}
       accessibilityRole="button"
       onPress={onPress}
       className={cn("w-48 gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80", className)}
@@ -53,7 +43,7 @@ export function Product({
           {description}
         </Text>
       ) : null}
-      <Text className="text-base font-bold text-brand">{formattedPrice}</Text>
+      <Text className="text-base font-bold text-brand">{formatPrice(price, currency)}</Text>
     </ClassNamePressable>
   )
 }
