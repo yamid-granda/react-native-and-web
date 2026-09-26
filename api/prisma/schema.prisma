@@ -11,9 +11,13 @@ generator client {
   moduleFormat = "esm"
 }
 
-// Placeholder model, only here to prove `prisma migrate dev` and client
-// generation work end-to-end. No business logic in this boilerplate.
-model Example {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+model Product {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // Float, not Decimal — keeps JSON serialization trivial for this MVP.
+  price       Float
+  currency    String   @default("USD")
+  imageUrl    String?
+  createdAt   DateTime @default(now())
 }
