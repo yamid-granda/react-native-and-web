@@ -1,5 +1,5 @@
 import type { ComponentType } from "react"
-import { Pressable, Text, type PressableProps, type TextProps } from "react-native"
+import { Platform, Pressable, Text, type PressableProps, type TextProps } from "react-native"
 import type { IconProps } from "../../icons/types"
 
 // react-native-web-only `href`, untyped in RN (README).
@@ -17,6 +17,14 @@ export type MainNavProps = {
   title: string
 }
 
+// text-current relies on real CSS inheritance (picks up this Pressable's
+// text-muted/active:text-brand color) — works on web, but native has no such
+// cascade, so it silently stays at RNW Text's hardcoded black regardless of
+// color scheme. text-foreground resolves per theme on native (same fix as
+// IconBase for the icon itself), at the cost of not tracking press state
+// there the way the web label does.
+const labelColorClassName = Platform.OS === "web" ? "text-current" : "text-foreground"
+
 export function MainNav({ href, onPress, icon: Icon, title }: MainNavProps) {
   return (
     <LinkPressable
@@ -26,8 +34,7 @@ export function MainNav({ href, onPress, icon: Icon, title }: MainNavProps) {
       className="min-w-14 items-center justify-center gap-1 rounded-xl px-3 py-2 text-muted active:bg-brand/10 active:text-brand"
     >
       <Icon size={22} />
-      {/* text-current, not text-muted: RNW's Text hardcodes color (README) */}
-      <ClassNameText className="text-[11px] font-medium text-current" numberOfLines={1}>
+      <ClassNameText className={`text-[11px] font-medium ${labelColorClassName}`} numberOfLines={1}>
         {title}
       </ClassNameText>
     </LinkPressable>
