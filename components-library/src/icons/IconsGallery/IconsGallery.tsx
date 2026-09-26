@@ -75,7 +75,7 @@ export function IconsGallery() {
             accessibilityRole="button"
             accessibilityLabel={`Copy ${name}`}
             onPress={() => handlePress(name)}
-            className="w-28 items-center gap-2 rounded-lg border border-surface-muted bg-surface p-3 text-foreground active:opacity-70"
+            className="min-w-28 max-w-40 flex-1 items-center gap-2 rounded-lg border border-surface-muted bg-surface p-3 text-foreground active:opacity-70"
           >
             <Component size={28} />
             <ClassNameText className="text-center text-xs font-medium text-foreground">
