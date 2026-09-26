@@ -57,7 +57,7 @@ export function IconsGallery() {
   }
 
   return (
-    <ClassNameView className="gap-4 p-4">
+    <ClassNameView className="w-full gap-4 p-4">
       <ClassNameTextInput
         value={query}
         onChangeText={setQuery}
@@ -68,7 +68,7 @@ export function IconsGallery() {
       <ClassNameText className="text-xs text-muted">
         {results.length} of {iconRegistry.length} icons
       </ClassNameText>
-      <ClassNameView className="flex-row flex-wrap gap-3">
+      <ClassNameView className="w-full flex-row flex-wrap justify-start gap-3">
         {results.map(({ name, Component, keywords }) => (
           <ClassNamePressable
             key={name}
@@ -78,15 +78,11 @@ export function IconsGallery() {
             className="w-28 items-center gap-2 rounded-lg border border-surface-muted bg-surface p-3 text-foreground active:opacity-70"
           >
             <Component size={28} />
-            <ClassNameText
-              className="text-center text-xs font-medium text-foreground"
-              numberOfLines={1}
-            >
+            <ClassNameText className="text-center text-xs font-medium text-foreground">
               {name.replace(/Icon$/, "")}
             </ClassNameText>
             <ClassNameText
               className={cn("text-center text-xs text-muted", copiedName === name && "text-brand")}
-              numberOfLines={1}
             >
               {copiedName === name ? "Copied!" : keywords.slice(0, 2).join(", ")}
             </ClassNameText>
