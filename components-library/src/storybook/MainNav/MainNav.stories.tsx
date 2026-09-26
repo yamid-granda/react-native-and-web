@@ -9,7 +9,7 @@ import { MainNav } from "./MainNav"
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 
 const meta: Meta<typeof MainNav> = {
-  title: "storybook/MainNav",
+  title: "common/MainNav",
   component: MainNav,
 }
 
