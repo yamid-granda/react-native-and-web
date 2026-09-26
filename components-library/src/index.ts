@@ -15,4 +15,7 @@ export { ProductListScreen } from "./business/ProductListScreen/ProductListScree
 export type { ProductListScreenProps } from "./business/ProductListScreen/ProductListScreen"
 export { ProductDetailScreen } from "./business/ProductDetailScreen/ProductDetailScreen"
 export type { ProductDetailScreenProps } from "./business/ProductDetailScreen/ProductDetailScreen"
+export { CartScreen } from "./business/CartScreen/CartScreen"
+export { useCartStore } from "./business/CartScreen/useCartStore"
+export type { CartItem } from "./business/CartScreen/useCartStore"
 export { cn } from "./utils/cn"
