@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { beforeEach, describe, expect, it } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductDetailScreen } from "./ProductDetailScreen"
+import { useCartStore } from "../CartScreen/useCartStore"
 
 const product = {
   id: "1",
@@ -10,6 +11,10 @@ const product = {
 }
 
 describe("ProductDetailScreen (web, via react-native-web)", () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: {} })
+  })
+
   it("renders the title, description, and formatted price", () => {
     render(<ProductDetailScreen product={product} />)
     expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
@@ -30,5 +35,11 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
   it("shows a not-found state when there is no product and nothing is loading/erroring", () => {
     render(<ProductDetailScreen product={null} />)
     expect(screen.getByText("Product not found.")).toBeInTheDocument()
+  })
+
+  it("adds the product to the cart when Add to Cart is clicked", () => {
+    render(<ProductDetailScreen product={product} />)
+    fireEvent.click(screen.getByText("Add to Cart"))
+    expect(useCartStore.getState().items["1"]).toEqual({ product, quantity: 1 })
   })
 })
