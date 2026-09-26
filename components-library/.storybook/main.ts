@@ -60,6 +60,14 @@ const config: StorybookConfig = {
         ".tsx",
         ".json",
       ],
+      // react-native-css-interop (nativewind's cssInterop, used by IconBase)
+      // ships inline JSX in a plain .js file (dist/doctor.js), which
+      // esbuild's dep optimizer otherwise refuses to parse with its default
+      // "js" loader.
+      loader: {
+        ...viteConfig.optimizeDeps.esbuildOptions?.loader,
+        ".js": "jsx",
+      },
     }
     return viteConfig
   },
