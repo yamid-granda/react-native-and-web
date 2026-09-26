@@ -33,7 +33,7 @@ export function MainNav({ href, onPress, icon: Icon, title }: MainNavProps) {
         <>
           <Icon size={22} className={pressed ? "text-brand" : "text-muted"} />
           <ClassNameText
-            className={`text-[11px] font-medium ${pressed ? "text-brand" : "text-muted"}`}
+            className={`text-sm font-medium ${pressed ? "text-brand" : "text-muted"}`}
             numberOfLines={1}
           >
             {title}
