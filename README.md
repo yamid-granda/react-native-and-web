@@ -298,6 +298,25 @@ or it'll boot but fail to reach Postgres.
   sets `optimizeDeps.esbuildOptions.loader: { ".js": "jsx" }` to fix it,
   the same way it already overrides `resolveExtensions` for
   `react-native-svg`.
+- **`BottomNav` floats over content with a real transparent `marginBottom`,
+  not a filled spacer.** The gap below the bar (safe-area inset + a minimum
+  gap) needs to show whatever's actually scrolled underneath it (e.g.
+  marketplace product cards) rather than a solid color — a separate filled
+  `View` there would opaquely cover that content instead. On web this falls
+  out of `position: fixed` for free: content already scrolls underneath the
+  bar. On native it doesn't by default — `fixed` compiles to nothing there
+  (`IncompatibleNativeValue`), so `@react-navigation/bottom-tabs`'
+  `BottomTabView` lays out a fully custom `tabBar` as a normal, non-
+  overlapping flex sibling (screen content sized to end exactly where the
+  bar begins; see its source). `BottomNav` sets `position: "absolute"` via
+  inline style on native only (a Tailwind class can't express this — same
+  class of gap as the `currentColor` one above) so it floats the same way
+  web's `fixed` does; `inset-x-0`/`bottom-0`/`z-50` already compile fine on
+  native and anchor/stack it correctly once it's taken out of flex flow.
+  `ProductListScreen`/`CartScreen` (both plain `ScrollView`s with no bottom
+  inset reserved) get this scroll-under effect for free on both platforms;
+  a non-scrolling screen with content genuinely pinned to the bottom edge
+  would need its own bottom inset and doesn't currently have one.
 
 ## Commit messages
 
