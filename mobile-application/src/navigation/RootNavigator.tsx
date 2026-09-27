@@ -1,5 +1,6 @@
 import type { ComponentType } from "react"
 import { useColorScheme } from "react-native"
+import { useColorScheme as useNativeWindColorScheme } from "nativewind"
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs"
@@ -9,6 +10,8 @@ import {
   HomeIcon,
   HomeScreen,
   MarketplaceIcon,
+  MoonIcon,
+  SunIcon,
   type IconProps,
 } from "@rnw/components-library"
 import { MarketplaceScreen } from "../screens/MarketplaceScreen"
@@ -58,6 +61,8 @@ const TAB_ICONS: Record<keyof RootTabParamList, ComponentType<IconProps>> = {
 // see root README "Architecture boundaries" for why this reimplements
 // React Navigation's own default tab-press handling
 function TabBar({ state, navigation }: BottomTabBarProps) {
+  const { colorScheme, toggleColorScheme } = useNativeWindColorScheme()
+
   const items = state.routes.map((route, index) => ({
     key: route.key,
     title: route.name,
@@ -74,7 +79,17 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
     },
   }))
 
-  return <BottomNav items={items} />
+  return (
+    <BottomNav
+      items={items}
+      trailingItem={{
+        key: "theme",
+        title: "Theme",
+        icon: colorScheme === "dark" ? SunIcon : MoonIcon,
+        onPress: toggleColorScheme,
+      }}
+    />
+  )
 }
 
 // Navigation lives only here; web routing is Next.js App Router's job (README).
