@@ -2,6 +2,8 @@ import type { ComponentType } from "react"
 import { CartIcon } from "./CartIcon/CartIcon"
 import { HomeIcon } from "./HomeIcon/HomeIcon"
 import { MarketplaceIcon } from "./MarketplaceIcon/MarketplaceIcon"
+import { MoonIcon } from "./MoonIcon/MoonIcon"
+import { SunIcon } from "./SunIcon/SunIcon"
 import type { IconProps } from "./types"
 
 export type IconRegistryEntry = {
@@ -27,5 +29,15 @@ export const iconRegistry: IconRegistryEntry[] = [
     name: "CartIcon",
     Component: CartIcon,
     keywords: ["cart", "basket", "checkout", "bag", "shopping"],
+  },
+  {
+    name: "SunIcon",
+    Component: SunIcon,
+    keywords: ["sun", "light", "theme", "brightness"],
+  },
+  {
+    name: "MoonIcon",
+    Component: MoonIcon,
+    keywords: ["moon", "dark", "theme", "night"],
   },
 ]
