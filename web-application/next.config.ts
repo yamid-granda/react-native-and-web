@@ -1,22 +1,14 @@
-import path from "node:path"
-import { pathToFileURL } from "node:url"
 import type { NextConfig } from "next"
 
-// Stubs react-native-safe-area-context, which breaks web bundling; see README.
-const safeAreaContextStubPath = path.resolve(
-  __dirname,
-  "../components-library/stubs/react-native-safe-area-context.js",
-)
-// Turbopack's resolveAlias wants a file:// URL for absolute paths, not a
-// plain OS path — plain paths get misread as project-root-relative.
-const safeAreaContextStubUrl = pathToFileURL(safeAreaContextStubPath).href
+// Stubs react-native-safe-area-context, which breaks web bundling; see
+// README. Reached from a browser chunk (BottomNav calls useSafeAreaInsets),
+// so — same as the react-native-svg stub below — this has to be a plain
+// project-root-relative path: a file:// resolveAlias target gets treated as
+// an external, which Turbopack's browser chunking doesn't support.
+const safeAreaContextStubPath = "../components-library/stubs/react-native-safe-area-context.js"
 
 // Turbopack's `resolveExtensions` (below) doesn't get react-native-svg to
-// its web build — see the stub for why — so route it there directly. Unlike
-// the safe-area-context stub above, this one is reached from a browser
-// chunk: a file:// URL resolveAlias target gets treated as an external,
-// which Turbopack's browser chunking doesn't support, so this stays a plain
-// project-root-relative path instead.
+// its web build — see the stub for why — so route it there directly.
 const reactNativeSvgStubPath = "../components-library/stubs/react-native-svg.js"
 
 const nextConfig: NextConfig = {
@@ -34,7 +26,7 @@ const nextConfig: NextConfig = {
   // this key instead.
   turbopack: {
     resolveAlias: {
-      "react-native-safe-area-context": safeAreaContextStubUrl,
+      "react-native-safe-area-context": safeAreaContextStubPath,
       "react-native-svg": reactNativeSvgStubPath,
       "react-native": "react-native-web",
     },
