@@ -7,6 +7,7 @@ import preset from "../components-library/tailwind-preset.cjs"
 const nativewindPreset = require("nativewind/preset")
 
 const config: Config = {
+  darkMode: "class",
   presets: [nativewindPreset, preset],
   content: ["./app/**/*.{ts,tsx}", "../components-library/src/**/*.{ts,tsx}"],
   important: "html",
