@@ -1,10 +1,20 @@
 import type { ComponentType } from "react"
-import { View, type ViewProps } from "react-native"
+import { Platform, View, type ViewProps } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { MainNav } from "../MainNav/MainNav"
 import type { IconProps } from "../../icons/types"
 
 // see Button.tsx / README "Architecture boundaries" for why this is cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
+
+// "fixed" (below) compiles to nothing on native — see README "Architecture
+// boundaries" for why this, not a className, is the real cross-platform fix.
+const nativeOverlayStyle = Platform.OS === "web" ? null : ({ position: "absolute" } as const)
+
+// Clears home-indicator/gesture-bar and mobile-browser chrome even where
+// useSafeAreaInsets() reports 0 (the web stub always does) — see README
+// "Architecture boundaries".
+const MIN_BOTTOM_GAP = 12
 
 export type BottomNavItem = {
   key: string
@@ -27,8 +37,13 @@ export type BottomNavProps = {
 // the layout) and mobile-application (rendered as a custom React Navigation
 // tabBar) — see README "Architecture boundaries" on component reuse.
 export function BottomNav({ items, trailingItem }: BottomNavProps) {
+  const insets = useSafeAreaInsets()
+
   return (
-    <ClassNameView className="fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2">
+    <ClassNameView
+      className="fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2"
+      style={[nativeOverlayStyle, { marginBottom: MIN_BOTTOM_GAP + insets.bottom }]}
+    >
       <ClassNameView className="flex-1" />
       <ClassNameView className="flex-row justify-center gap-1">
         {items.map((item) => (

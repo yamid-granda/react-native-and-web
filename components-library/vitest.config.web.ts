@@ -1,3 +1,4 @@
+import path from "node:path"
 import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 
@@ -11,6 +12,12 @@ export default defineConfig({
     alias: {
       "react-native": "react-native-web",
       "react-native-svg": "react-native-svg/lib/module/ReactNativeSVG.web.js",
+      // same stub Next.js/Storybook use — its native codegen import doesn't
+      // bundle for web (see components-library/stubs and README).
+      "react-native-safe-area-context": path.resolve(
+        __dirname,
+        "./stubs/react-native-safe-area-context.js",
+      ),
     },
     // react-native-svg ships separate native/.web.js implementations and
     // relies on Metro's RN platform-extension resolution to pick the
