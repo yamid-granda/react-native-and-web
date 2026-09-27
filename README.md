@@ -227,13 +227,31 @@ or it'll boot but fail to reach Postgres.
   a `dark:` variant. Each app's global stylesheet
   (`web-application/app/globals.css`, `mobile-application/global.css`,
   `components-library/global.css`) declares the actual `--color-*` values
-  for light and redefines them for dark — web/mobile under
-  `@media (prefers-color-scheme: dark)` (OS-driven, `darkMode: "media"`),
-  Storybook under a `.dark` class instead (`darkMode: "class"` in its own
-  `tailwind.config.cjs`) so its backgrounds-addon toolbar can toggle
-  dark mode manually, independent of the host OS (see
-  `.storybook/preview.tsx`). One-off colors that don't change with the
+  for light and redefines them for dark. All four (`web-application`,
+  `mobile-application`, `components-library`'s Storybook,
+  `mobile-application`'s tab bar toggle) now use `darkMode: "class"` — the
+  nav bar's Theme button toggles a `.dark`/`.light` class rather than
+  relying on the OS alone. One-off colors that don't change with the
   scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
+- **`web-application`'s Theme toggle can't just call NativeWind's
+  `setColorScheme` and trust its `colorScheme` state.** On web that state
+  is hardcoded to `"light"` on mount regardless of the real OS preference
+  (confirmed empirically — it only reflects reality once you explicitly
+  set it), and NativeWind only ever adds a `.dark` class, never a `.light`
+  one, so an explicit light pick can't override an OS-dark `@media` block.
+  `app/use-theme-toggle.ts` computes the real initial theme itself
+  (`localStorage`, falling back to `window.matchMedia`), toggles both
+  classes directly, and still calls `setColorScheme` so
+  `components-library`'s own token CSS stays in sync; `globals.css`'s
+  `@media (prefers-color-scheme: dark)` block is guarded with
+  `:root:not(.light)` so an explicit light pick can win over a dark OS
+  default, alongside a plain `:root.dark` override for the reverse case.
+  The choice is persisted to `localStorage` because `MainNav`'s `<a
+  href>` triggers a full page reload (see below), which would otherwise
+  reset the in-memory theme back to the OS default on every navigation —
+  same issue the cart store hit. `mobile-application` doesn't need any of
+  this: there's no page-reload navigation, and `useColorScheme`'s
+  `toggleColorScheme` works correctly on native.
 - **`MainNav` casts `Pressable` locally to accept `href`**, same reasoning
   as the `Button.tsx` cast above: react-native-web's `View` (which
   `Pressable` wraps) recognizes an `href` prop and renders an `<a>` instead
