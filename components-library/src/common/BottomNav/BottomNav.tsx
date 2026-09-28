@@ -37,6 +37,7 @@ export type BottomNavItem = {
   // normally sets only the one its platform uses.
   href?: string
   onPress?: () => void
+  badgeCount?: number
 }
 
 export type BottomNavProps = {
@@ -63,6 +64,7 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
             icon={item.icon}
             href={item.href}
             onPress={item.onPress}
+            badgeCount={item.badgeCount}
           />
         ))}
       </ClassNameView>
@@ -73,6 +75,7 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
             icon={trailingItem.icon}
             href={trailingItem.href}
             onPress={trailingItem.onPress}
+            badgeCount={trailingItem.badgeCount}
           />
         ) : null}
       </ClassNameView>

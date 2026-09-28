@@ -1,5 +1,6 @@
 import type { ComponentType } from "react"
 import { CartIcon } from "./CartIcon/CartIcon"
+import { CloseIcon } from "./CloseIcon/CloseIcon"
 import { HomeIcon } from "./HomeIcon/HomeIcon"
 import { MarketplaceIcon } from "./MarketplaceIcon/MarketplaceIcon"
 import { MoonIcon } from "./MoonIcon/MoonIcon"
@@ -45,5 +46,10 @@ export const iconRegistry: IconRegistryEntry[] = [
     name: "SearchIcon",
     Component: SearchIcon,
     keywords: ["search", "find", "magnify", "lookup"],
+  },
+  {
+    name: "CloseIcon",
+    Component: CloseIcon,
+    keywords: ["close", "x", "dismiss", "cancel"],
   },
 ]

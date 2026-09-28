@@ -1,4 +1,4 @@
-import type { ComponentType } from "react"
+import { useState, type ComponentType } from "react"
 import {
   Image,
   Pressable,
@@ -12,6 +12,8 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { Drawer } from "../../common/Drawer/Drawer"
+import { Button } from "../../common/Button/Button"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
@@ -23,10 +25,17 @@ export type ProductDetailScreenProps = {
   product?: ProductData | null
   isLoading?: boolean
   error?: Error | null
+  onGoToCart?: () => void
 }
 
-export function ProductDetailScreen({ product, isLoading, error }: ProductDetailScreenProps) {
+export function ProductDetailScreen({
+  product,
+  isLoading,
+  error,
+  onGoToCart,
+}: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
 
   return (
     <ClassNameView testID="product-detail-screen" className="flex-1 gap-4 bg-background p-6">
@@ -58,7 +67,10 @@ export function ProductDetailScreen({ product, isLoading, error }: ProductDetail
           </ClassNameText>
           <ClassNamePressable
             accessibilityRole="button"
-            onPress={() => addItem(product)}
+            onPress={() => {
+              addItem(product)
+              setIsCartDrawerOpen(true)
+            }}
             className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
           >
             <ClassNameText className="text-base font-semibold text-white">
@@ -67,6 +79,20 @@ export function ProductDetailScreen({ product, isLoading, error }: ProductDetail
           </ClassNamePressable>
         </>
       ) : null}
+      <Drawer visible={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)}>
+        <ClassNameText className="text-lg font-semibold text-foreground">Added to cart</ClassNameText>
+        <ClassNameText className="text-muted">
+          {product?.title} has been added to your cart.
+        </ClassNameText>
+        <Button
+          label="Go to Cart"
+          onPress={() => {
+            setIsCartDrawerOpen(false)
+            onGoToCart?.()
+          }}
+          className="mt-2"
+        />
+      </Drawer>
     </ClassNameView>
   )
 }

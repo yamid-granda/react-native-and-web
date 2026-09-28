@@ -6,6 +6,9 @@ import ProductDetailPage from "../app/marketplace/[id]/page"
 import { fetchProduct } from "../lib/api"
 
 vi.mock("../lib/api")
+// solito/navigation's useRouter() calls next/navigation's useRouter, which
+// throws outside a real Next.js app router (see MainNav.web.test.tsx).
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 
 describe("ProductDetailPage", () => {
   it("renders the fetched product", async () => {

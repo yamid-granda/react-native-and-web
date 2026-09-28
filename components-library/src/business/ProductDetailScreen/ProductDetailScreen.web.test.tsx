@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductDetailScreen } from "./ProductDetailScreen"
 import { useCartStore } from "../CartScreen/useCartStore"
@@ -41,5 +41,22 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     render(<ProductDetailScreen product={product} />)
     fireEvent.click(screen.getByText("Add to Cart"))
     expect(useCartStore.getState().items["1"]).toEqual({ product, quantity: 1 })
+  })
+
+  it("shows a confirmation drawer when Add to Cart is clicked", () => {
+    render(<ProductDetailScreen product={product} />)
+    fireEvent.click(screen.getByText("Add to Cart"))
+    expect(screen.getByText("Added to cart")).toBeInTheDocument()
+    expect(
+      screen.getByText("Wireless Headphones has been added to your cart."),
+    ).toBeInTheDocument()
+  })
+
+  it("calls onGoToCart when the drawer's Go to Cart button is clicked", () => {
+    const onGoToCart = vi.fn()
+    render(<ProductDetailScreen product={product} onGoToCart={onGoToCart} />)
+    fireEvent.click(screen.getByText("Add to Cart"))
+    fireEvent.click(screen.getByText("Go to Cart"))
+    expect(onGoToCart).toHaveBeenCalledTimes(1)
   })
 })

@@ -7,12 +7,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import {
   BOTTOM_NAV_BAR_CLASSNAME,
   CartIcon,
+  getCartTotalCount,
   getFloatingNavStyle,
   HomeIcon,
   MainNav,
   MarketplaceIcon,
   MoonIcon,
   SunIcon,
+  useCartStore,
   type IconProps,
 } from "@rnw/components-library"
 
@@ -40,6 +42,7 @@ const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; h
 export default function TabsLayout() {
   const insets = useSafeAreaInsets()
   const { colorScheme, toggleColorScheme } = useColorScheme()
+  const cartCount = useCartStore((state) => getCartTotalCount(state.items))
 
   return (
     <Tabs>
@@ -52,7 +55,11 @@ export default function TabsLayout() {
           <ClassNameView className="flex-1" />
           {TAB_ITEMS.map((item) => (
             <TabTrigger key={item.key} name={item.key} href={item.href} asChild>
-              <MainNav title={item.title} icon={item.icon} />
+              <MainNav
+                title={item.title}
+                icon={item.icon}
+                badgeCount={item.key === "cart" ? cartCount : undefined}
+              />
             </TabTrigger>
           ))}
           <ClassNameView className="flex-1 flex-row justify-end">

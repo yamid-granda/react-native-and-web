@@ -32,4 +32,21 @@ describe("MainNav (web, via react-native-web)", () => {
     fireEvent.click(screen.getByRole("button"))
     expect(onPress).toHaveBeenCalledTimes(1)
   })
+
+  it("renders a badge count when given one", () => {
+    render(<MainNav href="/cart" icon={HomeIcon} title="Cart" badgeCount={3} />)
+    expect(screen.getByText("3")).toBeInTheDocument()
+  })
+
+  it("caps the badge count display at 99+", () => {
+    render(<MainNav href="/cart" icon={HomeIcon} title="Cart" badgeCount={150} />)
+    expect(screen.getByText("99+")).toBeInTheDocument()
+  })
+
+  it("renders no badge when badgeCount is omitted or zero", () => {
+    const { rerender } = render(<MainNav href="/cart" icon={HomeIcon} title="Cart" />)
+    expect(screen.queryByText("0")).not.toBeInTheDocument()
+    rerender(<MainNav href="/cart" icon={HomeIcon} title="Cart" badgeCount={0} />)
+    expect(screen.queryByText("0")).not.toBeInTheDocument()
+  })
 })
