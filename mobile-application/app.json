@@ -3,6 +3,7 @@
     "name": "mobile-application",
     "slug": "mobile-application",
     "version": "1.0.0",
+    "scheme": "mobileapplication",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -22,6 +23,13 @@
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-detox-config-plugin"]
+    "plugins": [
+      "expo-detox-config-plugin",
+      "expo-router",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

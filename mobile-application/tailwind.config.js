@@ -4,5 +4,5 @@ const preset = require("../components-library/tailwind-preset.cjs")
 module.exports = {
   darkMode: "class",
   presets: [require("nativewind/preset"), preset],
-  content: ["./App.tsx", "./src/**/*.{ts,tsx}", "../components-library/src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{ts,tsx}", "../components-library/src/**/*.{ts,tsx}"],
 }
