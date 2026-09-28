@@ -5,7 +5,13 @@ export type { ProductProps } from "./common/Product/Product"
 export type { ProductData } from "./types/Product"
 export { MainNav } from "./common/MainNav/MainNav"
 export type { MainNavProps } from "./common/MainNav/MainNav"
-export { BottomNav } from "./common/BottomNav/BottomNav"
+export {
+  BottomNav,
+  BOTTOM_NAV_BAR_CLASSNAME,
+  BOTTOM_NAV_MIN_GAP,
+  getFloatingNavStyle,
+  nativeOverlayStyle,
+} from "./common/BottomNav/BottomNav"
 export type { BottomNavProps, BottomNavItem } from "./common/BottomNav/BottomNav"
 export { HomeIcon } from "./icons/HomeIcon/HomeIcon"
 export type { HomeIconProps } from "./icons/HomeIcon/HomeIcon"

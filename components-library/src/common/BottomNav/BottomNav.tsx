@@ -1,5 +1,5 @@
 import type { ComponentType } from "react"
-import { Platform, View, type ViewProps } from "react-native"
+import { Platform, StyleSheet, View, type ViewProps, type ViewStyle } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { MainNav } from "../MainNav/MainNav"
 import type { IconProps } from "../../icons/types"
@@ -9,12 +9,25 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 
 // "fixed" (below) compiles to nothing on native — see README "Architecture
 // boundaries" for why this, not a className, is the real cross-platform fix.
-const nativeOverlayStyle = Platform.OS === "web" ? null : ({ position: "absolute" } as const)
+export const nativeOverlayStyle = Platform.OS === "web" ? null : ({ position: "absolute" } as const)
 
 // Clears home-indicator/gesture-bar and mobile-browser chrome even where
 // useSafeAreaInsets() reports 0 (the web stub always does) — see README
 // "Architecture boundaries".
-const MIN_BOTTOM_GAP = 12
+export const BOTTOM_NAV_MIN_GAP = 12
+
+// Exported so mobile-application's tab bar (which can't render this
+// component directly — see README "Architecture boundaries") still matches
+// its exact look.
+export const BOTTOM_NAV_BAR_CLASSNAME =
+  "fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2"
+
+// Shared by this component and mobile-application's tab bar so the
+// positioning can't drift between them — see BottomNav.web.test.tsx and
+// README "Architecture boundaries".
+export function getFloatingNavStyle(insetBottom: number): ViewStyle {
+  return StyleSheet.flatten([nativeOverlayStyle, { marginBottom: BOTTOM_NAV_MIN_GAP + insetBottom }])
+}
 
 export type BottomNavItem = {
   key: string
@@ -40,10 +53,7 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
   const insets = useSafeAreaInsets()
 
   return (
-    <ClassNameView
-      className="fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2"
-      style={[nativeOverlayStyle, { marginBottom: MIN_BOTTOM_GAP + insets.bottom }]}
-    >
+    <ClassNameView className={BOTTOM_NAV_BAR_CLASSNAME} style={getFloatingNavStyle(insets.bottom)}>
       <ClassNameView className="flex-1" />
       <ClassNameView className="flex-row justify-center gap-1">
         {items.map((item) => (
