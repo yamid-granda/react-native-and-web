@@ -6,3 +6,11 @@ export type ProductData = {
   currency?: string
   imageUrl?: string
 }
+
+export type ProductsPage = {
+  items: ProductData[]
+  page: number
+  limit: number
+  total: number
+  hasNextPage: boolean
+}

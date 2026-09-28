@@ -4,6 +4,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type ScrollViewProps,
   type TextInputProps,
   type TextProps,
@@ -23,10 +25,14 @@ export type ProductListScreenProps = {
   products: ProductData[]
   isLoading?: boolean
   error?: Error | null
+  hasNextPage?: boolean
+  isFetchingNextPage?: boolean
+  onEndReached?: () => void
   onSelectProduct?: (id: string) => void
 }
 
-// same substring-match approach as IconsGallery's search
+// same substring-match approach as IconsGallery's search. Only matches
+// against products already fetched — search doesn't query further pages.
 function matchesQuery(query: string, product: ProductData) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
@@ -36,18 +42,36 @@ function matchesQuery(query: string, product: ProductData) {
   )
 }
 
+function isCloseToBottom({ layoutMeasurement, contentOffset, contentSize }: NativeScrollEvent) {
+  return layoutMeasurement.height + contentOffset.y >= contentSize.height - 200
+}
+
 export function ProductListScreen({
   products,
   isLoading,
   error,
+  hasNextPage,
+  isFetchingNextPage,
+  onEndReached,
   onSelectProduct,
 }: ProductListScreenProps) {
   const [query, setQuery] = useState("")
 
   const results = products.filter((product) => matchesQuery(query, product))
 
+  function handleScroll({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (isCloseToBottom(nativeEvent) && hasNextPage && !isFetchingNextPage) {
+      onEndReached?.()
+    }
+  }
+
   return (
-    <ClassNameScrollView testID="product-list-screen" className="flex-1 bg-background">
+    <ClassNameScrollView
+      testID="product-list-screen"
+      className="flex-1 bg-background"
+      onScroll={handleScroll}
+      scrollEventThrottle={400}
+    >
       <ClassNameView className="gap-4 p-6">
         <ClassNameText className="text-2xl font-semibold text-foreground">
           Marketplace
@@ -77,6 +101,9 @@ export function ProductListScreen({
             <Product key={product.id} {...product} onPress={() => onSelectProduct?.(product.id)} />
           ))}
         </ClassNameView>
+        {isFetchingNextPage ? (
+          <ClassNameText className="text-muted">Loading more…</ClassNameText>
+        ) : null}
       </ClassNameView>
     </ClassNameScrollView>
   )

@@ -2,7 +2,7 @@ export { Button } from "./common/Button/Button"
 export type { ButtonProps } from "./common/Button/Button"
 export { Product } from "./common/Product/Product"
 export type { ProductProps } from "./common/Product/Product"
-export type { ProductData } from "./types/Product"
+export type { ProductData, ProductsPage } from "./types/Product"
 export { MainNav } from "./common/MainNav/MainNav"
 export type { MainNavProps } from "./common/MainNav/MainNav"
 export {
