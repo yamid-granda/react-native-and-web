@@ -4,8 +4,9 @@ import { ProductsController } from "./products.controller.js"
 import { ProductsService } from "./products.service.js"
 
 describe("ProductsController", () => {
-  it("findAll delegates to ProductsService.findAll", async () => {
-    const findAll = vi.fn().mockResolvedValue([{ id: "prod-1" }])
+  it("findAll delegates to ProductsService.findAll with the given page", async () => {
+    const page = { items: [{ id: "prod-1" }], page: 1, limit: 20, total: 1, hasNextPage: false }
+    const findAll = vi.fn().mockResolvedValue(page)
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -13,10 +14,24 @@ describe("ProductsController", () => {
     }).compile()
 
     const controller = moduleRef.get(ProductsController)
-    const result = await controller.findAll()
+    const result = await controller.findAll("2")
 
-    expect(findAll).toHaveBeenCalledTimes(1)
-    expect(result).toEqual([{ id: "prod-1" }])
+    expect(findAll).toHaveBeenCalledWith(2)
+    expect(result).toEqual(page)
+  })
+
+  it("findAll defaults to page 1 when no page is given", async () => {
+    const findAll = vi.fn().mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, hasNextPage: false })
+
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ProductsController],
+      providers: [{ provide: ProductsService, useValue: { findAll, findOne: vi.fn() } }],
+    }).compile()
+
+    const controller = moduleRef.get(ProductsController)
+    await controller.findAll()
+
+    expect(findAll).toHaveBeenCalledWith(1)
   })
 
   it("findOne delegates to ProductsService.findOne with the given id", async () => {

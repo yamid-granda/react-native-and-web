@@ -13,14 +13,40 @@ async function createService(prisma: Record<string, unknown>) {
 }
 
 describe("ProductsService", () => {
-  it("findAll delegates to prisma.product.findMany ordered by newest first", async () => {
+  it("findAll returns a page of products ordered oldest first", async () => {
     const findMany = vi.fn().mockResolvedValue([{ id: "prod-1" }])
-    const service = await createService({ product: { findMany } })
+    const count = vi.fn().mockResolvedValue(1)
+    const service = await createService({ product: { findMany, count } })
 
     const result = await service.findAll()
 
-    expect(findMany).toHaveBeenCalledWith({ orderBy: { createdAt: "desc" } })
-    expect(result).toEqual([{ id: "prod-1" }])
+    expect(findMany).toHaveBeenCalledWith({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: 0,
+      take: 20,
+    })
+    expect(result).toEqual({
+      items: [{ id: "prod-1" }],
+      page: 1,
+      limit: 20,
+      total: 1,
+      hasNextPage: false,
+    })
+  })
+
+  it("findAll paginates using the given page number", async () => {
+    const findMany = vi.fn().mockResolvedValue([{ id: "prod-21" }])
+    const count = vi.fn().mockResolvedValue(30)
+    const service = await createService({ product: { findMany, count } })
+
+    const result = await service.findAll(2)
+
+    expect(findMany).toHaveBeenCalledWith({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: 20,
+      take: 20,
+    })
+    expect(result.hasNextPage).toBe(true)
   })
 
   it("findOne returns the product when it exists", async () => {
