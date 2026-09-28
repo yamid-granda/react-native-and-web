@@ -26,7 +26,8 @@
     "plugins": [
       "expo-detox-config-plugin",
       "expo-router",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true
