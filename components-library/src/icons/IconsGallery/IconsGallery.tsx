@@ -18,14 +18,6 @@ const ClassNamePressable = Pressable as ComponentType<PressableProps & { classNa
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 const ClassNameTextInput = TextInput as ComponentType<TextInputProps & { className?: string }>
 
-// This package's tsconfig has no "dom" lib (RN has no DOM), so Navigator
-// here is otherwise the empty stub @types/react ships for RN projects.
-declare global {
-  interface Navigator {
-    clipboard: { writeText: (text: string) => Promise<void> }
-  }
-}
-
 const COPIED_LABEL_TIMEOUT_MS = 1200
 
 function matchesQuery(query: string, name: string, keywords: string[]) {

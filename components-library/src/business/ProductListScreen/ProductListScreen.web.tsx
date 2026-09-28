@@ -1,21 +1,11 @@
-import { useMemo, type ComponentType } from "react"
-import {
-  ScrollView,
-  Text,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type ScrollViewProps,
-  type TextProps,
-  type ViewProps,
-} from "react-native"
+import { useEffect, useMemo, useRef, type ComponentType } from "react"
+import { Text, View, type TextProps, type ViewProps } from "react-native"
 import { Product } from "../../common/Product/Product"
 import type { ProductData } from "../../types/Product"
 import { SearchBar } from "./SearchBar"
 import { useProductSearch } from "./useProductSearch"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
-const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 
@@ -29,10 +19,6 @@ export type ProductListScreenProps = {
   onSelectProduct?: (id: string) => void
 }
 
-function isCloseToBottom({ layoutMeasurement, contentOffset, contentSize }: NativeScrollEvent) {
-  return layoutMeasurement.height + contentOffset.y >= contentSize.height - 200
-}
-
 export function ProductListScreen({
   products,
   isLoading,
@@ -43,6 +29,7 @@ export function ProductListScreen({
   onSelectProduct,
 }: ProductListScreenProps) {
   const { query, setQuery, results } = useProductSearch(products)
+  const sentinelRef = useRef<View>(null)
 
   // stable element references so unrelated re-renders (e.g.
   // isFetchingNextPage flipping) don't recreate every card's onPress
@@ -55,19 +42,24 @@ export function ProductListScreen({
     [results, onSelectProduct],
   )
 
-  function handleScroll({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) {
-    if (isCloseToBottom(nativeEvent) && hasNextPage && !isFetchingNextPage) {
-      onEndReached?.()
-    }
-  }
+  // The page scrolls at the document level (see web-application's
+  // layout.tsx: fixed BottomNav, unbounded body height), so an
+  // IntersectionObserver against the viewport is used instead of a
+  // ScrollView's onScroll — that only fires for a bounded-height scroll
+  // container, which this component never has on web.
+  useEffect(() => {
+    const sentinel = sentinelRef.current as unknown as Element | null
+    if (!sentinel || !hasNextPage || isFetchingNextPage) return
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) onEndReached?.()
+    })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, onEndReached])
 
   return (
-    <ClassNameScrollView
-      testID="product-list-screen"
-      className="flex-1 bg-background"
-      onScroll={handleScroll}
-      scrollEventThrottle={400}
-    >
+    <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
       <ClassNameView className="gap-4 p-6">
         <ClassNameText className="text-2xl font-semibold text-foreground">
           Marketplace
@@ -83,11 +75,14 @@ export function ProductListScreen({
         {!isLoading && !error && products.length > 0 && results.length === 0 ? (
           <ClassNameText className="text-muted">No products match "{query}".</ClassNameText>
         ) : null}
-        <ClassNameView className="flex-row flex-wrap gap-4">{productElements}</ClassNameView>
+        <ClassNameView className="grid grid-cols-[repeat(auto-fill,minmax(192px,1fr))] gap-4">
+          {productElements}
+        </ClassNameView>
+        <View ref={sentinelRef} testID="product-list-sentinel" />
         {isFetchingNextPage ? (
           <ClassNameText className="text-muted">Loading more…</ClassNameText>
         ) : null}
       </ClassNameView>
-    </ClassNameScrollView>
+    </ClassNameView>
   )
 }

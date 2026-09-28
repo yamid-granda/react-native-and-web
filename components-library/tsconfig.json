@@ -3,6 +3,7 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
     "jsxImportSource": "nativewind",
     "types": ["react", "vitest/globals"],

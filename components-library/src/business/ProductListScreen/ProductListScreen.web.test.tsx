@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductListScreen } from "./ProductListScreen"
 
@@ -6,6 +6,30 @@ const products = [
   { id: "1", title: "Wireless Headphones", price: 129.99 },
   { id: "2", title: "Mechanical Keyboard", price: 89.5 },
 ]
+
+let intersectionCallback: ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void) | undefined
+
+beforeEach(() => {
+  intersectionCallback = undefined
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(callback: typeof intersectionCallback) {
+        intersectionCallback = callback
+      }
+      observe() {}
+      disconnect() {}
+    },
+  )
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function intersectSentinel() {
+  intersectionCallback?.([{ isIntersecting: true }])
+}
 
 describe("ProductListScreen (web, via react-native-web)", () => {
   it("renders a card per product", () => {
@@ -49,24 +73,17 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     expect(screen.getByText('No products match "nonexistent".')).toBeInTheDocument()
   })
 
-  function scrollNearBottom(element: HTMLElement) {
-    Object.defineProperty(element, "scrollTop", { value: 800, configurable: true })
-    Object.defineProperty(element, "scrollHeight", { value: 1000, configurable: true })
-    Object.defineProperty(element, "offsetHeight", { value: 200, configurable: true })
-    fireEvent.scroll(element)
-  }
-
-  it("calls onEndReached when scrolled near the bottom and more pages are available", () => {
+  it("calls onEndReached when the sentinel intersects and more pages are available", () => {
     const onEndReached = vi.fn()
     render(<ProductListScreen products={products} hasNextPage onEndReached={onEndReached} />)
-    scrollNearBottom(screen.getByTestId("product-list-screen"))
+    intersectSentinel()
     expect(onEndReached).toHaveBeenCalled()
   })
 
   it("does not call onEndReached when there is no next page", () => {
     const onEndReached = vi.fn()
     render(<ProductListScreen products={products} hasNextPage={false} onEndReached={onEndReached} />)
-    scrollNearBottom(screen.getByTestId("product-list-screen"))
+    expect(intersectionCallback).toBeUndefined()
     expect(onEndReached).not.toHaveBeenCalled()
   })
 
@@ -80,7 +97,7 @@ describe("ProductListScreen (web, via react-native-web)", () => {
         onEndReached={onEndReached}
       />,
     )
-    scrollNearBottom(screen.getByTestId("product-list-screen"))
+    expect(intersectionCallback).toBeUndefined()
     expect(onEndReached).not.toHaveBeenCalled()
   })
 
