@@ -9,8 +9,8 @@ import {
   type ViewProps,
 } from "react-native"
 import { Product } from "../../common/Product/Product"
+import { SearchInput } from "../../common/SearchInput/SearchInput"
 import type { ProductData } from "../../types/Product"
-import { SearchBar } from "./SearchBar"
 import { useProductSearch } from "./useProductSearch"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -110,7 +110,7 @@ export function ProductListScreen({
             <ClassNameText className="text-2xl font-semibold text-foreground">
               Marketplace
             </ClassNameText>
-            <SearchBar value={query} onChangeText={setQuery} />
+            <SearchInput value={query} onChangeText={setQuery} />
             {isLoading ? (
               <ClassNameText className="text-muted">Loading products…</ClassNameText>
             ) : null}
