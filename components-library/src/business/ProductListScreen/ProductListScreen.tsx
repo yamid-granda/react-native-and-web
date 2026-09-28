@@ -10,6 +10,7 @@ import {
   type ViewProps,
 } from "react-native"
 import { Product } from "../../common/Product/Product"
+import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -51,13 +52,16 @@ export function ProductListScreen({
         <ClassNameText className="text-2xl font-semibold text-foreground">
           Marketplace
         </ClassNameText>
-        <ClassNameTextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search products..."
-          accessibilityLabel="Search products"
-          className="rounded-lg border border-surface-muted bg-surface px-3 py-2 text-sm text-foreground"
-        />
+        <ClassNameView className="flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3 py-2">
+          <SearchIcon size={16} className="text-muted" />
+          <ClassNameTextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search products..."
+            accessibilityLabel="Search products"
+            className="flex-1 text-sm text-foreground"
+          />
+        </ClassNameView>
         {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>

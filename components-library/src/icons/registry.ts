@@ -3,6 +3,7 @@ import { CartIcon } from "./CartIcon/CartIcon"
 import { HomeIcon } from "./HomeIcon/HomeIcon"
 import { MarketplaceIcon } from "./MarketplaceIcon/MarketplaceIcon"
 import { MoonIcon } from "./MoonIcon/MoonIcon"
+import { SearchIcon } from "./SearchIcon/SearchIcon"
 import { SunIcon } from "./SunIcon/SunIcon"
 import type { IconProps } from "./types"
 
@@ -39,5 +40,10 @@ export const iconRegistry: IconRegistryEntry[] = [
     name: "MoonIcon",
     Component: MoonIcon,
     keywords: ["moon", "dark", "theme", "night"],
+  },
+  {
+    name: "SearchIcon",
+    Component: SearchIcon,
+    keywords: ["search", "find", "magnify", "lookup"],
   },
 ]
