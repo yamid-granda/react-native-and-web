@@ -18,7 +18,11 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
-export function CartScreen() {
+export type CartScreenProps = {
+  onCheckout?: () => void
+}
+
+export function CartScreen({ onCheckout }: CartScreenProps) {
   const items = useCartStore((state) => state.items)
   const removeItem = useCartStore((state) => state.removeItem)
   const incrementQuantity = useCartStore((state) => state.incrementQuantity)
@@ -80,6 +84,15 @@ export function CartScreen() {
             <ClassNameText className="text-lg font-bold text-brand">
               Total: {formatPrice(getCartTotalPrice(items))}
             </ClassNameText>
+            <ClassNamePressable
+              accessibilityRole="button"
+              onPress={() => onCheckout?.()}
+              className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
+            >
+              <ClassNameText className="text-base font-semibold text-white">
+                Proceed to Checkout
+              </ClassNameText>
+            </ClassNamePressable>
           </>
         )}
       </ClassNameView>

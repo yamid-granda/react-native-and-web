@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { CartScreen } from "./CartScreen"
 import { useCartStore } from "./useCartStore"
@@ -43,5 +43,13 @@ describe("CartScreen (web, via react-native-web)", () => {
     render(<CartScreen />)
     fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from cart"))
     expect(screen.getByText("Your cart is empty.")).toBeInTheDocument()
+  })
+
+  it("calls onCheckout when Proceed to Checkout is clicked", () => {
+    useCartStore.getState().addItem(product)
+    const onCheckout = vi.fn()
+    render(<CartScreen onCheckout={onCheckout} />)
+    fireEvent.click(screen.getByText("Proceed to Checkout"))
+    expect(onCheckout).toHaveBeenCalled()
   })
 })
