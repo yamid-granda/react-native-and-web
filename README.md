@@ -127,19 +127,49 @@ or it'll boot but fail to reach Postgres.
   hydrated (confirmed: `curl localhost:3000` returns real markup with the
   button's Tailwind classes and an SSR-injected react-native-web
   stylesheet) — just not RSC-streamed for those subtrees.
-- **Routing is not unified across platforms, but the nav bar UI now is.**
-  React Navigation lives only in `mobile-application`; Next.js App Router
-  owns all web routing — each platform's own routing/navigation state
-  stays separate, intentionally. What *is* shared: the bottom nav bar
-  itself (`components-library`'s `BottomNav`/`MainNav`), rendered by each
-  platform's own integration rather than reimplemented per platform —
-  `web-application` renders it directly, fixed to the bottom of the root
-  layout; `mobile-application` renders it via React Navigation's `tabBar`
-  prop on a custom `TabBar` (`src/navigation/RootNavigator.tsx`), which
-  reimplements React Navigation's own default tab-press handling
-  ([docs](https://reactnavigation.org/docs/bottom-tab-navigator/#tabbar))
-  since supplying a custom `tabBar` bypasses its built-in button/onPress
-  wiring entirely.
+- **Routing is Expo Router (mobile) + Next.js App Router (web), unified at
+  the nav-bar level by Solito.** `mobile-application` uses **Expo Router**
+  (routes in `src/app/`, per its own `AGENTS.md`) — not React Navigation
+  directly, though Expo Router is what actually renders the tabs/stack
+  underneath. Screen-level routing stays platform-native on both sides
+  (`expo-router`'s `router`/`useLocalSearchParams` on mobile, Next's
+  `useRouter`/typed `params` on web) — Solito is used narrowly, only where
+  navigation code is genuinely shared: `components-library`'s `MainNav`.
+  See the `MainNav`/`BottomNav` bullets below for how the nav bar itself
+  works on each platform.
+- **Solito's native `useLink`/`useRouter` only work with *bare* React
+  Navigation — not Expo Router.** Verified from source, not assumed: Expo
+  Router (SDK 57) fully vendors its own internal fork of
+  `@react-navigation/native`/`bottom-tabs`/`native-stack`
+  (`expo-router/build/react-navigation/`, `build/fork/NavigationContainer.js`)
+  and lists **no** `@react-navigation/*` package as a dependency or
+  peerDependency at all. Solito's native `use-link-to.native.js` imports
+  `useLinkTo` from the *external* `@react-navigation/native` package — a
+  completely different module instance with no matching context, since
+  Expo Router never renders that package's providers; calling it throws
+  ("Couldn't find a navigation object"). `MainNav.tsx` (native) therefore
+  never imports Solito at all and stays exactly as it was, onPress-driven;
+  only `MainNav.web.tsx` (a separate file, Metro/Vite platform resolution)
+  uses `solito/navigation`'s `useLink()`, where the web implementation is a
+  safe, plain wrapper over `next/navigation`.
+- **`expo-router/ui`'s `<TabList>` only discovers `<TabTrigger>`s among its
+  own direct, unwrapped children.** Verified from source
+  (`expo-router/build/ui/Tabs.js`'s `parseTriggersFromChildren`): it walks
+  `Tabs`'s own `children` prop with `Children.forEach`, recursing *only*
+  into `Fragment` or `TabList` elements — anything else (a plain `View`, or
+  a custom component like `BottomNav`) is skipped without recursing into
+  it at all, even if a `TabTrigger` is nested inside. This ruled out reusing
+  `BottomNav`'s wrapping JSX for the mobile tab bar entirely (an earlier
+  `renderItems` render-prop design was tried and reverted once this was
+  confirmed) — `mobile-application/src/app/(tabs)/_layout.tsx` instead
+  builds the bar directly from a flat `<TabList>` (cast locally for
+  `className`, non-`asChild` to avoid `expo-router/ui`'s `Slot` — which
+  throws on an *array* `style` prop, see its own `Slot.js` — merging with
+  `BottomNav`'s own default `justifyContent: 'space-between'`), with
+  `TabTrigger asChild`-wrapping the shared `MainNav` for each item. It
+  reuses `BOTTOM_NAV_BAR_CLASSNAME`/`BOTTOM_NAV_MIN_GAP`/`nativeOverlayStyle`
+  (exported from `BottomNav.tsx`) so the two stay visually identical without
+  duplicating the safe-area math.
 - **`react-native-safe-area-context` is stubbed** (`components-library/stubs/`)
   for any Vite/webpack-bundled web context (Storybook, `web-application`'s
   `next.config.ts`). NativeWind's cssInterop unconditionally registers a
@@ -246,17 +276,26 @@ or it'll boot but fail to reach Postgres.
   `@media (prefers-color-scheme: dark)` block is guarded with
   `:root:not(.light)` so an explicit light pick can win over a dark OS
   default, alongside a plain `:root.dark` override for the reverse case.
-  The choice is persisted to `localStorage` because `MainNav`'s `<a
-  href>` triggers a full page reload (see below), which would otherwise
-  reset the in-memory theme back to the OS default on every navigation —
-  same issue the cart store hit. `mobile-application` doesn't need any of
-  this: there's no page-reload navigation, and `useColorScheme`'s
-  `toggleColorScheme` works correctly on native.
-- **`MainNav` casts `Pressable` locally to accept `href`**, same reasoning
-  as the `Button.tsx` cast above: react-native-web's `View` (which
-  `Pressable` wraps) recognizes an `href` prop and renders an `<a>` instead
-  of a `<div>`, but RN's own `PressableProps`/`ViewProps` types don't know
-  about this react-native-web-only behavior.
+  The choice is persisted to `localStorage` as a safety net for whatever
+  *does* still reload the page (a manual refresh, a typed-in URL) — same
+  issue the cart store hit. Nav-bar clicks themselves no longer reload at
+  all now that `MainNav.web.tsx` routes `href` through `solito/navigation`'s
+  `useLink()` (a real Next.js client-side transition, confirmed via
+  Playwright: a `window` marker set before a click survives it), but the
+  persistence is kept regardless since those other reload paths remain.
+  `mobile-application` doesn't need any of this: there's no page-reload
+  navigation, and `useColorScheme`'s `toggleColorScheme` works correctly on
+  native.
+- **`MainNav` is platform-split (`MainNav.tsx` native, `MainNav.web.tsx`
+  web)**, not one file with internal branching — see the Solito bullet
+  above for why (native must never import `solito/navigation` at all).
+  Both cast `Pressable` locally, same reasoning as the `Button.tsx` cast
+  above: react-native-web's `View` (which `Pressable` wraps) recognizes an
+  `href` prop and renders an `<a>` instead of a `<div>`, but RN's own
+  `PressableProps`/`ViewProps` types don't know about this
+  react-native-web-only behavior. Both are also wrapped in `forwardRef` —
+  `expo-router/ui`'s `TabTrigger asChild` needs to forward a `ref` to
+  whatever it clones, which a plain function component can't receive.
 - **react-native-web's `Text` hardcodes `color: 'black'`** instead of
   inheriting it (`exports/Text/index.js`). `MainNav` used to work around
   this by giving its label `text-current` (`color: currentColor`) so it
@@ -298,24 +337,26 @@ or it'll boot but fail to reach Postgres.
   sets `optimizeDeps.esbuildOptions.loader: { ".js": "jsx" }` to fix it,
   the same way it already overrides `resolveExtensions` for
   `react-native-svg`.
-- **`BottomNav` floats over content with a real transparent `marginBottom`,
-  not a filled spacer.** The gap below the bar (safe-area inset + a minimum
-  gap) needs to show whatever's actually scrolled underneath it (e.g.
-  marketplace product cards) rather than a solid color — a separate filled
-  `View` there would opaquely cover that content instead. On web this falls
-  out of `position: fixed` for free: content already scrolls underneath the
-  bar. On native it doesn't by default — `fixed` compiles to nothing there
-  (`IncompatibleNativeValue`), so `@react-navigation/bottom-tabs`'
-  `BottomTabView` lays out a fully custom `tabBar` as a normal, non-
-  overlapping flex sibling (screen content sized to end exactly where the
-  bar begins; see its source). `BottomNav` sets `position: "absolute"` via
-  inline style on native only (a Tailwind class can't express this — same
-  class of gap as the `currentColor` one above) so it floats the same way
-  web's `fixed` does; `inset-x-0`/`bottom-0`/`z-50` already compile fine on
-  native and anchor/stack it correctly once it's taken out of flex flow.
-  `ProductListScreen`/`CartScreen` (both plain `ScrollView`s with no bottom
-  inset reserved) get this scroll-under effect for free on both platforms;
-  a non-scrolling screen with content genuinely pinned to the bottom edge
+- **`BottomNav` (rendered directly by `web-application`; mobile builds an
+  equivalent bar from its exports — see the `TabList` bullet above) floats
+  over content with a real transparent `marginBottom`, not a filled
+  spacer.** The gap below the bar (safe-area inset + a minimum gap) needs
+  to show whatever's actually scrolled underneath it (e.g. marketplace
+  product cards) rather than a solid color — a separate filled `View` there
+  would opaquely cover that content instead. On web this falls out of
+  `position: fixed` for free: content already scrolls underneath the bar.
+  On native it doesn't by default — `fixed` compiles to nothing there
+  (`IncompatibleNativeValue`), and a fully custom tab bar is otherwise laid
+  out as a normal, non-overlapping flex sibling (screen content sized to
+  end exactly where the bar begins). `nativeOverlayStyle` sets `position:
+  "absolute"` via inline style on native only (a Tailwind class can't
+  express this — same class of gap as the `currentColor` one above) so the
+  bar floats the same way web's `fixed` does; `inset-x-0`/`bottom-0`/`z-50`
+  already compile fine on native and anchor/stack it correctly once it's
+  taken out of flex flow. `ProductListScreen`/`CartScreen` (both plain
+  `ScrollView`s with no bottom inset reserved) get this scroll-under effect
+  for free on both platforms; a non-scrolling screen with content genuinely
+  pinned to the bottom edge
   would need its own bottom inset and doesn't currently have one.
 
 ## Commit messages
