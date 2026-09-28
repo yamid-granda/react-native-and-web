@@ -3,6 +3,7 @@ import {
   FlatList,
   Text,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
   type TextProps,
   type ViewProps,
@@ -15,6 +16,24 @@ import { useProductSearch } from "./useProductSearch"
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
+
+// Not the same 192px floor as ProductListScreen.web.tsx's
+// grid-cols-[...minmax(192px,1fr)] — desktop viewports are wide enough for
+// that to still yield several columns, but two 192px phone-width cards
+// plus their gap and padding need ~448pt, more than any phone has (iPhones
+// run ~375-430pt). 150px is the largest floor that still gives 2 columns
+// across standard phone widths, while still growing on tablets.
+const CARD_MIN_WIDTH = 150
+const GRID_GAP = 16
+const HORIZONTAL_PADDING = 24
+
+// RN has no auto-fill/minmax grid primitive, so this reproduces it: derive
+// how many CARD_MIN_WIDTH columns fit the current window, same as the
+// browser does for the web grid, instead of a hardcoded numColumns.
+function getColumnCount(windowWidth: number) {
+  const available = windowWidth - HORIZONTAL_PADDING * 2
+  return Math.max(1, Math.floor((available + GRID_GAP) / (CARD_MIN_WIDTH + GRID_GAP)))
+}
 
 export type ProductListScreenProps = {
   products: ProductData[]
@@ -44,23 +63,41 @@ export function ProductListScreen({
   onSelectProduct,
 }: ProductListScreenProps) {
   const { query, setQuery, results } = useProductSearch(products)
+  const { width } = useWindowDimensions()
+  const numColumns = getColumnCount(width)
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ProductData>) => (
-      <Product {...item} onPress={() => onSelectProduct?.(item.id)} />
+      // flex-1 divides a row's bounded width evenly across its columns.
+      // With numColumns 1 there's no row wrapper — each card sits directly
+      // in the list's auto-height column container, where flex-1's
+      // flexBasis: 0% collapses it to near-zero height instead.
+      <Product
+        {...item}
+        onPress={() => onSelectProduct?.(item.id)}
+        className={numColumns > 1 ? "flex-1" : undefined}
+      />
     ),
-    [onSelectProduct],
+    [onSelectProduct, numColumns],
   )
 
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
       <FlatList
+        // FlatList can't change numColumns on a mounted list (RN invariant),
+        // so the count is threaded through as a key to force a remount when
+        // the window is resized (e.g. rotation, tablet split-view).
+        key={numColumns}
         data={results}
         keyExtractor={(product) => product.id}
         renderItem={renderItem}
-        numColumns={2}
-        columnWrapperStyle={{ gap: 16 }}
-        contentContainerStyle={{ gap: 16, paddingHorizontal: 24, paddingBottom: 24 }}
+        numColumns={numColumns}
+        columnWrapperStyle={numColumns > 1 ? { gap: GRID_GAP } : undefined}
+        contentContainerStyle={{
+          gap: GRID_GAP,
+          paddingHorizontal: HORIZONTAL_PADDING,
+          paddingBottom: 24,
+        }}
         onEndReached={() => {
           if (hasNextPage && !isFetchingNextPage) onEndReached?.()
         }}
