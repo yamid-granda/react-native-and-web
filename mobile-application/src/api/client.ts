@@ -1,5 +1,5 @@
 import Constants from "expo-constants"
-import type { ProductData } from "@rnw/components-library"
+import type { ProductData, ProductsPage } from "@rnw/components-library"
 
 // "localhost" means the phone itself on a physical device via Expo Go, not
 // the dev machine — there's no EXPO_PUBLIC_API_URL override, derive the api
@@ -25,8 +25,8 @@ async function request<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function fetchProducts() {
-  return request<ProductData[]>("/products")
+export function fetchProducts(page = 1) {
+  return request<ProductsPage>(`/products?page=${page}`)
 }
 
 export function fetchProduct(id: string) {
