@@ -25,7 +25,7 @@ export const Product = memo(function Product({
       testID={`product-card-${id}`}
       accessibilityRole="button"
       onPress={onPress}
-      className={cn("w-48 gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80", className)}
+      className={cn("w-full gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80", className)}
     >
       {imageUrl ? (
         <ClassNameImage
