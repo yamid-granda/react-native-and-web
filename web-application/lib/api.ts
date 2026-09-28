@@ -1,4 +1,4 @@
-import type { ProductData } from "@rnw/components-library"
+import type { ProductData, ProductsPage } from "@rnw/components-library"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
 
@@ -10,8 +10,8 @@ async function request<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function fetchProducts() {
-  return request<ProductData[]>("/products")
+export function fetchProducts(page = 1) {
+  return request<ProductsPage>(`/products?page=${page}`)
 }
 
 export function fetchProduct(id: string) {

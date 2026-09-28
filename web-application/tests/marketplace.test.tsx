@@ -15,9 +15,13 @@ function renderWithClient(ui: ReactElement) {
 
 describe("MarketplacePage", () => {
   it("renders the fetched products", async () => {
-    vi.mocked(fetchProducts).mockResolvedValue([
-      { id: "prod-1", title: "Wireless Headphones", price: 129.99 },
-    ])
+    vi.mocked(fetchProducts).mockResolvedValue({
+      items: [{ id: "prod-1", title: "Wireless Headphones", price: 129.99 }],
+      page: 1,
+      limit: 20,
+      total: 1,
+      hasNextPage: false,
+    })
 
     renderWithClient(<MarketplacePage />)
 
