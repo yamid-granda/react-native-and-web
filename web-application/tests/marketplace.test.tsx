@@ -6,7 +6,7 @@ import MarketplacePage from "../app/marketplace/page"
 import { fetchProducts } from "../lib/api"
 
 vi.mock("../lib/api")
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock("solito/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

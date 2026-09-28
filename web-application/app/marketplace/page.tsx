@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { useRouter } from "solito/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { ProductListScreen } from "@rnw/components-library"
 import { fetchProducts } from "../../lib/api"
