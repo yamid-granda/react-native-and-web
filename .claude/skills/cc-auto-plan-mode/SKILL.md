@@ -11,10 +11,8 @@ straight to implementing it.
    This marker is read by the `PreToolUse` hook in
    `.claude/hooks/auto-plan-mode-gate.sh` (wired in `.claude/settings.json`),
    which auto-approves the very next `EnterPlanMode`/`ExitPlanMode` call made
-   within the following 6 hours (a generous ceiling meant only to catch a
-   crash-orphaned marker, not to bound normal research time) and otherwise
-   does nothing — normal `/plan` usage without this marker still prompts as
-   usual.
+   within the following 30 minutes and otherwise does nothing — normal
+   `/plan` usage without this marker still prompts as usual.
 2. Call `EnterPlanMode` (auto-approved because the marker exists).
 3. Research the codebase and design the approach exactly as you would for a
    normal plan-mode task — same depth, same rigor.
