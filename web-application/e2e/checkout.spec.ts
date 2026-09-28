@@ -1,0 +1,17 @@
+import { expect, test } from "@playwright/test"
+
+// Assumes the api workspace is already running and seeded, same precondition
+// as e2e/marketplace.spec.ts.
+test("placing an order clears the cart and shows a confirmation", async ({ page }) => {
+  await page.goto("/marketplace/prod-1")
+  await page.getByText("Add to Cart").click()
+
+  await page.goto("/cart")
+  await page.getByText("Proceed to Checkout").click()
+
+  await expect(page.getByTestId("checkout-screen")).toBeVisible()
+  await expect(page.getByText(/Total: /)).toBeVisible()
+
+  await page.getByText("Place Order").click()
+  await expect(page.getByText("Order placed!")).toBeVisible()
+})
