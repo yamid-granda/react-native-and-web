@@ -1,25 +1,20 @@
-import { useState, type ComponentType } from "react"
+import { useCallback, type ComponentType } from "react"
 import {
-  ScrollView,
+  FlatList,
   Text,
-  TextInput,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type ScrollViewProps,
-  type TextInputProps,
+  type ListRenderItemInfo,
   type TextProps,
   type ViewProps,
 } from "react-native"
 import { Product } from "../../common/Product/Product"
-import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
 import type { ProductData } from "../../types/Product"
+import { SearchBar } from "./SearchBar"
+import { useProductSearch } from "./useProductSearch"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
-const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNameTextInput = TextInput as ComponentType<TextInputProps & { className?: string }>
 
 export type ProductListScreenProps = {
   products: ProductData[]
@@ -31,21 +26,14 @@ export type ProductListScreenProps = {
   onSelectProduct?: (id: string) => void
 }
 
-// same substring-match approach as IconsGallery's search. Only matches
-// against products already fetched — search doesn't query further pages.
-function matchesQuery(query: string, product: ProductData) {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return true
-  return (
-    product.title.toLowerCase().includes(normalized) ||
-    (product.description?.toLowerCase().includes(normalized) ?? false)
-  )
-}
-
-function isCloseToBottom({ layoutMeasurement, contentOffset, contentSize }: NativeScrollEvent) {
-  return layoutMeasurement.height + contentOffset.y >= contentSize.height - 200
-}
-
+// FlatList, not ScrollView + flex-wrap: it virtualizes (mounts/unmounts
+// offscreen rows), which is the actual fix for the marketplace getting
+// slow with many loaded products — a plain ScrollView never unmounts
+// anything. Kept native-only (see ProductListScreen.web.tsx) since
+// react-native-web's FlatList would need gap-4's free flex-wrap spacing
+// reworked into columnWrapperStyle for a problem that's mobile-only —
+// same Platform-split precedent as BottomNav's nativeOverlayStyle
+// (README "Architecture boundaries").
 export function ProductListScreen({
   products,
   isLoading,
@@ -55,56 +43,57 @@ export function ProductListScreen({
   onEndReached,
   onSelectProduct,
 }: ProductListScreenProps) {
-  const [query, setQuery] = useState("")
+  const { query, setQuery, results } = useProductSearch(products)
 
-  const results = products.filter((product) => matchesQuery(query, product))
-
-  function handleScroll({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) {
-    if (isCloseToBottom(nativeEvent) && hasNextPage && !isFetchingNextPage) {
-      onEndReached?.()
-    }
-  }
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<ProductData>) => (
+      <Product {...item} onPress={() => onSelectProduct?.(item.id)} />
+    ),
+    [onSelectProduct],
+  )
 
   return (
-    <ClassNameScrollView
-      testID="product-list-screen"
-      className="flex-1 bg-background"
-      onScroll={handleScroll}
-      scrollEventThrottle={400}
-    >
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">
-          Marketplace
-        </ClassNameText>
-        <ClassNameView className="flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3 py-2">
-          <SearchIcon size={16} className="text-muted" />
-          <ClassNameTextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search products..."
-            accessibilityLabel="Search products"
-            className="flex-1 text-sm text-foreground"
-          />
-        </ClassNameView>
-        {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
-        {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
-        ) : null}
-        {!isLoading && !error && products.length === 0 ? (
-          <ClassNameText className="text-muted">No products yet.</ClassNameText>
-        ) : null}
-        {!isLoading && !error && products.length > 0 && results.length === 0 ? (
-          <ClassNameText className="text-muted">No products match "{query}".</ClassNameText>
-        ) : null}
-        <ClassNameView className="flex-row flex-wrap gap-4">
-          {results.map((product) => (
-            <Product key={product.id} {...product} onPress={() => onSelectProduct?.(product.id)} />
-          ))}
-        </ClassNameView>
-        {isFetchingNextPage ? (
-          <ClassNameText className="text-muted">Loading more…</ClassNameText>
-        ) : null}
-      </ClassNameView>
-    </ClassNameScrollView>
+    <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
+      <FlatList
+        data={results}
+        keyExtractor={(product) => product.id}
+        renderItem={renderItem}
+        numColumns={2}
+        columnWrapperStyle={{ gap: 16 }}
+        contentContainerStyle={{ gap: 16, paddingHorizontal: 24, paddingBottom: 24 }}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) onEndReached?.()
+        }}
+        onEndReachedThreshold={0.5}
+        removeClippedSubviews
+        initialNumToRender={10}
+        windowSize={7}
+        ListHeaderComponent={
+          <ClassNameView className="gap-4 pt-6 pb-4">
+            <ClassNameText className="text-2xl font-semibold text-foreground">
+              Marketplace
+            </ClassNameText>
+            <SearchBar value={query} onChangeText={setQuery} />
+            {isLoading ? (
+              <ClassNameText className="text-muted">Loading products…</ClassNameText>
+            ) : null}
+            {error ? (
+              <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+            ) : null}
+            {!isLoading && !error && products.length === 0 ? (
+              <ClassNameText className="text-muted">No products yet.</ClassNameText>
+            ) : null}
+            {!isLoading && !error && products.length > 0 && results.length === 0 ? (
+              <ClassNameText className="text-muted">No products match "{query}".</ClassNameText>
+            ) : null}
+          </ClassNameView>
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ClassNameText className="text-muted">Loading more…</ClassNameText>
+          ) : null
+        }
+      />
+    </ClassNameView>
   )
 }

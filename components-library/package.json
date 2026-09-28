@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "expo-image": "~57.0.5",
     "react-native-svg": "15.15.4",
     "solito": "catalog:",
     "tailwind-merge": "^2.6.0",
