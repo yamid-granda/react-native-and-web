@@ -7,6 +7,9 @@ packages:
 catalog:
   typescript: ^6.0.3
   vitest: ^5.0.0
+  # Shared by components-library (MainNav) and web-application (the one
+  # imperative router call) so both track the same version.
+  solito: ^5.0.0
   # Pinned to Expo SDK 57's exact peer requirements (mobile-application),
   # and shared verbatim by web-application/components-library so pnpm's
   # hoisting dedupes to one instance instead of nesting version-conflict
