@@ -1,4 +1,5 @@
 import "dotenv/config"
+import { faker } from "@faker-js/faker"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "../src/generated/prisma/client.js"
 
@@ -53,10 +54,30 @@ const products = [
   },
 ]
 
+// Fixed seed so this batch is the same across reruns, matching the file's
+// existing idempotency intent for the hand-picked products above.
+faker.seed(20260928)
+
+const generatedProducts = Array.from({ length: 1000 }, (_, i) => {
+  const id = `prod-gen-${i + 1}`
+  return {
+    id,
+    title: faker.commerce.productName(),
+    description: faker.commerce.productDescription(),
+    price: Number(faker.commerce.price({ min: 5, max: 500, dec: 2 })),
+    imageUrl: `https://picsum.photos/seed/${id}/400/400`,
+  }
+})
+
 async function main() {
   for (const product of products) {
     await prisma.product.upsert({ where: { id: product.id }, update: product, create: product })
   }
+
+  // One bulk insert instead of 1000 round trips; skipDuplicates keeps
+  // reruns safe without needing per-row upsert reconciliation, which
+  // doesn't matter for randomly generated filler data.
+  await prisma.product.createMany({ data: generatedProducts, skipDuplicates: true })
 }
 
 main()
