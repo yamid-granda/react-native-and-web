@@ -7,8 +7,18 @@
 # sessions.
 set -euo pipefail
 
+# 1800s (30min) was too tight: a thorough plan-mode research pass can run
+# longer than that, so ExitPlanMode's approval would lapse before the plan
+# was even ready. This ceiling only guards against a crash-orphaned marker
+# that the command's own cleanup (step 6 of the skill) never got to run;
+# under normal use the marker is deleted right after ExitPlanMode returns,
+# long before this would matter. Do not shorten this back down without
+# re-deriving why — a short TTL adds no real safety here (the marker's
+# safety comes from being scoped to one explicit invocation and deleted
+# right after use, not from expiring quickly), and it has already caused
+# a real ExitPlanMode-blocks-mid-run regression once.
 MARKER=".claude/.auto-plan-mode-active"
-MAX_AGE_SECONDS=1800
+MAX_AGE_SECONDS=21600
 
 input="$(cat)"
 tool_name="$(printf '%s' "$input" | jq -r '.tool_name // empty')"
