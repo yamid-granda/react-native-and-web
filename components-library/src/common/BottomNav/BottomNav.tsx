@@ -68,7 +68,14 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
           />
         ))}
       </ClassNameView>
-      <ClassNameView className="flex-1 flex-row justify-end">
+      {/* min-w-14 matches MainNav's own floor: react-native-web's base View
+          reset sets min-width: 0 on every flex child regardless of content
+          (unlike plain CSS, which would floor this at trailingItem's own
+          min-content size by default), so without an explicit min-width
+          here this box gets squeezed by flex-1's 50/50 split with the
+          empty leading spacer and trailingItem overflows past it — see
+          MainNav.web.tsx's matching shrink/overflow-hidden. */}
+      <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
         {trailingItem ? (
           <MainNav
             title={trailingItem.title}

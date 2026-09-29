@@ -69,7 +69,7 @@ export default function TabsLayout() {
               />
             </TabTrigger>
           ))}
-          <ClassNameView className="flex-1 flex-row justify-end">
+          <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
             <MainNav
               title="Theme"
               icon={colorScheme === "dark" ? SunIcon : MoonIcon}
