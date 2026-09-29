@@ -4,6 +4,7 @@ import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
+import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
@@ -30,6 +31,8 @@ export function ProductListScreen({
 }: ProductListScreenProps) {
   const { query, setQuery, results } = useProductSearch(products)
   const sentinelRef = useRef<View>(null)
+  const recentlyViewed = useRecentlyViewedStore((state) => state.items)
+  const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
 
   // stable element references so unrelated re-renders (e.g.
   // isFetchingNextPage flipping) don't recreate every card's onPress
@@ -65,6 +68,23 @@ export function ProductListScreen({
           Marketplace
         </ClassNameText>
         <SearchInput value={query} onChangeText={setQuery} />
+        {showRecentlyViewed ? (
+          <ClassNameView className="gap-2">
+            <ClassNameText className="text-base font-semibold text-foreground">
+              Recently viewed
+            </ClassNameText>
+            <ClassNameView className="flex-row gap-4 overflow-x-auto pb-2">
+              {recentlyViewed.map((product) => (
+                <Product
+                  key={product.id}
+                  {...product}
+                  onPress={() => onSelectProduct?.(product.id)}
+                  className="w-36 flex-shrink-0"
+                />
+              ))}
+            </ClassNameView>
+          </ClassNameView>
+        ) : null}
         {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>

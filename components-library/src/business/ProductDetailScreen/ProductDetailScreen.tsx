@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react"
+import { useEffect, useState, type ComponentType } from "react"
 import {
   Image,
   Pressable,
@@ -12,6 +12,7 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
 import { Drawer } from "../../common/Drawer/Drawer"
 import { Button } from "../../common/Button/Button"
 
@@ -35,7 +36,13 @@ export function ProductDetailScreen({
   onGoToCart,
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const recordView = useRecentlyViewedStore((state) => state.recordView)
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the id, not the object, so a same-id re-fetch (new object, unchanged id) doesn't re-record it
+  useEffect(() => {
+    if (product) recordView(product)
+  }, [product?.id])
 
   return (
     <ClassNameView testID="product-detail-screen" className="flex-1 gap-4 bg-background p-6">

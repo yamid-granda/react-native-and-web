@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductDetailScreen } from "./ProductDetailScreen"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
 
 const product = {
   id: "1",
@@ -13,6 +14,7 @@ const product = {
 describe("ProductDetailScreen (web, via react-native-web)", () => {
   beforeEach(() => {
     useCartStore.setState({ items: {} })
+    useRecentlyViewedStore.setState({ items: [] })
   })
 
   it("renders the title, description, and formatted price", () => {
@@ -58,5 +60,20 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     fireEvent.click(screen.getByText("Add to Cart"))
     fireEvent.click(screen.getByText("Go to Cart"))
     expect(onGoToCart).toHaveBeenCalledTimes(1)
+  })
+
+  it("records the product as recently viewed once it loads, and only once across re-renders", () => {
+    const recordView = vi.fn(useRecentlyViewedStore.getState().recordView)
+    useRecentlyViewedStore.setState({ recordView })
+    const { rerender } = render(<ProductDetailScreen product={product} />)
+    rerender(<ProductDetailScreen product={product} />)
+    expect(recordView).toHaveBeenCalledTimes(1)
+    expect(useRecentlyViewedStore.getState().items).toEqual([product])
+  })
+
+  it("does not record a view while loading or when the product is not found", () => {
+    render(<ProductDetailScreen isLoading />)
+    render(<ProductDetailScreen product={null} />)
+    expect(useRecentlyViewedStore.getState().items).toEqual([])
   })
 })

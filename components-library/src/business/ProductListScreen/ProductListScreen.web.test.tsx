@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductListScreen } from "./ProductListScreen"
+import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
 
-const products = [
-  { id: "1", title: "Wireless Headphones", price: 129.99 },
-  { id: "2", title: "Mechanical Keyboard", price: 89.5 },
-]
+const headphones = { id: "1", title: "Wireless Headphones", price: 129.99 }
+const keyboard = { id: "2", title: "Mechanical Keyboard", price: 89.5 }
+const products = [headphones, keyboard]
 
 let intersectionCallback: ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void) | undefined
 
 beforeEach(() => {
   intersectionCallback = undefined
+  useRecentlyViewedStore.setState({ items: [] })
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -104,5 +105,24 @@ describe("ProductListScreen (web, via react-native-web)", () => {
   it("shows a loading-more indicator while fetching the next page", () => {
     render(<ProductListScreen products={products} isFetchingNextPage />)
     expect(screen.getByText("Loading more…")).toBeInTheDocument()
+  })
+
+  it("does not show a recently-viewed rail when the store is empty", () => {
+    render(<ProductListScreen products={products} />)
+    expect(screen.queryByText("Recently viewed")).not.toBeInTheDocument()
+  })
+
+  it("shows a recently-viewed rail reflecting the store", () => {
+    useRecentlyViewedStore.setState({ items: [keyboard] })
+    render(<ProductListScreen products={products} />)
+    expect(screen.getByText("Recently viewed")).toBeInTheDocument()
+    expect(screen.getAllByText("Mechanical Keyboard")).toHaveLength(2)
+  })
+
+  it("hides the recently-viewed rail while a search query is active", () => {
+    useRecentlyViewedStore.setState({ items: [keyboard] })
+    render(<ProductListScreen products={products} />)
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "headphones" } })
+    expect(screen.queryByText("Recently viewed")).not.toBeInTheDocument()
   })
 })
