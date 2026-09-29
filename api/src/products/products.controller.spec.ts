@@ -5,7 +5,7 @@ import { ProductsService } from "./products.service.js"
 
 describe("ProductsController", () => {
   it("findAll delegates to ProductsService.findAll with the given page", async () => {
-    const page = { items: [{ id: "prod-1" }], page: 1, limit: 20, total: 1, hasNextPage: false }
+    const page = { items: [{ id: "prod-1", stock: 5 }], page: 1, limit: 20, total: 1, hasNextPage: false }
     const findAll = vi.fn().mockResolvedValue(page)
 
     const moduleRef = await Test.createTestingModule({
@@ -35,7 +35,7 @@ describe("ProductsController", () => {
   })
 
   it("findOne delegates to ProductsService.findOne with the given id", async () => {
-    const findOne = vi.fn().mockResolvedValue({ id: "prod-1" })
+    const findOne = vi.fn().mockResolvedValue({ id: "prod-1", stock: 5 })
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -46,6 +46,6 @@ describe("ProductsController", () => {
     const result = await controller.findOne("prod-1")
 
     expect(findOne).toHaveBeenCalledWith("prod-1")
-    expect(result).toEqual({ id: "prod-1" })
+    expect(result).toEqual({ id: "prod-1", stock: 5 })
   })
 })

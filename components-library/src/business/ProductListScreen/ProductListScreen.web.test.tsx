@@ -3,8 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductListScreen } from "./ProductListScreen"
 
 const products = [
-  { id: "1", title: "Wireless Headphones", price: 129.99 },
-  { id: "2", title: "Mechanical Keyboard", price: 89.5 },
+  { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 },
+  { id: "2", title: "Mechanical Keyboard", price: 89.5, stock: 10 },
 ]
 
 let intersectionCallback: ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void) | undefined

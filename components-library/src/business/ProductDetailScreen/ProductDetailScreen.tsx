@@ -9,11 +9,20 @@ import {
   type TextProps,
   type ViewProps,
 } from "react-native"
+import { cn } from "../../utils/cn"
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
 import { Drawer } from "../../common/Drawer/Drawer"
 import { Button } from "../../common/Button/Button"
+
+const LOW_STOCK_THRESHOLD = 5
+
+function stockLabel(stock: number) {
+  if (stock === 0) return "Out of stock"
+  if (stock <= LOW_STOCK_THRESHOLD) return `Only ${stock} left`
+  return "In stock"
+}
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
@@ -65,16 +74,21 @@ export function ProductDetailScreen({
           <ClassNameText className="text-xl font-bold text-brand">
             {formatPrice(product.price, product.currency)}
           </ClassNameText>
+          <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
           <ClassNamePressable
             accessibilityRole="button"
+            disabled={product.stock === 0}
             onPress={() => {
               addItem(product)
               setIsCartDrawerOpen(true)
             }}
-            className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
+            className={cn(
+              "items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark",
+              product.stock === 0 && "opacity-50",
+            )}
           >
             <ClassNameText className="text-base font-semibold text-white">
-              Add to Cart
+              {product.stock === 0 ? "Out of stock" : "Add to Cart"}
             </ClassNameText>
           </ClassNamePressable>
         </>

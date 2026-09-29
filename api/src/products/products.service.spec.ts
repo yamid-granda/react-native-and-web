@@ -14,7 +14,7 @@ async function createService(prisma: Record<string, unknown>) {
 
 describe("ProductsService", () => {
   it("findAll returns a page of products ordered oldest first", async () => {
-    const findMany = vi.fn().mockResolvedValue([{ id: "prod-1" }])
+    const findMany = vi.fn().mockResolvedValue([{ id: "prod-1", stock: 5 }])
     const count = vi.fn().mockResolvedValue(1)
     const service = await createService({ product: { findMany, count } })
 
@@ -26,7 +26,7 @@ describe("ProductsService", () => {
       take: 20,
     })
     expect(result).toEqual({
-      items: [{ id: "prod-1" }],
+      items: [{ id: "prod-1", stock: 5 }],
       page: 1,
       limit: 20,
       total: 1,
@@ -50,13 +50,13 @@ describe("ProductsService", () => {
   })
 
   it("findOne returns the product when it exists", async () => {
-    const findUnique = vi.fn().mockResolvedValue({ id: "prod-1", title: "Wireless Headphones" })
+    const findUnique = vi.fn().mockResolvedValue({ id: "prod-1", title: "Wireless Headphones", stock: 5 })
     const service = await createService({ product: { findUnique } })
 
     const result = await service.findOne("prod-1")
 
     expect(findUnique).toHaveBeenCalledWith({ where: { id: "prod-1" } })
-    expect(result).toEqual({ id: "prod-1", title: "Wireless Headphones" })
+    expect(result).toEqual({ id: "prod-1", title: "Wireless Headphones", stock: 5 })
   })
 
   it("findOne throws NotFoundException when the product doesn't exist", async () => {

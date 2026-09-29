@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { CheckoutScreen } from "./CheckoutScreen"
 import { useCartStore } from "../CartScreen/useCartStore"
 
-const product = { id: "1", title: "Wireless Headphones", price: 129.99 }
+const product = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
 
 describe("CheckoutScreen (web, via react-native-web)", () => {
   beforeEach(() => {

@@ -7,6 +7,7 @@ const mockProduct = {
   description: "Noise-cancelling over-ear headphones with 30h battery life.",
   price: 129.99,
   imageUrl: "https://picsum.photos/seed/headphones/400/400",
+  stock: 10,
 }
 
 const meta: Meta<typeof ProductDetailScreen> = {
@@ -40,5 +41,17 @@ export const ErrorState: Story = {
 export const NotFound: Story = {
   args: {
     product: null,
+  },
+}
+
+export const LowStock: Story = {
+  args: {
+    product: { ...mockProduct, stock: 3 },
+  },
+}
+
+export const OutOfStock: Story = {
+  args: {
+    product: { ...mockProduct, stock: 0 },
   },
 }
