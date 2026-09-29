@@ -9,12 +9,15 @@ import {
   CartIcon,
   getCartTotalCount,
   getFloatingNavStyle,
+  getWishlistTotalCount,
+  HeartIcon,
   HomeIcon,
   MainNav,
   MarketplaceIcon,
   MoonIcon,
   SunIcon,
   useCartStore,
+  useWishlistStore,
   type IconProps,
 } from "@rnw/components-library"
 
@@ -24,6 +27,7 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: Href }[] = [
   { key: "index", title: "Home", icon: HomeIcon, href: "/" },
   { key: "marketplace", title: "Marketplace", icon: MarketplaceIcon, href: "/marketplace" },
+  { key: "wishlist", title: "Wishlist", icon: HeartIcon, href: "/wishlist" },
   { key: "cart", title: "Cart", icon: CartIcon, href: "/cart" },
 ]
 
@@ -43,6 +47,7 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets()
   const { colorScheme, toggleColorScheme } = useColorScheme()
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
+  const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.items))
 
   return (
     <Tabs>
@@ -58,7 +63,9 @@ export default function TabsLayout() {
               <MainNav
                 title={item.title}
                 icon={item.icon}
-                badgeCount={item.key === "cart" ? cartCount : undefined}
+                badgeCount={
+                  item.key === "cart" ? cartCount : item.key === "wishlist" ? wishlistCount : undefined
+                }
               />
             </TabTrigger>
           ))}
