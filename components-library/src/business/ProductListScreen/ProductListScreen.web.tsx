@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ComponentType } from "react"
 import { Text, View, type TextProps, type ViewProps } from "react-native"
 import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
+import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
 
@@ -28,7 +29,9 @@ export function ProductListScreen({
   onEndReached,
   onSelectProduct,
 }: ProductListScreenProps) {
-  const { query, setQuery, results } = useProductSearch(products)
+  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
+    useProductSearch(products)
+  const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const sentinelRef = useRef<View>(null)
 
   // stable element references so unrelated re-renders (e.g.
@@ -65,6 +68,12 @@ export function ProductListScreen({
           Marketplace
         </ClassNameText>
         <SearchInput value={query} onChangeText={setQuery} />
+        <ProductFilterControls
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          priceRange={priceRange}
+          onPriceRangeChange={setPriceRange}
+        />
         {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
@@ -73,7 +82,13 @@ export function ProductListScreen({
           <ClassNameText className="text-muted">No products yet.</ClassNameText>
         ) : null}
         {!isLoading && !error && products.length > 0 && results.length === 0 ? (
-          <ClassNameText className="text-muted">No products match "{query}".</ClassNameText>
+          <ClassNameText className="text-muted">
+            {query && isPriceRangeActive
+              ? `No products match "${query}" in this price range.`
+              : isPriceRangeActive
+                ? "No products match this price range."
+                : `No products match "${query}".`}
+          </ClassNameText>
         ) : null}
         <ClassNameView className="grid grid-cols-[repeat(auto-fill,minmax(192px,1fr))] gap-4">
           {productElements}
