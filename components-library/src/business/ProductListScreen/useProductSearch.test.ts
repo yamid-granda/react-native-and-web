@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest"
 import { filterAndSortProducts } from "./useProductSearch"
 
 const products = [
-  { id: "1", title: "Wireless Headphones", description: "Noise-cancelling", price: 129.99 },
-  { id: "2", title: "Mechanical Keyboard", description: "Hot-swappable", price: 89.5 },
-  { id: "3", title: "Ceramic Coffee Mug", price: 18 },
+  { id: "1", title: "Wireless Headphones", description: "Noise-cancelling", price: 129.99, stock: 10 },
+  { id: "2", title: "Mechanical Keyboard", description: "Hot-swappable", price: 89.5, stock: 10 },
+  { id: "3", title: "Ceramic Coffee Mug", price: 18, stock: 10 },
 ]
 
 function filter(overrides: {

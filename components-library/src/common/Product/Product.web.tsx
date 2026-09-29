@@ -77,7 +77,7 @@ export const Product = memo(function Product({
         testID={`wishlist-toggle-${id}`}
         accessibilityRole="button"
         accessibilityLabel={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
-        onPress={() => toggleItem({ id, title, description, price, currency, imageUrl })}
+        onPress={() => toggleItem({ id, title, description, price, currency, imageUrl, stock })}
         className="absolute right-2 top-2 h-8 w-8 items-center justify-center rounded-full bg-surface/80"
       >
         <HeartIcon size={18} filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
