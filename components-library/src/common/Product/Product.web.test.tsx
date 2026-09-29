@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { Product } from "./Product"
+import { useWishlistStore } from "../../business/WishlistScreen/useWishlistStore"
 
 describe("Product (web, via react-native-web)", () => {
   const props = { id: "1", title: "Wireless Headphones", price: 129.99 }
+
+  beforeEach(() => {
+    useWishlistStore.setState({ items: {} })
+  })
 
   it("renders the title and formatted price", () => {
     render(<Product {...props} />)
@@ -26,5 +31,24 @@ describe("Product (web, via react-native-web)", () => {
   it("exposes a testID keyed by product id, for e2e targeting", () => {
     render(<Product {...props} />)
     expect(screen.getByTestId("product-card-1")).toBeInTheDocument()
+  })
+
+  it("toggles the wishlist state when the heart toggle is pressed", () => {
+    render(<Product {...props} />)
+    expect(screen.getByLabelText("Add Wireless Headphones to wishlist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
+    expect(useWishlistStore.getState().items["1"]).toEqual({ ...props, currency: "USD" })
+    expect(screen.getByLabelText("Remove Wireless Headphones from wishlist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from wishlist"))
+    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
+  })
+
+  it("does not trigger onPress (card navigation) when the wishlist toggle is pressed", () => {
+    const onPress = vi.fn()
+    render(<Product {...props} onPress={onPress} />)
+    fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
+    expect(onPress).not.toHaveBeenCalled()
   })
 })

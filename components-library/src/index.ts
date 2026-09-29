@@ -27,6 +27,8 @@ export { SearchIcon } from "./icons/SearchIcon/SearchIcon"
 export type { SearchIconProps } from "./icons/SearchIcon/SearchIcon"
 export { CloseIcon } from "./icons/CloseIcon/CloseIcon"
 export type { CloseIconProps } from "./icons/CloseIcon/CloseIcon"
+export { HeartIcon } from "./icons/HeartIcon/HeartIcon"
+export type { HeartIconProps } from "./icons/HeartIcon/HeartIcon"
 export type { IconProps } from "./icons/types"
 export { Drawer } from "./common/Drawer/Drawer"
 export type { DrawerProps } from "./common/Drawer/Drawer"
@@ -46,4 +48,10 @@ export { useCartStore, getCartTotalCount } from "./business/CartScreen/useCartSt
 export type { CartItem } from "./business/CartScreen/useCartStore"
 export { CheckoutScreen } from "./business/CheckoutScreen/CheckoutScreen"
 export type { CheckoutScreenProps } from "./business/CheckoutScreen/CheckoutScreen"
+export { WishlistScreen } from "./business/WishlistScreen/WishlistScreen"
+export {
+  useWishlistStore,
+  isWishlisted,
+  getWishlistTotalCount,
+} from "./business/WishlistScreen/useWishlistStore"
 export { cn } from "./utils/cn"
