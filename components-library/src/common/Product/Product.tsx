@@ -25,9 +25,11 @@ export const Product = memo(function Product({
   price,
   currency = "USD",
   imageUrl,
+  stock,
   onPress,
   className,
 }: ProductProps) {
+  const outOfStock = stock === 0
   const wishlisted = useWishlistStore((state) => isWishlisted(state.items, id))
   const toggleItem = useWishlistStore((state) => state.toggleItem)
 
@@ -41,10 +43,13 @@ export const Product = memo(function Product({
         testID={`product-card-${id}`}
         accessibilityRole="button"
         onPress={onPress}
-        className="w-full gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80"
+        className={cn(
+          "w-full gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80",
+          outOfStock && "opacity-70",
+        )}
       >
         {imageUrl ? (
-          <ClassNameView className="h-32 w-full overflow-hidden rounded-md bg-surface-muted">
+          <ClassNameView className="relative h-32 w-full overflow-hidden rounded-md bg-surface-muted">
             <Image
               source={imageUrl}
               accessibilityLabel={title}
@@ -53,6 +58,16 @@ export const Product = memo(function Product({
               transition={150}
               style={{ width: "100%", height: "100%" }}
             />
+            {outOfStock ? (
+              <ClassNameView className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-1">
+                <Text className="text-xs font-semibold text-white">Out of stock</Text>
+              </ClassNameView>
+            ) : null}
+          </ClassNameView>
+        ) : null}
+        {outOfStock && !imageUrl ? (
+          <ClassNameView className="self-start rounded-full bg-foreground/80 px-2 py-1">
+            <Text className="text-xs font-semibold text-white">Out of stock</Text>
           </ClassNameView>
         ) : null}
         <Text numberOfLines={1} className="text-sm font-semibold text-foreground">
@@ -69,7 +84,7 @@ export const Product = memo(function Product({
         testID={`wishlist-toggle-${id}`}
         accessibilityRole="button"
         accessibilityLabel={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
-        onPress={() => toggleItem({ id, title, description, price, currency, imageUrl })}
+        onPress={() => toggleItem({ id, title, description, price, currency, imageUrl, stock })}
         className="absolute right-2 top-2 h-8 w-8 items-center justify-center rounded-full bg-surface/80"
       >
         <HeartIcon size={18} filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />

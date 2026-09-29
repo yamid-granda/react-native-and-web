@@ -14,6 +14,7 @@ const products = [
     description: "Noise-cancelling over-ear headphones with 30h battery life.",
     price: 129.99,
     imageUrl: "https://picsum.photos/seed/prod-1/400/400",
+    stock: 42,
   },
   {
     id: "prod-2",
@@ -21,6 +22,7 @@ const products = [
     description: "Hot-swappable 75% keyboard with brown switches.",
     price: 89.5,
     imageUrl: "https://picsum.photos/seed/prod-2/400/400",
+    stock: 0,
   },
   {
     id: "prod-3",
@@ -28,6 +30,7 @@ const products = [
     description: "350ml matte-finish mug, dishwasher safe.",
     price: 18,
     imageUrl: "https://picsum.photos/seed/prod-3/400/400",
+    stock: 120,
   },
   {
     id: "prod-4",
@@ -35,22 +38,31 @@ const products = [
     description: "Lightweight trainers with breathable mesh upper.",
     price: 74.99,
     imageUrl: "https://picsum.photos/seed/prod-4/400/400",
+    stock: 2,
   },
-  { id: "prod-5", title: "Backpack", description: "Water-resistant 20L daypack with laptop sleeve.", price: 54 },
+  {
+    id: "prod-5",
+    title: "Backpack",
+    description: "Water-resistant 20L daypack with laptop sleeve.",
+    price: 54,
+    stock: 15,
+  },
   {
     id: "prod-6",
     title: "Desk Lamp",
     description: "Dimmable LED lamp with USB-C charging port.",
     price: 32.25,
     imageUrl: "https://picsum.photos/seed/prod-6/400/400",
+    stock: 0,
   },
-  { id: "prod-7", title: "Yoga Mat", price: 24.99 },
+  { id: "prod-7", title: "Yoga Mat", price: 24.99, stock: 3 },
   {
     id: "prod-8",
     title: "Bluetooth Speaker",
     description: "Compact IPX7 speaker, 12h playback.",
     price: 45,
     imageUrl: "https://picsum.photos/seed/prod-8/400/400",
+    stock: 60,
   },
 ]
 
@@ -66,6 +78,13 @@ const generatedProducts = Array.from({ length: 1000 }, (_, i) => {
     description: faker.commerce.productDescription(),
     price: Number(faker.commerce.price({ min: 5, max: 500, dec: 2 })),
     imageUrl: `https://picsum.photos/seed/${id}/400/400`,
+    // weighted so most rows are healthily stocked but out-of-stock/low-stock
+    // states are still common enough to hit while browsing the seeded list
+    stock: faker.helpers.weightedArrayElement([
+      { weight: 10, value: 0 },
+      { weight: 15, value: faker.number.int({ min: 1, max: 5 }) },
+      { weight: 75, value: faker.number.int({ min: 6, max: 200 }) },
+    ]),
   }
 })
 

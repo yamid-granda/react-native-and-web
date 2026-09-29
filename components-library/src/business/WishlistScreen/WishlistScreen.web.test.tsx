@@ -4,7 +4,7 @@ import { WishlistScreen } from "./WishlistScreen"
 import { useWishlistStore } from "./useWishlistStore"
 import { useCartStore } from "../CartScreen/useCartStore"
 
-const product = { id: "1", title: "Wireless Headphones", price: 129.99 }
+const product = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
 
 describe("WishlistScreen (web, via react-native-web)", () => {
   beforeEach(() => {

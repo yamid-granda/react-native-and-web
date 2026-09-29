@@ -16,6 +16,7 @@ describe("ProductDetailPage", () => {
       id: "prod-1",
       title: "Wireless Headphones",
       price: 129.99,
+      stock: 10,
     })
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const paramsPromise = Promise.resolve({ id: "prod-1" })

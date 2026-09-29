@@ -21,7 +21,7 @@ describe("CheckoutPage", () => {
   })
 
   it("renders the order summary for a seeded cart", () => {
-    useCartStore.getState().addItem({ id: "prod-1", title: "Wireless Headphones", price: 129.99 })
+    useCartStore.getState().addItem({ id: "prod-1", title: "Wireless Headphones", price: 129.99, stock: 10 })
     render(<CheckoutPage />)
 
     expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
@@ -29,7 +29,7 @@ describe("CheckoutPage", () => {
   })
 
   it("places the order then navigates to /marketplace on Continue Shopping", () => {
-    useCartStore.getState().addItem({ id: "prod-1", title: "Wireless Headphones", price: 129.99 })
+    useCartStore.getState().addItem({ id: "prod-1", title: "Wireless Headphones", price: 129.99, stock: 10 })
     render(<CheckoutPage />)
 
     fireEvent.click(screen.getByText("Place Order"))

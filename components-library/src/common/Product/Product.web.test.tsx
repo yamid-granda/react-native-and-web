@@ -4,7 +4,7 @@ import { Product } from "./Product"
 import { useWishlistStore } from "../../business/WishlistScreen/useWishlistStore"
 
 describe("Product (web, via react-native-web)", () => {
-  const props = { id: "1", title: "Wireless Headphones", price: 129.99 }
+  const props = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
 
   beforeEach(() => {
     useWishlistStore.setState({ items: {} })
@@ -31,6 +31,16 @@ describe("Product (web, via react-native-web)", () => {
   it("exposes a testID keyed by product id, for e2e targeting", () => {
     render(<Product {...props} />)
     expect(screen.getByTestId("product-card-1")).toBeInTheDocument()
+  })
+
+  it("does not show an out-of-stock badge when stock is available", () => {
+    render(<Product {...props} stock={5} />)
+    expect(screen.queryByText("Out of stock")).not.toBeInTheDocument()
+  })
+
+  it("shows an out-of-stock badge when stock is zero", () => {
+    render(<Product {...props} stock={0} />)
+    expect(screen.getByText("Out of stock")).toBeInTheDocument()
   })
 
   it("toggles the wishlist state when the heart toggle is pressed", () => {

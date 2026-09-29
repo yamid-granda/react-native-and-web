@@ -5,6 +5,7 @@ export type ProductData = {
   price: number
   currency?: string
   imageUrl?: string
+  stock: number
 }
 
 export type ProductsPage = {

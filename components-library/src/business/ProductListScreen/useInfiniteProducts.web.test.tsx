@@ -6,7 +6,7 @@ import { useInfiniteProducts } from "./useInfiniteProducts"
 
 function page(page: number, hasNextPage: boolean): ProductsPage {
   return {
-    items: [{ id: `${page}`, title: `Product ${page}`, price: 10 }],
+    items: [{ id: `${page}`, title: `Product ${page}`, price: 10, stock: 10 }],
     page,
     limit: 1,
     total: 2,

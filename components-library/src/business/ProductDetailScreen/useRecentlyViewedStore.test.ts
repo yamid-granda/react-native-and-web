@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest"
 import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
 
-const product = { id: "1", title: "Wireless Headphones", price: 129.99 }
-const otherProduct = { id: "2", title: "Mechanical Keyboard", price: 89.5 }
+const product = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
+const otherProduct = { id: "2", title: "Mechanical Keyboard", price: 89.5, stock: 10 }
 
 describe("useRecentlyViewedStore", () => {
   beforeEach(() => {
@@ -29,11 +29,13 @@ describe("useRecentlyViewedStore", () => {
 
   it("caps the list at 10 entries, dropping the oldest", () => {
     for (let i = 0; i < 11; i++) {
-      useRecentlyViewedStore.getState().recordView({ id: String(i), title: `Product ${i}`, price: 1 })
+      useRecentlyViewedStore
+        .getState()
+        .recordView({ id: String(i), title: `Product ${i}`, price: 1, stock: 10 })
     }
     const items = useRecentlyViewedStore.getState().items
     expect(items).toHaveLength(10)
-    expect(items[0]).toEqual({ id: "10", title: "Product 10", price: 1 })
+    expect(items[0]).toEqual({ id: "10", title: "Product 10", price: 1, stock: 10 })
     expect(items.some((item) => item.id === "0")).toBe(false)
   })
 })

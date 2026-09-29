@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest"
 import { getCartTotalCount, getCartTotalPrice, useCartStore } from "./useCartStore"
 
-const product = { id: "1", title: "Wireless Headphones", price: 129.99 }
-const otherProduct = { id: "2", title: "Mechanical Keyboard", price: 89.5 }
+const product = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
+const otherProduct = { id: "2", title: "Mechanical Keyboard", price: 89.5, stock: 10 }
 
 describe("useCartStore", () => {
   beforeEach(() => {

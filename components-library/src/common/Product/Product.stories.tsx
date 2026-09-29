@@ -9,6 +9,7 @@ const meta: Meta<typeof Product> = {
     title: "Wireless Headphones",
     description: "Noise-cancelling over-ear headphones with 30h battery life.",
     price: 129.99,
+    stock: 10,
   },
 }
 
@@ -27,5 +28,12 @@ export const WithImage: Story = {
 export const WithoutDescription: Story = {
   args: {
     description: undefined,
+  },
+}
+
+export const OutOfStock: Story = {
+  args: {
+    imageUrl: "https://picsum.photos/seed/headphones/400/400",
+    stock: 0,
   },
 }

@@ -3,8 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductListScreen } from "./ProductListScreen"
 import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
 
-const headphones = { id: "1", title: "Wireless Headphones", price: 129.99 }
-const keyboard = { id: "2", title: "Mechanical Keyboard", price: 89.5 }
+const headphones = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
+const keyboard = { id: "2", title: "Mechanical Keyboard", price: 89.5, stock: 10 }
 const products = [headphones, keyboard]
 
 let intersectionCallback:

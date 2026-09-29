@@ -7,14 +7,16 @@ const mockProducts = [
     title: "Wireless Headphones",
     description: "Noise-cancelling over-ear headphones.",
     price: 129.99,
+    stock: 10,
   },
   {
     id: "2",
     title: "Mechanical Keyboard",
     description: "Hot-swappable 75% keyboard.",
     price: 89.5,
+    stock: 0,
   },
-  { id: "3", title: "Ceramic Coffee Mug", price: 18 },
+  { id: "3", title: "Ceramic Coffee Mug", price: 18, stock: 3 },
 ]
 
 const meta: Meta<typeof ProductListScreen> = {
