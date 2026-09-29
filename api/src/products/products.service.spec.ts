@@ -21,10 +21,12 @@ describe("ProductsService", () => {
     const result = await service.findAll()
 
     expect(findMany).toHaveBeenCalledWith({
+      where: undefined,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       skip: 0,
       take: 20,
     })
+    expect(count).toHaveBeenCalledWith({ where: undefined })
     expect(result).toEqual({
       items: [{ id: "prod-1", stock: 5 }],
       page: 1,
@@ -42,11 +44,49 @@ describe("ProductsService", () => {
     const result = await service.findAll(2)
 
     expect(findMany).toHaveBeenCalledWith({
+      where: undefined,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       skip: 20,
       take: 20,
     })
     expect(result.hasNextPage).toBe(true)
+  })
+
+  it("findAll filters by a case-insensitive match on title or description when q is given", async () => {
+    const findMany = vi.fn().mockResolvedValue([{ id: "prod-1", title: "Wireless Headphones" }])
+    const count = vi.fn().mockResolvedValue(1)
+    const service = await createService({ product: { findMany, count } })
+
+    await service.findAll(1, "headphones")
+
+    const expectedWhere = {
+      OR: [
+        { title: { contains: "headphones", mode: "insensitive" } },
+        { description: { contains: "headphones", mode: "insensitive" } },
+      ],
+    }
+    expect(findMany).toHaveBeenCalledWith({
+      where: expectedWhere,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: 0,
+      take: 20,
+    })
+    expect(count).toHaveBeenCalledWith({ where: expectedWhere })
+  })
+
+  it("findAll behaves exactly as the unfiltered default when q is empty", async () => {
+    const findMany = vi.fn().mockResolvedValue([])
+    const count = vi.fn().mockResolvedValue(0)
+    const service = await createService({ product: { findMany, count } })
+
+    await service.findAll(1, "")
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: undefined,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: 0,
+      take: 20,
+    })
   })
 
   it("findOne returns the product when it exists", async () => {

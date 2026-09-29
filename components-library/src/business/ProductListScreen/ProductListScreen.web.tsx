@@ -18,6 +18,7 @@ export type ProductListScreenProps = {
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   onEndReached?: () => void
+  onQueryChange?: (query: string) => void
   onSelectProduct?: (id: string) => void
 }
 
@@ -28,14 +29,18 @@ export function ProductListScreen({
   hasNextPage,
   isFetchingNextPage,
   onEndReached,
+  onQueryChange,
   onSelectProduct,
 }: ProductListScreenProps) {
-  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
+  const { query, setQuery, deferredQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
     useProductSearch(products)
-  const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const sentinelRef = useRef<View>(null)
   const recentlyViewed = useRecentlyViewedStore((state) => state.items)
   const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
+
+  useEffect(() => {
+    onQueryChange?.(deferredQuery)
+  }, [deferredQuery, onQueryChange])
 
   // stable element references so unrelated re-renders (e.g.
   // isFetchingNextPage flipping) don't recreate every card's onPress
@@ -98,17 +103,14 @@ export function ProductListScreen({
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
         ) : null}
-        {!isLoading && !error && products.length === 0 ? (
+        {!isLoading && !error && products.length === 0 && !query.trim() ? (
           <ClassNameText className="text-muted">No products yet.</ClassNameText>
         ) : null}
+        {!isLoading && !error && products.length === 0 && query.trim() ? (
+          <ClassNameText className="text-muted">{`No products match "${query}".`}</ClassNameText>
+        ) : null}
         {!isLoading && !error && products.length > 0 && results.length === 0 ? (
-          <ClassNameText className="text-muted">
-            {query && isPriceRangeActive
-              ? `No products match "${query}" in this price range.`
-              : isPriceRangeActive
-                ? "No products match this price range."
-                : `No products match "${query}".`}
-          </ClassNameText>
+          <ClassNameText className="text-muted">No products match this price range.</ClassNameText>
         ) : null}
         <ClassNameView className="grid grid-cols-[repeat(auto-fill,minmax(192px,1fr))] gap-4">
           {productElements}

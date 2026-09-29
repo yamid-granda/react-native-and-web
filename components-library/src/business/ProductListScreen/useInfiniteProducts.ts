@@ -1,10 +1,13 @@
 import { useInfiniteQuery } from "@tanstack/react-query"
 import type { ProductsPage } from "../../types/Product"
 
-export function useInfiniteProducts(fetchProducts: (page: number) => Promise<ProductsPage>) {
+export function useInfiniteProducts(
+  fetchProducts: (page: number, query?: string) => Promise<ProductsPage>,
+  query = "",
+) {
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ["products"],
-    queryFn: ({ pageParam }) => fetchProducts(pageParam),
+    queryKey: ["products", query],
+    queryFn: ({ pageParam }) => fetchProducts(pageParam, query || undefined),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasNextPage ? lastPage.page + 1 : undefined),
   })
