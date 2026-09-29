@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ProductListScreen } from "./ProductListScreen"
 import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
 
@@ -63,15 +63,15 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     expect(onSelectProduct).toHaveBeenCalledWith("1")
   })
 
-  it("filters products by the search query", () => {
-    render(<ProductListScreen products={products} />)
+  it("calls onQueryChange with the debounced search query, leaving query matching to the caller", async () => {
+    const onQueryChange = vi.fn()
+    render(<ProductListScreen products={products} onQueryChange={onQueryChange} />)
     fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
-    expect(screen.getByText("Mechanical Keyboard")).toBeInTheDocument()
-    expect(screen.queryByText("Wireless Headphones")).not.toBeInTheDocument()
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalledWith("keyboard"))
   })
 
-  it("shows a no-match message when the search query matches nothing", () => {
-    render(<ProductListScreen products={products} />)
+  it("shows a no-match message when the query the caller fetched with returns no products", () => {
+    render(<ProductListScreen products={[]} />)
     fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "nonexistent" } })
     expect(screen.getByText('No products match "nonexistent".')).toBeInTheDocument()
   })
@@ -150,12 +150,10 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     expect(screen.getByText("No products match this price range.")).toBeInTheDocument()
   })
 
-  it("shows a combined empty state when both a query and a price range exclude everything", () => {
-    render(<ProductListScreen products={products} />)
+  it("shows the query-specific empty state when the (already query-filtered) products are empty, even with a price range also set", () => {
+    render(<ProductListScreen products={[]} />)
     fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
     fireEvent.change(screen.getByLabelText("Minimum price"), { target: { value: "1000" } })
-    expect(
-      screen.getByText('No products match "keyboard" in this price range.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('No products match "keyboard".')).toBeInTheDocument()
   })
 })

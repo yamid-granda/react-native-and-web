@@ -8,19 +8,17 @@ const products = [
 ]
 
 function filter(overrides: {
-  query?: string
   sortBy?: "relevance" | "price-asc" | "price-desc"
   priceRange?: { min?: number; max?: number }
 }) {
   return filterAndSortProducts(products, {
-    query: overrides.query ?? "",
     sortBy: overrides.sortBy ?? "relevance",
     priceRange: overrides.priceRange ?? {},
   })
 }
 
 describe("filterAndSortProducts", () => {
-  it("returns every product when no query, sort, or price range is set", () => {
+  it("returns every product when no sort or price range is set", () => {
     expect(filter({}).map((p) => p.id)).toEqual(["1", "2", "3"])
   })
 
@@ -44,22 +42,15 @@ describe("filterAndSortProducts", () => {
     expect(filter({ sortBy: "price-desc" }).map((p) => p.id)).toEqual(["1", "2", "3"])
   })
 
-  it("composes price range, sort, and text search together", () => {
-    // "board" only matches the keyboard by title, and only within range
+  it("composes price range and sort together", () => {
     expect(
-      filterAndSortProducts(products, {
-        query: "board",
-        sortBy: "price-asc",
-        priceRange: { max: 100 },
-      }).map((p) => p.id),
-    ).toEqual(["2"])
-    expect(
-      filterAndSortProducts(products, {
-        query: "board",
-        sortBy: "price-asc",
-        priceRange: { max: 50 },
-      }),
-    ).toEqual([])
+      filterAndSortProducts(products, { sortBy: "price-asc", priceRange: { max: 100 } }).map(
+        (p) => p.id,
+      ),
+    ).toEqual(["3", "2"])
+    expect(filterAndSortProducts(products, { sortBy: "price-asc", priceRange: { max: 10 } })).toEqual(
+      [],
+    )
   })
 
   it("returns an empty list when the price range excludes every product", () => {

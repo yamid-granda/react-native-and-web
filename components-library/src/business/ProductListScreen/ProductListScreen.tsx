@@ -1,4 +1,4 @@
-import { useCallback, type ComponentType } from "react"
+import { useCallback, useEffect, type ComponentType } from "react"
 import {
   FlatList,
   ScrollView,
@@ -47,6 +47,7 @@ export type ProductListScreenProps = {
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   onEndReached?: () => void
+  onQueryChange?: (query: string) => void
   onSelectProduct?: (id: string) => void
 }
 
@@ -65,15 +66,19 @@ export function ProductListScreen({
   hasNextPage,
   isFetchingNextPage,
   onEndReached,
+  onQueryChange,
   onSelectProduct,
 }: ProductListScreenProps) {
-  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
+  const { query, setQuery, deferredQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
     useProductSearch(products)
-  const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const { width } = useWindowDimensions()
   const numColumns = getColumnCount(width)
   const recentlyViewed = useRecentlyViewedStore((state) => state.items)
   const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
+
+  useEffect(() => {
+    onQueryChange?.(deferredQuery)
+  }, [deferredQuery, onQueryChange])
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ProductData>) => (
@@ -153,17 +158,14 @@ export function ProductListScreen({
             {error ? (
               <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
             ) : null}
-            {!isLoading && !error && products.length === 0 ? (
+            {!isLoading && !error && products.length === 0 && !query.trim() ? (
               <ClassNameText className="text-muted">No products yet.</ClassNameText>
             ) : null}
+            {!isLoading && !error && products.length === 0 && query.trim() ? (
+              <ClassNameText className="text-muted">{`No products match "${query}".`}</ClassNameText>
+            ) : null}
             {!isLoading && !error && products.length > 0 && results.length === 0 ? (
-              <ClassNameText className="text-muted">
-                {query && isPriceRangeActive
-                  ? `No products match "${query}" in this price range.`
-                  : isPriceRangeActive
-                    ? "No products match this price range."
-                    : `No products match "${query}".`}
-              </ClassNameText>
+              <ClassNameText className="text-muted">No products match this price range.</ClassNameText>
             ) : null}
           </ClassNameView>
         }

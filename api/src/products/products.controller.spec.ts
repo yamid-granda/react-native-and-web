@@ -16,7 +16,7 @@ describe("ProductsController", () => {
     const controller = moduleRef.get(ProductsController)
     const result = await controller.findAll("2")
 
-    expect(findAll).toHaveBeenCalledWith(2)
+    expect(findAll).toHaveBeenCalledWith(2, undefined)
     expect(result).toEqual(page)
   })
 
@@ -31,7 +31,21 @@ describe("ProductsController", () => {
     const controller = moduleRef.get(ProductsController)
     await controller.findAll()
 
-    expect(findAll).toHaveBeenCalledWith(1)
+    expect(findAll).toHaveBeenCalledWith(1, undefined)
+  })
+
+  it("findAll forwards the q query param to ProductsService.findAll", async () => {
+    const findAll = vi.fn().mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, hasNextPage: false })
+
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ProductsController],
+      providers: [{ provide: ProductsService, useValue: { findAll, findOne: vi.fn() } }],
+    }).compile()
+
+    const controller = moduleRef.get(ProductsController)
+    await controller.findAll("1", "headphones")
+
+    expect(findAll).toHaveBeenCalledWith(1, "headphones")
   })
 
   it("findOne delegates to ProductsService.findOne with the given id", async () => {

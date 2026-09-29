@@ -14,9 +14,12 @@ function page(page: number, hasNextPage: boolean): ProductsPage {
   }
 }
 
-function renderWithClient(fetchProducts: (page: number) => Promise<ProductsPage>) {
+function renderWithClient(
+  fetchProducts: (page: number, query?: string) => Promise<ProductsPage>,
+  query?: string,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return renderHook(() => useInfiniteProducts(fetchProducts), {
+  return renderHook(() => useInfiniteProducts(fetchProducts, query), {
     wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
   })
 }
@@ -28,7 +31,7 @@ describe("useInfiniteProducts", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(fetchProducts).toHaveBeenCalledWith(1)
+    expect(fetchProducts).toHaveBeenCalledWith(1, undefined)
     expect(result.current.products).toEqual(page(1, true).items)
     expect(result.current.hasNextPage).toBe(true)
   })
@@ -41,10 +44,33 @@ describe("useInfiniteProducts", () => {
 
     result.current.fetchNextPage()
 
-    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(2))
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(2, undefined))
     await waitFor(() =>
       expect(result.current.products).toEqual([...page(1, true).items, ...page(2, false).items]),
     )
     expect(result.current.hasNextPage).toBe(false)
+  })
+
+  it("forwards the query to fetchProducts and resets pagination under a new cache key", async () => {
+    const fetchProducts = vi.fn((p: number) => Promise.resolve(page(p, false)))
+    const { result, rerender } = renderHook(
+      ({ query }: { query?: string }) => useInfiniteProducts(fetchProducts, query),
+      {
+        initialProps: { query: undefined as string | undefined },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    )
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(fetchProducts).toHaveBeenCalledWith(1, undefined)
+
+    fetchProducts.mockClear()
+    rerender({ query: "keyboard" })
+
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(1, "keyboard"))
   })
 })
