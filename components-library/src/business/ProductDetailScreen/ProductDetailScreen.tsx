@@ -12,8 +12,10 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { isWishlisted, useWishlistStore } from "../WishlistScreen/useWishlistStore"
 import { Drawer } from "../../common/Drawer/Drawer"
 import { Button } from "../../common/Button/Button"
+import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
@@ -35,6 +37,8 @@ export function ProductDetailScreen({
   onGoToCart,
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const wishlisted = useWishlistStore((state) => (product ? isWishlisted(state.items, product.id) : false))
+  const toggleWishlistItem = useWishlistStore((state) => state.toggleItem)
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
 
   return (
@@ -65,18 +69,30 @@ export function ProductDetailScreen({
           <ClassNameText className="text-xl font-bold text-brand">
             {formatPrice(product.price, product.currency)}
           </ClassNameText>
-          <ClassNamePressable
-            accessibilityRole="button"
-            onPress={() => {
-              addItem(product)
-              setIsCartDrawerOpen(true)
-            }}
-            className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
-          >
-            <ClassNameText className="text-base font-semibold text-white">
-              Add to Cart
-            </ClassNameText>
-          </ClassNamePressable>
+          <ClassNameView className="flex-row items-center gap-3">
+            <ClassNamePressable
+              accessibilityRole="button"
+              onPress={() => {
+                addItem(product)
+                setIsCartDrawerOpen(true)
+              }}
+              className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
+            >
+              <ClassNameText className="text-base font-semibold text-white">
+                Add to Cart
+              </ClassNameText>
+            </ClassNamePressable>
+            <ClassNamePressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                wishlisted ? `Remove ${product.title} from wishlist` : `Add ${product.title} to wishlist`
+              }
+              onPress={() => toggleWishlistItem(product)}
+              className="h-11 w-11 items-center justify-center rounded-full bg-surface active:bg-surface-muted"
+            >
+              <HeartIcon filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
+            </ClassNamePressable>
+          </ClassNameView>
         </>
       ) : null}
       <Drawer visible={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)}>
