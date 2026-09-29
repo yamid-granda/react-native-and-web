@@ -35,7 +35,13 @@ export const MainNav = forwardRef<View, MainNavProps>(function MainNav(
     <LinkPressable
       ref={ref}
       {...navProps}
-      className="min-w-14 items-center justify-center gap-1 rounded-xl px-3 py-2 active:bg-brand/10"
+      // overflow-hidden lets this shrink below its label's natural width
+      // instead of overflowing past min-w-14 — without it, CSS flexbox
+      // treats a flex item's min-width as its content's min-content size
+      // by default, which stops one item's label from truncating to make
+      // room for a sibling once the bar has enough items to overflow at
+      // narrow (mobile) widths.
+      className="min-w-14 shrink items-center justify-center gap-1 overflow-hidden rounded-xl px-3 py-2 active:bg-brand/10"
     >
       {({ pressed }) => (
         <>

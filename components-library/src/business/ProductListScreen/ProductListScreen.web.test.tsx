@@ -7,7 +7,9 @@ const headphones = { id: "1", title: "Wireless Headphones", price: 129.99 }
 const keyboard = { id: "2", title: "Mechanical Keyboard", price: 89.5 }
 const products = [headphones, keyboard]
 
-let intersectionCallback: ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void) | undefined
+let intersectionCallback:
+  | ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void)
+  | undefined
 
 beforeEach(() => {
   intersectionCallback = undefined
@@ -83,7 +85,9 @@ describe("ProductListScreen (web, via react-native-web)", () => {
 
   it("does not call onEndReached when there is no next page", () => {
     const onEndReached = vi.fn()
-    render(<ProductListScreen products={products} hasNextPage={false} onEndReached={onEndReached} />)
+    render(
+      <ProductListScreen products={products} hasNextPage={false} onEndReached={onEndReached} />,
+    )
     expect(intersectionCallback).toBeUndefined()
     expect(onEndReached).not.toHaveBeenCalled()
   })
@@ -124,5 +128,34 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     render(<ProductListScreen products={products} />)
     fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "headphones" } })
     expect(screen.queryByText("Recently viewed")).not.toBeInTheDocument()
+  })
+
+  it("reorders cards when a sort option is selected", () => {
+    render(<ProductListScreen products={products} />)
+    fireEvent.click(screen.getByLabelText("Sort by Price: Low to High"))
+    const titles = screen.getAllByText(/Headphones|Keyboard/).map((el) => el.textContent)
+    expect(titles).toEqual(["Mechanical Keyboard", "Wireless Headphones"])
+  })
+
+  it("hides out-of-range products when a price range is set", () => {
+    render(<ProductListScreen products={products} />)
+    fireEvent.change(screen.getByLabelText("Minimum price"), { target: { value: "100" } })
+    expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
+    expect(screen.queryByText("Mechanical Keyboard")).not.toBeInTheDocument()
+  })
+
+  it("shows a price-range-specific empty state when the range excludes everything", () => {
+    render(<ProductListScreen products={products} />)
+    fireEvent.change(screen.getByLabelText("Minimum price"), { target: { value: "1000" } })
+    expect(screen.getByText("No products match this price range.")).toBeInTheDocument()
+  })
+
+  it("shows a combined empty state when both a query and a price range exclude everything", () => {
+    render(<ProductListScreen products={products} />)
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
+    fireEvent.change(screen.getByLabelText("Minimum price"), { target: { value: "1000" } })
+    expect(
+      screen.getByText('No products match "keyboard" in this price range.'),
+    ).toBeInTheDocument()
   })
 })

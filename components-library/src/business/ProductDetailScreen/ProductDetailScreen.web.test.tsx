@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductDetailScreen } from "./ProductDetailScreen"
 import { useCartStore } from "../CartScreen/useCartStore"
 import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
+import { useWishlistStore } from "../WishlistScreen/useWishlistStore"
 
 const product = {
   id: "1",
@@ -15,6 +16,7 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
   beforeEach(() => {
     useCartStore.setState({ items: {} })
     useRecentlyViewedStore.setState({ items: [] })
+    useWishlistStore.setState({ items: {} })
   })
 
   it("renders the title, description, and formatted price", () => {
@@ -75,5 +77,17 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     render(<ProductDetailScreen isLoading />)
     render(<ProductDetailScreen product={null} />)
     expect(useRecentlyViewedStore.getState().items).toEqual([])
+  })
+
+  it("toggles the wishlist state when the wishlist button is clicked", () => {
+    render(<ProductDetailScreen product={product} />)
+    expect(screen.getByLabelText("Add Wireless Headphones to wishlist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
+    expect(useWishlistStore.getState().items["1"]).toEqual(product)
+    expect(screen.getByLabelText("Remove Wireless Headphones from wishlist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from wishlist"))
+    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
   })
 })
