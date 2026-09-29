@@ -1,10 +1,12 @@
 import { useCallback, type ComponentType } from "react"
 import {
   FlatList,
+  ScrollView,
   Text,
   View,
   useWindowDimensions,
   type ListRenderItemInfo,
+  type ScrollViewProps,
   type TextProps,
   type ViewProps,
 } from "react-native"
@@ -13,10 +15,12 @@ import { SearchInput } from "../../common/SearchInput/SearchInput"
 import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
+import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
+const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 
 // Not the same 192px floor as ProductListScreen.web.tsx's
 // grid-cols-[...minmax(192px,1fr)] — desktop viewports are wide enough for
@@ -68,6 +72,8 @@ export function ProductListScreen({
   const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const { width } = useWindowDimensions()
   const numColumns = getColumnCount(width)
+  const recentlyViewed = useRecentlyViewedStore((state) => state.items)
+  const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ProductData>) => (
@@ -120,6 +126,27 @@ export function ProductListScreen({
               priceRange={priceRange}
               onPriceRangeChange={setPriceRange}
             />
+            {showRecentlyViewed ? (
+              <ClassNameView className="gap-2">
+                <ClassNameText className="text-base font-semibold text-foreground">
+                  Recently viewed
+                </ClassNameText>
+                <ClassNameScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: GRID_GAP }}
+                >
+                  {recentlyViewed.map((product) => (
+                    <Product
+                      key={product.id}
+                      {...product}
+                      onPress={() => onSelectProduct?.(product.id)}
+                      className="w-36"
+                    />
+                  ))}
+                </ClassNameScrollView>
+              </ClassNameView>
+            ) : null}
             {isLoading ? (
               <ClassNameText className="text-muted">Loading products…</ClassNameText>
             ) : null}

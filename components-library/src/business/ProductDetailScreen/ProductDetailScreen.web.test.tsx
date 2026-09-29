@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductDetailScreen } from "./ProductDetailScreen"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
 import { useWishlistStore } from "../WishlistScreen/useWishlistStore"
 
 const product = {
@@ -14,6 +15,7 @@ const product = {
 describe("ProductDetailScreen (web, via react-native-web)", () => {
   beforeEach(() => {
     useCartStore.setState({ items: {} })
+    useRecentlyViewedStore.setState({ items: [] })
     useWishlistStore.setState({ items: {} })
   })
 
@@ -60,6 +62,21 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     fireEvent.click(screen.getByText("Add to Cart"))
     fireEvent.click(screen.getByText("Go to Cart"))
     expect(onGoToCart).toHaveBeenCalledTimes(1)
+  })
+
+  it("records the product as recently viewed once it loads, and only once across re-renders", () => {
+    const recordView = vi.fn(useRecentlyViewedStore.getState().recordView)
+    useRecentlyViewedStore.setState({ recordView })
+    const { rerender } = render(<ProductDetailScreen product={product} />)
+    rerender(<ProductDetailScreen product={product} />)
+    expect(recordView).toHaveBeenCalledTimes(1)
+    expect(useRecentlyViewedStore.getState().items).toEqual([product])
+  })
+
+  it("does not record a view while loading or when the product is not found", () => {
+    render(<ProductDetailScreen isLoading />)
+    render(<ProductDetailScreen product={null} />)
+    expect(useRecentlyViewedStore.getState().items).toEqual([])
   })
 
   it("toggles the wishlist state when the wishlist button is clicked", () => {
