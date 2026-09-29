@@ -5,6 +5,12 @@ import type { IconProps } from "./types"
 
 export type IconBaseProps = IconProps & {
   children: ReactNode
+  // Fills shapes with `color` instead of leaving them hollow — e.g. a
+  // wishlist heart toggling filled/outline. `color` is threaded through
+  // rather than a literal "currentColor" fill, since react-native-svg
+  // doesn't resolve that CSS keyword on native (see README "Architecture
+  // boundaries").
+  filled?: boolean
 }
 
 const FRAME_SIZE = 24
@@ -13,7 +19,11 @@ const STROKE_WIDTH = 2
 // Every icon's shapes share the same stroke styling, so IconBase applies
 // it to each child by default — a child that sets its own stroke* prop
 // keeps it.
-function withDefaultStroke(children: ReactNode, color: NonNullable<IconProps["color"]>) {
+function withDefaultStroke(
+  children: ReactNode,
+  color: NonNullable<IconProps["color"]>,
+  filled?: boolean,
+) {
   return Children.map(children, (child) => {
     if (!isValidElement<Record<string, unknown>>(child)) return child
     return cloneElement(child, {
@@ -21,6 +31,7 @@ function withDefaultStroke(children: ReactNode, color: NonNullable<IconProps["co
       strokeWidth: STROKE_WIDTH,
       strokeLinecap: "round",
       strokeLinejoin: "round",
+      fill: filled ? color : "none",
       ...child.props,
     })
   })
@@ -29,6 +40,7 @@ function withDefaultStroke(children: ReactNode, color: NonNullable<IconProps["co
 function IconBaseImpl({
   size = FRAME_SIZE,
   color = "currentColor",
+  filled,
   children,
   ...props
 }: IconBaseProps) {
@@ -40,7 +52,7 @@ function IconBaseImpl({
       fill="none"
       {...props}
     >
-      {withDefaultStroke(children, color)}
+      {withDefaultStroke(children, color, filled)}
     </Svg>
   )
 }

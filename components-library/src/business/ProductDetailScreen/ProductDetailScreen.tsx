@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react"
+import { useEffect, useState, type ComponentType } from "react"
 import {
   Image,
   Pressable,
@@ -13,8 +13,11 @@ import { cn } from "../../utils/cn"
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { useRecentlyViewedStore } from "./useRecentlyViewedStore"
+import { isWishlisted, useWishlistStore } from "../WishlistScreen/useWishlistStore"
 import { Drawer } from "../../common/Drawer/Drawer"
 import { Button } from "../../common/Button/Button"
+import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
 
 const LOW_STOCK_THRESHOLD = 5
 
@@ -44,7 +47,15 @@ export function ProductDetailScreen({
   onGoToCart,
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const recordView = useRecentlyViewedStore((state) => state.recordView)
+  const wishlisted = useWishlistStore((state) => (product ? isWishlisted(state.items, product.id) : false))
+  const toggleWishlistItem = useWishlistStore((state) => state.toggleItem)
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the id, not the object, so a same-id re-fetch (new object, unchanged id) doesn't re-record it
+  useEffect(() => {
+    if (product) recordView(product)
+  }, [product?.id])
 
   return (
     <ClassNameView testID="product-detail-screen" className="flex-1 gap-4 bg-background p-6">
@@ -75,22 +86,34 @@ export function ProductDetailScreen({
             {formatPrice(product.price, product.currency)}
           </ClassNameText>
           <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
-          <ClassNamePressable
-            accessibilityRole="button"
-            disabled={product.stock === 0}
-            onPress={() => {
-              addItem(product)
-              setIsCartDrawerOpen(true)
-            }}
-            className={cn(
-              "items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark",
-              product.stock === 0 && "opacity-50",
-            )}
-          >
-            <ClassNameText className="text-base font-semibold text-white">
-              {product.stock === 0 ? "Out of stock" : "Add to Cart"}
-            </ClassNameText>
-          </ClassNamePressable>
+          <ClassNameView className="flex-row items-center gap-3">
+            <ClassNamePressable
+              accessibilityRole="button"
+              disabled={product.stock === 0}
+              onPress={() => {
+                addItem(product)
+                setIsCartDrawerOpen(true)
+              }}
+              className={cn(
+                "items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark",
+                product.stock === 0 && "opacity-50",
+              )}
+            >
+              <ClassNameText className="text-base font-semibold text-white">
+                {product.stock === 0 ? "Out of stock" : "Add to Cart"}
+              </ClassNameText>
+            </ClassNamePressable>
+            <ClassNamePressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                wishlisted ? `Remove ${product.title} from wishlist` : `Add ${product.title} to wishlist`
+              }
+              onPress={() => toggleWishlistItem(product)}
+              className="h-11 w-11 items-center justify-center rounded-full bg-surface active:bg-surface-muted"
+            >
+              <HeartIcon filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
+            </ClassNamePressable>
+          </ClassNameView>
         </>
       ) : null}
       <Drawer visible={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)}>
