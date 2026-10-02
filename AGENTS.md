@@ -1,13 +1,13 @@
 # Repository Guide
 
-This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. Both apps share UI from `components-library`; `api` is a NestJS/Prisma service backed by PostgreSQL.
+This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. Both apps share UI from `components-library`; `api-rs` is a Rust/Axum read API backed by PostgreSQL.
 
 ## Workspaces
 
 - `components-library/src/common/` — reusable UI components; `src/business/` — shared screens and state; `src/icons/` — icons.
 - `web-application/` — Next.js App Router app and Playwright end-to-end tests. Read its `AGENTS.md` before changing web code.
 - `mobile-application/src/app/` — Expo Router routes and layouts; keep non-route code outside `src/app/`. Read its `AGENTS.md` before changing mobile code.
-- `api/src/` — NestJS modules, controllers, and services; `api/prisma/` — schema, migrations, and seed data.
+- `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/prisma/` — schema, migrations, and seed data (api-rs owns these; see its `README.md`).
 - `improve-proposals/` — feature proposals and implemented proposal records.
 
 ## Architecture and implementation
@@ -16,7 +16,7 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - UI used by both apps belongs in `components-library` and should be imported by both. Keep platform routing and app-specific wiring in thin app wrappers; only split implementations when platform behavior genuinely requires it.
 - Shared components use React Native primitives and NativeWind. Follow nearby component, test, and Storybook patterns rather than introducing a second styling or state approach.
 - Keep route definitions in each app's existing router. Do not move app-specific routing into the shared library.
-- Use pnpm (version pinned in the root `package.json`) and the existing workspace scripts. Do not edit generated output such as `api/src/generated/prisma/` directly; update the Prisma schema and use the API's database scripts instead.
+- Use pnpm (version pinned in the root `package.json`) and the existing workspace scripts. Do not edit generated output such as `api-rs/generated/prisma/` directly; update the Prisma schema and use `api-rs`'s `db:migrate`/`db:seed` scripts instead.
 - Check the relevant scoped `AGENTS.md` and installed framework documentation before changing Next.js or Expo APIs; versions and conventions may differ from prior releases.
 
 ## Common commands
@@ -25,8 +25,7 @@ Run from the repository root:
 
 ```bash
 pnpm install
-pnpm dev                  # start the dev tasks (api-rs serves the API; NestJS is excluded)
-pnpm dev:parity           # both APIs side by side (NestJS 3001, api-rs 3003)
+pnpm dev                  # start the dev tasks (api-rs serves the API on 3001)
 pnpm lint
 pnpm typecheck
 pnpm test                 # workspace unit/component tests; not end-to-end tests
@@ -38,7 +37,7 @@ Useful focused checks:
 ```bash
 pnpm --filter @rnw/components-library test
 pnpm --filter @rnw/web-application test:e2e   # Playwright; starts Next.js dev server locally
-pnpm --filter @rnw/api test:e2e               # requires API test environment/database
+pnpm --filter @rnw/api-rs test:e2e           # hermetic Postgres/Valkey E2E; requires Docker
 pnpm --filter @rnw/mobile-application test:e2e # Detox; requires a native build and simulator
 ```
 

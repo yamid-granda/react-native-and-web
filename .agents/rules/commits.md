@@ -19,6 +19,6 @@ This is enforced repo-wide by a `commit-msg` git hook (`.husky/commit-msg`)
 running commitlint against `commitlint.config.js`, which extends
 `@commitlint/config-conventional`. The hook runs once per commit at the repo
 root, so it covers commits touching any workspace
-(`web-application`, `mobile-application`, `api`, `components-library`) — a
+(`web-application`, `mobile-application`, `api-rs`, `components-library`) — a
 non-conforming message is rejected before the commit is created. Run
 `pnpm install` after cloning so husky installs the hook.

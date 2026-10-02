@@ -4,15 +4,15 @@ Run from the repository root with Docker and k6 installed (or use the
 `docker run --rm -i grafana/k6:latest run - < load-tests/k6/<scenario>.js`
 form shown below if you prefer not to install k6). These thresholds are
 pass/fail SLO gates; measured baselines are intentionally marked pending
-until both services have been run on the same machine.
+until the scenarios have been run on a known machine.
 
 ## Local stack and 50k-product seed
 
 ```bash
 docker compose up -d postgres valkey prometheus grafana
-pnpm --filter @rnw/api db:migrate
-SEED_COUNT=50000 pnpm --filter @rnw/api db:seed
 cp api-rs/.env.example api-rs/.env
+pnpm --filter @rnw/api-rs db:migrate
+SEED_COUNT=50000 pnpm --filter @rnw/api-rs db:seed
 pnpm --filter @rnw/api-rs dev
 ```
 
@@ -22,10 +22,9 @@ The `Marketplace API — RED` dashboard shows request rate, p95/p99, cache
 ratios, pool acquisition, 429/load-shed counts, and RSS live.
 
 `pnpm --filter @rnw/api-rs dev` serves api-rs on the contract port 3001, and
-Prometheus scrapes 3001 — so NestJS is not needed for an api-rs run. For the
-NestJS-versus-Rust comparison, use `pnpm dev:parity` (api-rs on 3003, NestJS on
-3001), pass the matching `BASE_URL`, and point `monitoring/prometheus.yml` at
-the port under test.
+Prometheus scrapes 3001 — so the default target needs no changes. To measure a
+different port, pass the matching `BASE_URL` and point
+`monitoring/prometheus.yml` at the port under test.
 
 The default `PAGE_COUNT=2500` covers 50k products at 20 products per page.
 Override `BASE_URL`, `PAGE_COUNT`, `CLIENT_IPS`, or `K6_*` options as needed.
@@ -63,21 +62,16 @@ from one source address. To measure the limiter itself, run with
 `CLIENT_IPS=1` — expect 429s above `RATE_LIMIT_PER_IP_RPS` (100 by default) —
 or disable it with `RATE_LIMIT_PER_IP_RPS=0`.
 
-## NestJS baseline and comparison
+## Result table
 
 Use the same laptop, Docker Postgres, seed size, request mix, k6 version, and
-cache mode for both runs. Under `pnpm dev:parity` NestJS stays on 3001 and
-api-rs runs beside it on 3003, so both can be measured in the same session by
-switching `BASE_URL` (and the Prometheus target). `pnpm dev` instead gives the
-production shape: only api-rs, on 3001. The clients are unchanged and use
-their existing `localhost:3001` defaults.
+cache mode for cold and warm runs so they are comparable. The clients are
+unchanged and use their existing `localhost:3001` defaults.
 
 | Implementation | Cache | RPS | p95 | p99 at spike | RSS / instance | Notes |
 |---|---|---:|---:|---:|---:|---|
-| NestJS 12 + Prisma 7 | cold | pending | pending | pending | pending | Phase 0 measurement |
-| NestJS 12 + Prisma 7 | warm | pending | pending | pending | pending | Phase 0 measurement |
-| api-rs + sqlx | cold | pending | pending | pending | pending | Phase 2 measurement |
-| api-rs + sqlx | warm | pending | pending | pending | pending | Phase 2 measurement |
+| api-rs + sqlx | cold | pending | pending | pending | pending | |
+| api-rs + sqlx | warm | pending | pending | pending | pending | |
 
 Do not fill the table with benchmark estimates: capture the k6 summary and
 process RSS from the same host and commit the measured values with the test
@@ -87,7 +81,7 @@ environment noted.
 
 - Stop Valkey during a run: product requests should keep succeeding via L1 / Postgres; `cache_l2_errors_total` rises and the Grafana alert fires.
 - Set `RATE_LIMIT_PER_IP_RPS=5`, then send >5 requests in a second with `CLIENT_IPS=1`: 429s should appear while database pool wait stays bounded.
-- Stop Postgres: `/health` should return 503 and product reads should return the Nest-compatible 500 shape.
+- Stop Postgres: `/health` should return 503 and product reads should return the generic 500 shape.
 - Verify shutdown: send SIGTERM while requests are in flight and confirm the process drains before exiting.
 
 Drills 1, 3, and 4 are also asserted automatically: the fail-open cache path

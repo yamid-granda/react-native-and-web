@@ -1,9 +1,18 @@
 # Stock / availability indicators for marketplace products
 
+> **Superseded (paths only).** This proposal was implemented against the
+> NestJS `api/` workspace, which has since been decommissioned in favour of
+> `api-rs`. The `api/…` paths below no longer exist; the schema and seed now
+> live in `api-rs/prisma/`, and the products passthrough is
+> `api-rs/src/handlers/products.rs` + `api-rs/src/store/products.rs`. The
+> proposal's approach and outcome are unchanged — see
+> [`../implemented/2026-10-01-marketplace-api-high-traffic-performance.md`](2026-10-01-marketplace-api-high-traffic-performance.md)
+> for the API replacement.
+
 ## Problem / opportunity
 
 `ProductData` (`components-library/src/types/Product.ts`) and the
-`Product` model backing it (`api/prisma/schema.prisma`, lines 14-23) carry
+`Product` model backing it (then `api/prisma/schema.prisma`) carry
 no notion of stock at all — `id`, `title`, `description`, `price`,
 `currency`, `imageUrl`, `createdAt`, nothing else. A shopper can add any
 product to the cart and walk through `CheckoutScreen.tsx` regardless of
@@ -76,7 +85,8 @@ route wrappers.
 ## Verification
 
 - API: unit tests for `ProductsService` confirming `stock` round-trips
-  through `findAll`/`findOne`; a migration smoke test (apply + seed
+  through `findAll`/`findOne` (now covered by
+  `api-rs/tests/e2e_products.rs`); a migration smoke test (apply + seed
   locally) confirming the new column has a sane default for any
   pre-existing rows.
 - `Product.web.test.tsx` extended: the out-of-stock badge renders only

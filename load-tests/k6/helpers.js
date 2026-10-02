@@ -1,8 +1,8 @@
 import http from "k6/http"
 import { check } from "k6"
 
-// The contract port api-rs serves in dev. For a `pnpm dev:parity` run (NestJS
-// on 3001, api-rs on 3003) pass BASE_URL=http://localhost:3003.
+// The contract port api-rs serves in dev. Point this at another port with
+// BASE_URL when measuring a non-default instance.
 export const BASE_URL = (__ENV.BASE_URL || "http://localhost:3001").replace(/\/$/, "")
 export const PAGE_COUNT = Number(__ENV.PAGE_COUNT || 2500)
 

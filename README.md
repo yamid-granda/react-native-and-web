@@ -1,11 +1,11 @@
 # react-native-and-web
 
 Boilerplate monorepo sharing a React Native component library between a
-Next.js (SSR) web app and an Expo React Native app, plus a NestJS + Prisma +
-PostgreSQL API. No business logic — just the scaffolding, wired end to end
-and verified running (dev servers, production builds, Vitest, Playwright,
-Storybook, and Metro bundling were all actually executed while building
-this, not just configured on paper).
+Next.js (SSR) web app and an Expo React Native app, plus a Rust + Axum + sqlx
+marketplace read API on PostgreSQL. No business logic — just the scaffolding,
+wired end to end and verified running (dev servers, production builds, Vitest,
+Playwright, Storybook, and Metro bundling were all actually executed while
+building this, not just configured on paper).
 
 ## Stack
 
@@ -24,27 +24,25 @@ this, not just configured on paper).
 - **`web-application`** — Next.js 16, App Router, SSR (Turbopack).
 - **`mobile-application`** — Expo SDK 57 (managed), React Navigation,
   TanStack Query.
-- **`api`** — NestJS 12 (ESM) + Prisma 7 (driver adapters) + PostgreSQL.
-- **`api-rs`** — Rust + Axum + sqlx read API, running beside NestJS during
-  parity and soak testing; it uses the same Prisma-owned schema and port
-  contract when selected.
+- **`api-rs`** — Rust + Axum + sqlx read API serving the contract both clients
+  default to, with optional Valkey L2 caching, rate limiting, and OpenTelemetry
+  tracing. It is the only API in the repo; it reads the Prisma-owned schema in
+  `api-rs/prisma/`.
 - pnpm workspaces + Turborepo for task orchestration/caching.
 - Vitest for unit/component tests (web-flavored RN components, plain
-  TypeScript utils, Nest); Playwright for web e2e; Detox for native e2e.
+  TypeScript utils); Playwright for web e2e; Detox for native e2e.
 
 ## Prerequisites
 
-- **Node ≥ 20.19 / 22.12** (NestJS 12 requirement). A `.node-version` file
-  pins `22.23.3` — with [fnm](https://github.com/Schniz/fnm) installed, run
-  `fnm use` in the repo root.
+- **Node ≥ 20.19 / 22.12.** A `.node-version` file pins `22.23.3` — with
+  [fnm](https://github.com/Schniz/fnm) installed, run `fnm use` in the repo
+  root.
 - **A Docker runtime** — Docker Desktop or, lighter-weight on macOS,
   [Colima](https://colima.run): `brew install colima docker && colima start`.
   Needed for `docker-compose.yml` (Postgres/Valkey/Prometheus/Grafana) and for
   `api-rs`'s testcontainers-based E2E suite. api-rs resolves Colima's socket
   (`~/.colima/<profile>/docker.sock`) itself, so no `DOCKER_HOST` export is
-  needed; an explicitly set `DOCKER_HOST` always wins. The NestJS `api`'s
-  e2e test and the Prisma-backed `/health` check are configured and
-  typechecked but were not run against a real database here.
+  needed; an explicitly set `DOCKER_HOST` always wins.
 - **pnpm** (`packageManager` is pinned in the root `package.json`).
 - **Rust stable** (api-rs pins 1.99.0 through rustup in `api-rs/rust-toolchain.toml`).
   On macOS the linker additionally needs the Xcode license accepted
@@ -62,7 +60,6 @@ pnpm install   # onlyBuiltDependencies in pnpm-workspace.yaml pre-approves
                # Prisma/esbuild/sharp's postinstall scripts — no manual
                # `pnpm approve-builds` step needed
 ```
-
 Then see [Development](#development) below to run everything.
 
 ## Development
@@ -93,37 +90,27 @@ pnpm --filter @rnw/mobile-application ios
 pnpm --filter @rnw/mobile-application android
 ```
 
-### API — NestJS
+### API — Rust (api-rs)
 
-Needs Postgres running, once:
+Serves the marketplace API on the contract port the web and mobile apps default
+to. Needs Postgres running, once:
 
 ```bash
-cp api/.env.example api/.env
 docker compose up -d
-pnpm --filter @rnw/api prisma migrate dev
+cp api-rs/.env.example api-rs/.env
+pnpm --filter @rnw/api-rs db:migrate
+pnpm --filter @rnw/api-rs db:seed
 ```
 
 Then:
 
 ```bash
-pnpm --filter @rnw/api dev
-```
-
-→ http://localhost:3001 (`GET /health`)
-
-### API — Rust (api-rs)
-
-Serves the marketplace API on the contract port the web and mobile apps default
-to, using the same Postgres migrations and seed as NestJS:
-
-```bash
-cp api-rs/.env.example api-rs/.env
 pnpm --filter @rnw/api-rs dev
 ```
 
-→ http://localhost:3001 (`GET /health`, `GET /metrics`). To run NestJS beside
-it on 3001 instead, move api-rs to 3003 with `pnpm dev:parity`. For E2E,
-parity, cache, and rate-limit setup, see [`api-rs/README.md`](api-rs/README.md).
+→ http://localhost:3001 (`GET /health`, `GET /metrics`). For environment
+variables, cache and rate-limit setup, migrations/seed ownership, and E2E
+tests, see [`api-rs/README.md`](api-rs/README.md).
 
 ### Storybook — components-library
 
@@ -141,19 +128,9 @@ pnpm dev
 
 Runs web-application, mobile-application, api-rs, and Storybook together via
 Turborepo (`turbo run dev`), output interleaved in one terminal. api-rs serves
-the contract port 3001 that both clients default to, so NestJS is left out of
-this task; Grafana (from `docker compose`) uses 3002. Postgres and Valkey should
-be started first with `docker compose up -d` and the NestJS migrations applied
-as above.
-
-```bash
-pnpm dev:parity
-```
-
-The two API implementations side by side: NestJS takes 3001 and api-rs moves
-to 3003, so responses can be compared in one session (switch Prometheus's
-target in `monitoring/prometheus.yml` to 3003 for that run). It starts only the
-APIs — run the web/mobile/Storybook tasks separately when you need them.
+the contract port 3001 that both clients default to; Grafana (from
+`docker compose`) uses 3002. Postgres and Valkey should be started first with
+`docker compose up -d` and the Prisma migrations applied as above.
 
 ## Architecture boundaries and known gotchas (read before "fixing" these)
 
@@ -220,18 +197,19 @@ APIs — run the web/mobile/Storybook tasks separately when you need them.
   enough. Mobile-application is unaffected (it uses the real package).
 - **Prisma ORM 7 changed how the client connects.** `datasource.url` no
   longer lives in `schema.prisma` — the CLI (`migrate`, `studio`) reads it
-  from `prisma.config.ts`, and `PrismaService` passes a `@prisma/adapter-pg`
-  driver adapter to the `PrismaClient` constructor at runtime. Both need
-  `DATABASE_URL` in the environment (`dotenv/config` is imported first
-  thing in `main.ts` and in `vitest.setup.ts`).
+  from `prisma.config.ts`, and `prisma/seed.ts` passes a `@prisma/adapter-pg`
+  driver adapter to the `PrismaClient` constructor. Both need
+  `DATABASE_URL` in the environment (`dotenv/config` is imported first thing in
+  `prisma.config.ts` and `prisma/seed.ts`).
 - **The Rust API does not own migrations.** `api-rs/` reads the `Product`
-  table created by `api/prisma/migrations/`; continue to migrate and seed
-  through `@rnw/api`. Keep NestJS runnable as the contract/parity reference
-  throughout the api-rs soak period; decommissioning it is a separate change.
-  The two services share routes and response bodies, but the Rust service owns
-  the contract port 3001 in dev (`pnpm dev`) and moves to 3003 only for parity
-  work (`pnpm dev:parity`), so neither shadows the other and Grafana keeps
-  3002.
+  table created by `api-rs/prisma/migrations/`; `api-rs/package.json`'s
+  `db:migrate` / `db:seed` scripts (which wrap the Prisma CLI configured by
+  `api-rs/prisma.config.ts`) are the only supported way to change them. The
+  NestJS `api/` that previously wrapped those scripts has been decommissioned —
+  don't reintroduce it or any second migration system. The generated Prisma
+  client under `api-rs/generated/` (gitignored) exists purely for
+  `prisma/seed.ts`; the Rust service talks to Postgres through sqlx and never
+  imports it.
 - **Detox's test runner is Jest**, isolated in `mobile-application/e2e/`,
   and never mixed with the rest of the repo's Vitest tasks (`turbo run
   test`). This is a hard Detox constraint, not a deviation from "Vitest for
@@ -437,8 +415,8 @@ pnpm --filter @rnw/api-rs bench                  # Criterion micro-benchmarks
 
 ## Performance testing and monitoring
 
-The api-rs k6 steady/spike/soak scenarios, SLO thresholds, and NestJS-versus-
-Rust baseline table are in [`load-tests/README.md`](load-tests/README.md).
+The api-rs k6 steady/spike/soak scenarios and SLO thresholds are in
+[`load-tests/README.md`](load-tests/README.md).
 Start `docker compose up -d` for Valkey, Prometheus, Grafana, and the OTLP
 collector; the pre-provisioned RED/cache/pool dashboard is at
 http://localhost:3002 when Grafana is running (admin / rnw, override the host

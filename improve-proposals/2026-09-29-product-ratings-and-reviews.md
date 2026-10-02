@@ -3,7 +3,7 @@
 ## Problem / opportunity
 
 `ProductData` (`components-library/src/types/Product.ts`) and the
-`Product` model (`api/prisma/schema.prisma`, lines 14-23) carry no notion
+`Product` model (`api-rs/prisma/schema.prisma`) carry no notion
 of quality signal at all — a shopper has nothing but a title, description,
 image, and price to decide whether a product is any good.
 `ProductDetailScreen.tsx` (the one place a shopper commits to a purchase)
@@ -26,28 +26,35 @@ render product info — following the repo's "shared logic in
 platform-specific review UI.
 
 1. **Schema + migration** — add a `Review` model to
-   `api/prisma/schema.prisma`: `id`, `productId` (FK to `Product`,
+   `api-rs/prisma/schema.prisma`: `id`, `productId` (FK to `Product`,
    `onDelete: Cascade`), `rating Int` (1-5), `comment String?`,
    `authorName String`, `createdAt DateTime @default(now())`. Generate a
-   migration and add a varied mix of ratings/comments per product to
-   `api/prisma/seed.ts` (including some products with zero reviews) so the
-   "no reviews yet" state is exercisable locally.
+   migration (`pnpm --filter @rnw/api-rs db:migrate`) and add a varied mix of
+   ratings/comments per product to `api-rs/prisma/seed.ts` (including some
+   products with zero reviews) so the "no reviews yet" state is exercisable
+   locally.
 
-2. **API** — new `api/src/reviews/` module (mirroring the `products`
-   module's shape: controller + service + `.module.ts` + specs):
+2. **API** — api-rs is a Rust/Axum service, so this means a new handler module
+   under `api-rs/src/handlers/` plus store methods in `api-rs/src/store/`
+   (mirroring how `products` is split today):
    - `GET /products/:id/reviews` — paginated list of a product's reviews,
      newest first (same `page`/`limit`/`hasNextPage` shape
-     `ProductsService.findAll` already returns, for consistency).
+     `handlers/products.rs` already returns, for consistency).
    - `POST /products/:id/reviews` — create a review (`rating`,
      `comment?`, `authorName`); validate `rating` is an integer 1-5 and
-     reject otherwise (NestJS `class-validator` DTO, matching how other
-     inputs in `api/src` are validated).
-   Extend `ProductsService.findAll`/`findOne`
-   (`api/src/products/products.service.ts`) to compute and include
-   `averageRating` and `reviewCount` per product (a Prisma `_avg`/`_count`
-   aggregate on `Review`, or a raw grouped query if that's cheaper at the
-   `findAll` page level) so the list endpoint doesn't require N+1 calls to
-   show a rating on every card.
+     reject otherwise with the same `{message, error, statusCode}` error
+     body every other failure uses (`api-rs/src/error.rs`).
+   Extend the products list/detail queries
+   (`api-rs/src/store/products.rs`) to compute and include `averageRating`
+   and `reviewCount` per product (a `LEFT JOIN` + `GROUP BY` aggregate, or a
+   grouped query if that's cheaper at the list page level) so the list
+   endpoint doesn't require N+1 calls to show a rating on every card.
+
+   Note this proposal turns api-rs into a write path. `GET /products*` is
+   currently safe to cache at the L1/L2/Cloudflare tiers under the blanket
+   `EDGE_CACHE_CONTROL`; any new mutating route needs its own cache policy,
+   and the review aggregates must be invalidated on write or the list will
+   serve stale ratings.
 
 3. **Shared type** — add `averageRating?: number` and `reviewCount: number`
    to `ProductData`, and a new `ReviewData` type (`id`, `rating`,
@@ -80,13 +87,13 @@ platform-specific review UI.
 
 ## Key files/areas
 
-- New: `api/src/reviews/reviews.controller.ts`, `reviews.service.ts`,
-  `reviews.module.ts` (+ specs)
-- Edit: `api/prisma/schema.prisma` (new `Review` model) + generated
-  migration under `api/prisma/migrations/`
-- Edit: `api/prisma/seed.ts` (seed varied ratings/reviews)
-- Edit: `api/src/products/products.service.ts` (+ spec) to include
-  `averageRating`/`reviewCount` in `findAll`/`findOne`
+- New: `api-rs/src/handlers/reviews.rs`, store methods in
+  `api-rs/src/store/reviews.rs`
+- Edit: `api-rs/prisma/schema.prisma` (new `Review` model) + generated
+  migration under `api-rs/prisma/migrations/`
+- Edit: `api-rs/prisma/seed.ts` (seed varied ratings/reviews)
+- Edit: `api-rs/src/store/products.rs` + `api-rs/src/handlers/products.rs` to
+  include `averageRating`/`reviewCount` in list/detail
 - Edit: `components-library/src/types/Product.ts` (extend `ProductData`,
   add `ReviewData`)
 - New: `components-library/src/common/RatingStars/RatingStars.tsx` (+
@@ -104,12 +111,12 @@ platform-specific review UI.
 
 ## Verification
 
-- API: unit tests for `ReviewsService`/`ReviewsController` covering
-  pagination, rating-range validation (rejects 0, 6, non-integers), and
-  cascade delete if a product is removed; `ProductsService` spec extended
-  to assert `averageRating`/`reviewCount` are correct for a product with
-  reviews and default sensibly (e.g. `reviewCount: 0`, no `averageRating`)
-  for one with none.
+- API: Rust unit tests for the review handler/store covering pagination,
+  rating-range validation (rejects 0, 6, non-integers), and cascade delete if
+  a product is removed; a hermetic E2E case in
+  `api-rs/tests/e2e_products.rs` asserting `averageRating`/`reviewCount` are
+  correct for a product with reviews and default sensibly (e.g.
+  `reviewCount: 0`, no `averageRating`) for one with none.
 - `RatingStars.web.test.tsx`: renders the correct filled/empty star count
   per rating value, renders nothing at `reviewCount === 0`.
 - `Product.web.test.tsx` and `ProductDetailScreen.web.test.tsx` extended:

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
-// Assumes the api workspace is already running and seeded (docker compose up
-// + db:migrate + db:seed), same precondition as api's own e2e suite.
+// Assumes api-rs is already running and seeded (docker compose up +
+// pnpm --filter @rnw/api-rs db:migrate + db:seed).
 test("marketplace list navigates to a product detail page", async ({ page }) => {
   await page.goto("/marketplace")
 

@@ -1,8 +1,8 @@
 # api-rs
 
-Rust + Axum implementation of the existing marketplace read API. It serves
-the NestJS contract on port 3001, reads the Prisma-managed PostgreSQL schema,
-and remains an independent, reversible service during the parity/soak period.
+Rust + Axum implementation of the marketplace read API. It serves the contract
+on port 3001, reads the Prisma-managed PostgreSQL schema, and is the only API
+in the repo — the NestJS `api/` it replaced has been decommissioned.
 
 ## Prerequisites
 
@@ -10,9 +10,10 @@ and remains an independent, reversible service during the parity/soak period.
   it automatically). On macOS the linker also needs an accepted Xcode license
   (`sudo xcodebuild -license accept`); without it every `cargo build`/`test`
   fails with `linking with 'cc' failed`.
-- Postgres 17 with the existing Prisma migrations applied.
+- Postgres 17 with the Prisma migrations in `prisma/migrations/` applied.
 - Valkey 8 is optional. Without it, the L1 cache and Postgres path continue to
   serve requests; shared L2 caching and distributed rate limiting fail open.
+- Node + pnpm, for the Prisma CLI that drives migrations and seeding.
 - Docker is needed for the hermetic integration tests.
 - `cargo-llvm-cov` is only needed for `pnpm --filter @rnw/api-rs coverage`
   (`cargo install cargo-llvm-cov`); `test` and `test:e2e` are plain cargo.
@@ -23,19 +24,27 @@ From the repository root:
 
 ```bash
 docker compose up -d postgres valkey
-pnpm --filter @rnw/api db:migrate
-pnpm --filter @rnw/api db:seed
 cp api-rs/.env.example api-rs/.env
+pnpm --filter @rnw/api-rs db:migrate
+pnpm --filter @rnw/api-rs db:seed
 pnpm --filter @rnw/api-rs dev
 ```
 
-`api-rs dev` serves the contract port 3001 that both clients default to, so
-NestJS is excluded from the root `pnpm dev` task. Run `pnpm dev:parity` (which
-uses `api-rs dev:parity`) to move api-rs to 3003 and run NestJS on 3001 beside
-it for response comparisons; Grafana stays on 3002. If `cargo-watch` is
-installed the script watches sources; otherwise it runs `cargo run` once.
-Running Cargo directly in `api-rs/` uses the same default unless `api-rs/.env`
-sets `PORT`.
+`db:migrate` and `db:seed` both run `prisma generate` first, so the seed script
+always finds the generated client. If `cargo-watch` is installed the dev script
+watches sources; otherwise it runs `cargo run` once. Running Cargo directly in
+`api-rs/` uses the same default unless `api-rs/.env` sets `PORT`.
+
+`api-rs dev` serves port 3001, the contract port both clients default to, so it
+is part of the root `pnpm dev` task. Grafana stays on 3002.
+
+## Database ownership
+
+api-rs reads Postgres through sqlx but does **not** own its schema. Migrations
+and seeding stay owned by `prisma/schema.prisma` plus `prisma/migrations/`,
+driven by the Prisma CLI (`prisma.config.ts`) through the `db:*` scripts above
+— do not add a second migration system. `prisma/seed.ts` is the only consumer
+of the generated client; the Rust service never imports it.
 
 ## Environment
 
@@ -62,8 +71,9 @@ sets `PORT`.
 | `OTEL_TRACES_SAMPLE_RATIO` | `0.1` | Trace sampling ratio with the `otlp` feature. |
 
 `GET /products*` responses also carry an operational `X-Cache` header (`miss`,
-`hit-l1`, or `hit-l2`). Response bodies preserve the NestJS JSON field order
-and serialization; edge/cache headers are additive.
+`hit-l1`, or `hit-l2`). Response bodies preserve the documented JSON field order
+and serialization that the web and mobile clients parse; edge/cache headers are
+additive.
 
 ## Tests and quality gates
 
@@ -81,30 +91,15 @@ only a Rust toolchain; the coverage gate is the separate `coverage` script,
 which needs `cargo-llvm-cov`.
 
 Integration tests use testcontainers-rs to start isolated Postgres 17 and
-Valkey 8 containers, apply the current Prisma migrations, seed 25 deterministic
-fixtures, then drive real HTTP. They cover pagination boundaries, exact JSON
-goldens, health readiness and the degraded shapes while the database is down,
-cache behavior, 404 shapes, rate limiting, and Valkey-absent fail-open
-behavior. Docker must be running.
+Valkey 8 containers, apply the Prisma migrations in `prisma/migrations/`, seed
+25 deterministic fixtures, then drive real HTTP. They cover pagination
+boundaries, exact JSON goldens, health readiness and the degraded shapes while
+the database is down, cache behavior, 404 shapes, rate limiting, and
+Valkey-absent fail-open behavior. Docker must be running.
 
-`cargo test --test parity` always compares against committed fixtures. To
-compare against a live NestJS API too, set `PARITY_API_URL` to its base URL;
-the NestJS database must be seeded with the same fixture rows from
-`tests/fixtures/seed.sql` first. Health `responseTime` is normalized before
-comparison.
-
-The NestJS suites in `api/test/*.e2e-spec.ts` drive the app in-process through
-supertest, so they cannot be pointed at a running api-rs process; the same
-assertions are covered over real HTTP instead:
-
-| NestJS e2e spec | api-rs equivalent |
-|---|---|
-| `GET /products` page shape | `e2e_products.rs::product_read_contract_and_pagination_boundaries` |
-| `GET /products?page=2` non-overlapping page | same test, page 1/page 2 id sets |
-| `GET /products/:id` | `e2e_products.rs::detail_404_health_and_cache_are_contract_compatible` |
-| `GET /products/:id` unknown id → 404 | same test, byte-compared body |
-| `GET /health` → 200 | same test plus `parity.rs` golden |
-| page = `-1` → 500 | `parity.rs::responses_match_committed_golden_fixtures` |
+`cargo test --test parity` compares every response byte-for-byte against the
+committed fixtures in `tests/fixtures/`. Health `responseTime` is normalized
+before comparison, since it is timing-dependent by nature.
 
 ## Container
 
@@ -117,5 +112,4 @@ binary with OTLP support. It runs as a non-root user on port 3001. Supply
 The service is stateless across instances. Put the binary behind a load
 balancer and Cloudflare; use a shared Valkey, budget each sqlx pool against
 the primary connection limit, and direct read-only product queries to a
-regional PostgreSQL read pool when replicas are introduced. Migrations and
-seeding remain owned by `api/prisma`—do not add a second migration system.
+regional PostgreSQL read pool when replicas are introduced.

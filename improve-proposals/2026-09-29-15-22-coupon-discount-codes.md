@@ -3,7 +3,7 @@
 ## Problem / opportunity
 
 There is no notion of a promotion anywhere in this codebase — no `Coupon`
-model in `api/prisma/schema.prisma`, no discount field on `ProductData`,
+model in `api-rs/prisma/schema.prisma`, no discount field on `ProductData`,
 and `CheckoutScreen.tsx`
 (`components-library/src/business/CheckoutScreen/CheckoutScreen.tsx`)
 computes the total with a single, unconditional
@@ -41,7 +41,7 @@ here.
 
 ### Database
 
-Add a `Coupon` model to `api/prisma/schema.prisma`:
+Add a `Coupon` model to `api-rs/prisma/schema.prisma`:
 
 ```
 model Coupon {
@@ -58,15 +58,15 @@ model Coupon {
 }
 ```
 
-Generate a migration, and seed 2-3 realistic codes in `api/prisma/seed.ts`
-(e.g. a 10%-off code, a $5-off code with a `minOrderValue`, and one
-`active: false` / expired code to exercise the failure paths).
+Generate a migration (`pnpm --filter @rnw/api-rs db:migrate`), and seed 2-3
+realistic codes in `api-rs/prisma/seed.ts` (e.g. a 10%-off code, a $5-off
+code with a `minOrderValue`, and one `active: false` / expired code to
+exercise the failure paths).
 
 ### API
 
-New `api/src/coupons/` module, mirroring the existing `api/src/products/`
-structure (`coupons.module.ts`, `coupons.controller.ts`,
-`coupons.service.ts`, plus `.spec.ts` files):
+New `api-rs/src/handlers/coupons.rs` plus `api-rs/src/store/coupons.rs`,
+mirroring how `products` is split today:
 
 - `POST /coupons/validate` — body `{ code: string, subtotal: number }`.
   Looks up the code (case-insensitive), checks `active`, `expiresAt`,
@@ -78,12 +78,15 @@ structure (`coupons.module.ts`, `coupons.controller.ts`,
   `"below_minimum_order_value"`) on failure — no redemption-count mutation
   on validate, since a shopper may validate a code, then abandon.
 - `POST /coupons/redeem` — body `{ code: string }`. Atomically increments
-  `redemptions` (single `prisma.coupon.update` with a `WHERE redemptions <
-  maxRedemptions OR maxRedemptions IS NULL` style guard, or re-validate
-  inside a transaction) and returns the updated coupon. Called by the
-  client immediately after "Place Order" succeeds, so a validated-but-
-  abandoned cart never consumes a redemption.
-- Register `CouponsModule` in `api/src/app.module.ts`.
+  `redemptions` (a single `UPDATE ... WHERE redemptions < maxRedemptions OR
+  maxRedemptions IS NULL` guarded statement, or re-validate inside a
+  transaction) and returns the updated coupon. Called by the client
+  immediately after "Place Order" succeeds, so a validated-but-abandoned cart
+  never consumes a redemption.
+- Register the routes in `api-rs/src/app.rs`.
+
+Both routes are `POST`s, so they need `Cache-Control: no-store` — api-rs's
+blanket `EDGE_CACHE_CONTROL` is meant for the read paths only.
 
 ### Web
 
@@ -121,12 +124,11 @@ structure (`coupons.module.ts`, `coupons.controller.ts`,
 
 ## Key files/areas
 
-- New: `api/prisma/schema.prisma` (`Coupon` model) + migration under
-  `api/prisma/migrations/`
-- Edit: `api/prisma/seed.ts` (seed sample coupons)
-- New: `api/src/coupons/coupons.module.ts`, `coupons.controller.ts`,
-  `coupons.service.ts` (+ `.spec.ts` files mirroring `api/src/products/`)
-- Edit: `api/src/app.module.ts` (register `CouponsModule`)
+- Edit: `api-rs/prisma/schema.prisma` (`Coupon` model) + migration under
+  `api-rs/prisma/migrations/`
+- Edit: `api-rs/prisma/seed.ts` (seed sample coupons)
+- New: `api-rs/src/handlers/coupons.rs`, `api-rs/src/store/coupons.rs`
+- Edit: `api-rs/src/app.rs` (register the coupon routes)
 - New: `components-library/src/types/Coupon.ts`
 - Edit: `components-library/src/business/CheckoutScreen/CheckoutScreen.tsx`
   (coupon input, discount line, `onValidateCoupon`/`onRedeemCoupon` props)
@@ -138,12 +140,12 @@ structure (`coupons.module.ts`, `coupons.controller.ts`,
 
 ## Verification
 
-- API: `coupons.service.spec.ts`/`coupons.controller.spec.ts` covering
-  valid-code discount math (both `PERCENT` and `FIXED`), expired code,
-  inactive code, below-minimum-order-value, redemption-limit-reached, and
-  that `POST /coupons/redeem` correctly increments `redemptions` and
-  refuses once the cap is hit (including a concurrent-redemption case if
-  the guard is transaction-based).
+- API: Rust unit tests for the coupons handler/store plus a hermetic E2E
+  case in `api-rs/tests/`, covering valid-code discount math (both `PERCENT`
+  and `FIXED`), expired code, inactive code, below-minimum-order-value,
+  redemption-limit-reached, and that `POST /coupons/redeem` correctly
+  increments `redemptions` and refuses once the cap is hit (including a
+  concurrent-redemption case if the guard is transaction-based).
 - `CheckoutScreen.web.test.tsx` extended: applying a valid code updates the
   displayed total and shows the discount line; an invalid/expired code
   shows the inline error and leaves the total unchanged; `onRedeemCoupon`

@@ -6,7 +6,7 @@
 is currently a stub: "Place Order" just reads the cart total, stores it in
 local component state (`placedTotal`), and clears `useCartStore`. Nothing
 is sent to the API — there is no `Order` model in
-`api/prisma/schema.prisma`, no `POST /orders` endpoint, and no order id is
+`api-rs/prisma/schema.prisma`, no `POST /orders` endpoint, and no order id is
 ever generated. Once a shopper leaves the "Order placed!" screen, every
 trace of that purchase is gone; there is no way to see what was bought,
 when, or for how much. This is distinct from the five other proposals in
@@ -32,16 +32,21 @@ in `web-application`/`mobile-application`, matching this repo's existing
 pattern for `ProductListScreen`/`CartScreen`/`CheckoutScreen`:
 
 1. **API — persist the order.** Add an `Order`/`OrderItem` Prisma model to
-   `api/prisma/schema.prisma` (`Order { id, createdAt, totalPrice,
+   `api-rs/prisma/schema.prisma` (`Order { id, createdAt, totalPrice,
    currency }`, `OrderItem { id, orderId, productId, title, unitPrice,
    quantity }` — snapshot `title`/`unitPrice` on the item rather than just
    a `Product` relation, so a later price or title change doesn't rewrite
-   history). Add an `api/src/orders/` module (`orders.module.ts`,
-   `orders.controller.ts`, `orders.service.ts`, mirroring
-   `api/src/products/`) exposing `POST /orders` (body: cart line items,
-   returns the created order with its id) and `GET /orders?ids=id1,id2`
-   (returns the matching orders, newest first) — no auth, no user
-   scoping, since the device already knows which order ids are "its own."
+   history), then migrate with `pnpm --filter @rnw/api-rs db:migrate`. Add an
+   `api-rs/src/handlers/orders.rs` plus `api-rs/src/store/orders.rs`
+   (mirroring how `products` is split today) exposing `POST /orders` (body:
+   cart line items, returns the created order with its id) and
+   `GET /orders?ids=id1,id2` (returns the matching orders, newest first) — no
+   auth, no user scoping, since the device already knows which order ids are
+   "its own."
+
+   As with the reviews proposal, this is api-rs's first write path: `POST`
+   needs its own `Cache-Control` (never cacheable), and the response must not
+   be stored under the shared L1/L2 tiers the read routes use.
 
 2. **Web/mobile API clients** — add `createOrder` and `fetchOrders`
    functions to `web-application/lib/api.ts` and
@@ -83,11 +88,10 @@ pattern for `ProductListScreen`/`CartScreen`/`CheckoutScreen`:
 
 ## Key files/areas
 
-- New: `api/prisma/schema.prisma` (`Order`, `OrderItem` models) + a
-  migration under `api/prisma/migrations/`
-- New: `api/src/orders/orders.module.ts`, `orders.controller.ts`,
-  `orders.service.ts` (+ `.spec.ts` files mirroring `api/src/products/`)
-- Edit: `api/src/app.module.ts` (register `OrdersModule`)
+- Edit: `api-rs/prisma/schema.prisma` (`Order`, `OrderItem` models) + a
+  migration under `api-rs/prisma/migrations/`
+- New: `api-rs/src/handlers/orders.rs`, `api-rs/src/store/orders.rs`
+- Edit: `api-rs/src/app.rs` (register the `/orders` routes)
 - Edit: `web-application/lib/api.ts`, `mobile-application/src/api/client.ts`
   (`createOrder`, `fetchOrders`)
 - New: `components-library/src/business/CheckoutScreen/useOrderHistoryStore.ts`
@@ -102,9 +106,9 @@ pattern for `ProductListScreen`/`CartScreen`/`CheckoutScreen`:
 
 ## Verification
 
-- `orders.service.spec.ts`/`orders.controller.spec.ts` covering order
-  creation (line-item snapshotting, total computation) and lookup by ids,
-  mirroring `products.service.spec.ts`/`products.controller.spec.ts`.
+- Rust unit tests for the orders handler/store covering order creation
+  (line-item snapshotting, total computation) and lookup by ids, plus a
+  hermetic E2E case in `api-rs/tests/` mirroring the products coverage.
 - Unit tests for `useOrderHistoryStore.ts` (add id, persistence
   round-trip) mirroring `useCartStore.test.ts`.
 - `CheckoutScreen.web.test.tsx` extended to cover `onPlaceOrder` being
