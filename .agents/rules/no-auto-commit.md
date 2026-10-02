@@ -9,7 +9,9 @@ without interruption.
 
 Commit and push only when:
 - the user explicitly asks in their message, or
-- the user runs the `/cc-commit` command (see `.claude/skills/cc-commit/SKILL.md`).
+- the user invokes the repository's commit-and-push workflow (see
+  `.agents/skills/commit-and-push/SKILL.md`; Claude Code and OpenCode expose it
+  as `/cc-commit`).
 
 The point is a human review step between "the change exists" and "the
 change is in git history" — always leave that gap open.

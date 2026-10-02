@@ -8,7 +8,7 @@ the *same* one — must have exactly one implementation, in
 Never build a parallel per-platform version of a shared piece of UI (e.g. a
 web-specific nav bar and a separately hand-built mobile nav bar that just
 happen to look alike). If a component needs different wiring per platform
-(web `href`/routing vs. native `onPress`/React Navigation), keep that
+(web `href`/routing vs. native `onPress`/Expo Router), keep that
 difference in a thin per-app wrapper that supplies props/callbacks to the
 shared component — the shared component itself stays platform-agnostic
 beyond genuinely unavoidable cases (e.g. `Platform.OS` branching for a real
