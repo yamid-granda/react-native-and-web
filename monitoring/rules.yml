@@ -1,0 +1,42 @@
+groups:
+  - name: api-rs
+    rules:
+      - alert: ApiRsHighP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_requests_duration_seconds_bucket[5m]))) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: api-rs p95 latency exceeds 100 ms
+
+      - alert: ApiRsHighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[2m])) / clamp_min(sum(rate(http_requests_total[2m])), 0.001) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: api-rs 5xx rate exceeds 1%
+
+      - alert: ApiRsPoolAcquireLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(sqlx_pool_acquire_seconds_bucket[5m]))) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: sqlx pool acquisition p95 exceeds 50 ms
+
+      - alert: ApiRsValkeyUnavailable
+        expr: increase(cache_l2_errors_total[2m]) > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: Valkey cache operations are failing; service is using fail-open path
+
+      - alert: ApiRsLoadShed
+        expr: increase(http_load_shed_total[1m]) > 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: api-rs is shedding requests at a concurrency limit

@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  # `pnpm dev` runs api-rs on 3003 beside NestJS (3001); Grafana owns 3002.
+  # If you run api-rs on the contract port instead, change this target to
+  # host.docker.internal:3001.
+  - job_name: api-rs
+    metrics_path: /metrics
+    static_configs:
+      - targets: [host.docker.internal:3003]

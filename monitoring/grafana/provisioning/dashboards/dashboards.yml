@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: api-rs
+    orgId: 1
+    folder: Marketplace API
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
