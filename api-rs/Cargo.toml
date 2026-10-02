@@ -1,0 +1,85 @@
+[package]
+name = "api-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+name = "api_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "api-rs"
+path = "src/main.rs"
+
+[features]
+default = []
+# OTLP trace export is opt-in: it pulls the opentelemetry/tonic stack, which
+# roughly doubles a cold build. /metrics + JSON logs work without it.
+otlp = [
+  "dep:opentelemetry",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-otlp",
+  "dep:tracing-opentelemetry",
+]
+
+[dependencies]
+async-trait = "0.1"
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+dotenvy = "0.15"
+form_urlencoded = "1"
+memory-stats = "1"
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+moka = { version = "0.12", features = ["future"] }
+redis = { version = "1", features = ["connection-manager", "tokio-comp"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sqlx = { version = "0.9", default-features = false, features = [
+  "chrono",
+  "macros",
+  "postgres",
+  "runtime-tokio",
+  "tls-rustls-ring",
+] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = [
+  "compression-br",
+  "compression-deflate",
+  "compression-gzip",
+  "cors",
+  "timeout",
+  "trace",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+opentelemetry = { version = "0.33", optional = true }
+opentelemetry-otlp = { version = "0.33", optional = true, features = [
+  "grpc-tonic",
+  "trace",
+] }
+opentelemetry_sdk = { version = "0.33", optional = true, features = ["rt-tokio"] }
+tracing-opentelemetry = { version = "0.34", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.8", features = ["async_tokio"] }
+http-body-util = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+testcontainers = "0.27"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[[bench]]
+name = "handlers"
+harness = false

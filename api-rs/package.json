@@ -1,0 +1,16 @@
+{
+  "name": "@rnw/api-rs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "sh scripts/dev.sh",
+    "build": "cargo build --release",
+    "start": "cargo run --release",
+    "lint": "cargo fmt --check && cargo clippy --all-targets -- -D warnings",
+    "typecheck": "cargo check --all-targets",
+    "test": "cargo test --lib",
+    "test:e2e": "cargo test --test e2e_products --test parity",
+    "coverage": "cargo llvm-cov --workspace --fail-under-lines 80 --lcov --output-path lcov.info",
+    "bench": "cargo bench"
+  }
+}

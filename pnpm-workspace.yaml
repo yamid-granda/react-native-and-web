@@ -3,6 +3,7 @@ packages:
   - "web-application"
   - "mobile-application"
   - "api"
+  - "api-rs"
 
 catalog:
   typescript: ^6.0.3

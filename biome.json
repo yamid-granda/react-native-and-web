@@ -18,6 +18,7 @@
       "!**/playwright-report",
       "!**/test-results",
       "!**/generated",
+      "!**/tests/fixtures",
       "!**/pnpm-lock.yaml",
       "!**/*.css",
       "!**/public"
