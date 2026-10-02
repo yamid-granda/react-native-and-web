@@ -47,6 +47,3 @@ api-rs/generated/
 # misc
 *.pem
 .env.vault
-
-# runtime lock file for /cc-auto-plan-mode, never meant to be committed
-.claude/.auto-plan-mode-active
