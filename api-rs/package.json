@@ -2,9 +2,9 @@
   "name": "@rnw/api-rs",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "sh scripts/dev.sh",
-    "dev:parity": "PORT=3003 sh scripts/dev.sh",
     "build": "cargo build --release",
     "start": "cargo run --release",
     "lint": "cargo fmt --check && cargo clippy --all-targets -- -D warnings",
@@ -12,6 +12,17 @@
     "test": "cargo test --lib",
     "test:e2e": "cargo test --test e2e_products --test parity",
     "coverage": "cargo llvm-cov --workspace --fail-under-lines 80 --lcov --output-path lcov.info",
-    "bench": "cargo bench"
+    "bench": "cargo bench",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev && prisma generate",
+    "db:seed": "prisma generate && prisma db seed"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.9.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "dotenv": "^18.0.3",
+    "prisma": "^7.10.0",
+    "tsx": "^4.19.0"
   }
 }

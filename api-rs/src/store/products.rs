@@ -4,9 +4,9 @@ use chrono::NaiveDateTime;
 use sqlx::pool::PoolConnection;
 use sqlx::{FromRow, PgPool, Postgres};
 
-/// Mirrors `ProductsService` (`api/src/products/products.service.ts`): the
-/// page size fixed at 20, `createdAt ASC, id ASC` ordering (id tiebreaker for
-/// bulk-seeded rows sharing a timestamp), and a separate `COUNT(*)`.
+/// The marketplace list contract: the page size fixed at 20, `createdAt ASC,
+/// id ASC` ordering (id tiebreaker for bulk-seeded rows sharing a timestamp),
+/// and a separate `COUNT(*)`.
 pub const PAGE_SIZE: i64 = 20;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -121,7 +121,8 @@ impl ProductStore for SqlProductStore {
 
     async fn ping(&self) -> Result<(), StoreError> {
         let mut connection = self.acquire().await?;
-        // Same probe terminus's PrismaHealthIndicator ends up running.
+        // One round trip against the primary, so a cold connection shows up as
+        // a failed health check rather than a silent success.
         sqlx::query("SELECT 1").execute(&mut *connection).await?;
         Ok(())
     }

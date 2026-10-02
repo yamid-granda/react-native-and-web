@@ -106,8 +106,8 @@ fn colima_socket() -> Option<PathBuf> {
 }
 
 /// A router wired to a store whose pool points at a closed port, so every
-/// query fails. Covers the degraded `/health` body and the Nest-compatible 500
-/// a product read returns while the database is down.
+/// query fails. Covers the degraded `/health` body and the contract-compatible
+/// 500 a product read returns while the database is down.
 pub struct UnreachableDbStack {
     pub base_url: String,
     _server: JoinHandle<()>,
@@ -232,11 +232,11 @@ async fn spawn_server(state: AppState) -> (String, JoinHandle<()>) {
 }
 
 async fn apply_migrations(pool: &PgPool) {
-    sqlx::raw_sql(include_str!("../../../api/prisma/migrations/20260926133034/migration.sql"))
+    sqlx::raw_sql(include_str!("../../prisma/migrations/20260926133034/migration.sql"))
         .execute(pool)
         .await
         .expect("apply initial Prisma migration");
-    sqlx::raw_sql(include_str!("../../../api/prisma/migrations/20260929101635/migration.sql"))
+    sqlx::raw_sql(include_str!("../../prisma/migrations/20260929101635/migration.sql"))
         .execute(pool)
         .await
         .expect("apply stock Prisma migration");

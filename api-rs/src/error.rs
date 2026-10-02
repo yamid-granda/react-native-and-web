@@ -12,8 +12,8 @@ pub const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 pub enum AppError {
     #[error("product {0} not found")]
     ProductNotFound(String),
-    /// `?page=` values that survive JS coercion but fail Prisma's positive
-    /// `Int` validation of `skip` surface as Nest's generic 500.
+    /// `?page=` values that survive JS coercion but fail the positive-offset
+    /// validation in [`crate::handlers::products`] surface as the generic 500.
     #[error("invalid pagination")]
     InvalidPagination,
     #[error(transparent)]
@@ -22,10 +22,10 @@ pub enum AppError {
     Serialization(#[from] serde_json::Error),
 }
 
-/// Body of `new NotFoundException(msg)` / the router's not-found handler:
-/// `HttpException.createBody` inserts `message`, `error`, `statusCode`.
+/// The error body shape shared by every 404/429/503 response:
+/// `message`, `error`, `statusCode`, in that key order.
 #[derive(Serialize)]
-pub struct NestErrorBody {
+pub struct ErrorBody {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<&'static str>,
@@ -33,14 +33,14 @@ pub struct NestErrorBody {
     pub status_code: u16,
 }
 
-impl NestErrorBody {
+impl ErrorBody {
     pub fn to_vec(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("error body always serializes")
     }
 }
 
-/// Body of an unhandled exception: `BaseExceptionFilter.handleUnknownError`
-/// inserts `statusCode` first, then `message`, and no `error` key.
+/// Body of an unhandled exception: `statusCode` first, then `message`, and no
+/// `error` key.
 fn internal_error_body() -> Vec<u8> {
     #[derive(Serialize)]
     struct InternalErrorBody {
@@ -64,7 +64,7 @@ impl AppError {
 
     pub fn body(&self) -> Vec<u8> {
         match self {
-            Self::ProductNotFound(id) => NestErrorBody {
+            Self::ProductNotFound(id) => ErrorBody {
                 message: format!("Product {id} not found"),
                 error: Some("Not Found"),
                 status_code: 404,
@@ -85,7 +85,9 @@ impl IntoResponse for AppError {
     }
 }
 
-/// Express's `res.json` weak ETag: `W/"<body length hex>-<sha1 base64 [0..27]>"`.
+/// The weak ETag every JSON response carries:
+/// `W/"<body length hex>-<sha1 base64 [0..27]>"`, so caches and browsers can
+/// revalidate a 304 without refetching the body.
 pub fn weak_etag(body: &[u8]) -> HeaderValue {
     let digest = Sha1::digest(body);
     let encoded = base64::engine::general_purpose::STANDARD.encode(digest);
@@ -93,8 +95,8 @@ pub fn weak_etag(body: &[u8]) -> HeaderValue {
         .expect("etag is ASCII")
 }
 
-/// `If-None-Match` comparison with weak matching, per the `fresh` package
-/// Express uses (only ever reached when we generated an ETag ourselves).
+/// `If-None-Match` comparison with weak matching, per RFC 9110 (only ever
+/// reached when we generated an ETag ourselves).
 pub fn etag_matches(if_none_match: &HeaderValue, etag: &HeaderValue) -> bool {
     let Ok(raw) = if_none_match.to_str() else { return false };
     if raw.trim() == "*" {
@@ -109,10 +111,9 @@ pub fn etag_matches(if_none_match: &HeaderValue, etag: &HeaderValue) -> bool {
     })
 }
 
-/// Builds a JSON response the way Express's `res.json` does: charset-tagged
-/// content type, weak ETag, and — when `conditional` carries the request
-/// method/headers — `If-None-Match` revalidation collapsing to a 304 with the
-/// content headers stripped.
+/// Builds a JSON response: charset-tagged content type, weak ETag, and — when
+/// `conditional` carries the request method/headers — `If-None-Match`
+/// revalidation collapsing to a 304 with the content headers stripped.
 pub fn json_response(
     status: StatusCode,
     body: Vec<u8>,
@@ -146,7 +147,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn not_found_body_matches_nest_key_order() {
+    fn not_found_body_has_contract_key_order() {
         let error = AppError::ProductNotFound("prod-x".to_string());
         assert_eq!(
             String::from_utf8(error.body()).unwrap(),
@@ -156,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn internal_error_body_matches_nest_key_order() {
+    fn internal_error_body_has_contract_key_order() {
         let error = AppError::InvalidPagination;
         assert_eq!(
             String::from_utf8(error.body()).unwrap(),
@@ -166,12 +167,11 @@ mod tests {
     }
 
     #[test]
-    fn etag_format_matches_express() {
-        // Node's `etag` package: sha1 → base64 → first 27 chars, prefixed with
-        // the byte length in hex. Verified against
-        // `crypto.createHash("sha1").update("{\"a\":1}").digest("base64")`,
-        // which is `n4nHQM60bXQYySSnisV5QdXpZSA`; the empty case is the
-        // constant that package hardcodes.
+    fn weak_etag_is_length_prefixed_sha1() {
+        // sha1 → base64 → first 27 chars, prefixed with the byte length in
+        // hex. For `{"a":1}` the base64 sha1 is
+        // `n4nHQM60bXQYySSnisV5QdXpZSA`; the empty case is the constant the
+        // sha1 of no bytes produces.
         let etag = weak_etag(br#"{"a":1}"#);
         assert_eq!(etag.to_str().unwrap(), "W/\"7-n4nHQM60bXQYySSnisV5QdXpZSA\"");
         assert_eq!(weak_etag(b"").to_str().unwrap(), "W/\"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk\"");
@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn json_response_sets_express_headers() {
+    fn json_response_sets_charset_content_type() {
         let response = json_response(StatusCode::OK, b"{}".to_vec(), &[], None);
         assert_eq!(
             response.headers().get(header::CONTENT_TYPE).unwrap(),

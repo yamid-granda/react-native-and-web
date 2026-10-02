@@ -124,8 +124,8 @@ async fn degraded_shapes_while_the_database_is_down() {
     assert!(health["error"]["database"]["message"].as_str().is_some_and(|m| !m.is_empty()));
     assert!(health["info"]["database"].is_null());
 
-    // Reads fall back to Nest's unhandled-exception body instead of leaking
-    // the driver's error text to clients.
+    // Reads fall back to the generic unhandled-exception body instead of
+    // leaking the driver's error text to clients.
     let response = client.get(format!("{}/products", stack.base_url)).send().await.unwrap();
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(

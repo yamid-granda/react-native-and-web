@@ -9,10 +9,6 @@
     "build-storybook": {
       "outputs": ["storybook-static/**"]
     },
-    "api#build": {
-      "dependsOn": ["^build", "db:generate"],
-      "outputs": ["dist/**"]
-    },
     "api-rs#build": {
       "dependsOn": [],
       "outputs": ["target/release/api-rs"]
@@ -52,10 +48,6 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
-    "api#test": {
-      "dependsOn": ["^build", "db:generate"],
-      "outputs": []
-    },
     "test:e2e": {
       "dependsOn": ["build"],
       "cache": false
@@ -63,10 +55,6 @@
     "storybook": {
       "cache": false,
       "persistent": true
-    },
-    "db:generate": {
-      "cache": false,
-      "outputs": []
     }
   }
 }

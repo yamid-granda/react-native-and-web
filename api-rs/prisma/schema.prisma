@@ -1,13 +1,16 @@
 // Connection URL lives in prisma.config.ts (CLI/migrate) and is passed to
-// PrismaClient via a driver adapter at runtime (src/prisma/prisma.service.ts)
-// — Prisma ORM 7 no longer reads `url` from this block.
+// PrismaClient via a driver adapter by prisma/seed.ts — Prisma ORM 7 no longer
+// reads `url` from this block.
 datasource db {
   provider = "postgresql"
 }
 
+// Only the seed script consumes this client; api-rs itself reads Postgres
+// through sqlx. `generated/` is gitignored, so run `pnpm db:generate` before
+// `pnpm db:seed`.
 generator client {
   provider     = "prisma-client"
-  output       = "../src/generated/prisma"
+  output       = "../generated/prisma"
   moduleFormat = "esm"
 }
 

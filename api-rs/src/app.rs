@@ -16,7 +16,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::cache::{CacheTier, L1Cache, L2Cache};
 use crate::config::Config;
-use crate::error::{json_response, NestErrorBody};
+use crate::error::{json_response, ErrorBody};
 use crate::handlers::{health, products};
 use crate::middleware::rate_limit::{self, RateLimiter};
 use crate::store::ProductStore;
@@ -54,8 +54,8 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(health::health))
-        // Method-level fallbacks keep Nest's parity: a POST to a GET-only
-        // route is `Cannot POST /products` (404), not axum's default 405.
+        // Method-level fallbacks pin the documented 404 contract: a POST to a
+        // GET-only route is `Cannot POST /products`, not axum's default 405.
         .route("/products", get(products::list).fallback(any(fallback)))
         .route("/products/{id}", get(products::detail).fallback(any(fallback)))
         .route("/metrics", get(metrics_handler))
@@ -71,9 +71,8 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Mirrors `app.enableCors({ origin: "http://localhost:3000" })` in
-/// `api/src/main.ts` (the `cors` package defaults to reflecting the
-/// preflight's requested method/headers).
+/// Single-origin CORS for the web client, reflecting the preflight's requested
+/// methods and headers so the browser can send the real request.
 fn cors_layer(config: &Config) -> CorsLayer {
     let origin = config
         .cors_origin
@@ -127,8 +126,9 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
     }
 }
 
-/// Nest's `routes-resolver` not-found handler: `Cannot ${method} ${url}`,
-/// with `url` including the query string, and Express's JSON error shape.
+/// Unmatched-route and wrong-method handler: `Cannot ${method} ${url}`, with
+/// `url` including the query string, in the same JSON error shape as every
+/// other 404.
 pub async fn fallback(request: Request) -> Response {
     let (parts, _body) = request.into_parts();
     metrics::counter!(
@@ -140,7 +140,7 @@ pub async fn fallback(request: Request) -> Response {
     .increment(1);
 
     let url = parts.uri.path_and_query().map_or(parts.uri.path(), |pq| pq.as_str());
-    let body = NestErrorBody {
+    let body = ErrorBody {
         message: format!("Cannot {} {}", parts.method, url),
         error: Some("Not Found"),
         status_code: 404,
@@ -148,8 +148,8 @@ pub async fn fallback(request: Request) -> Response {
     json_response(StatusCode::NOT_FOUND, body.to_vec(), &[], Some((&parts.method, &parts.headers)))
 }
 
-/// Method check kept explicit for parity with Express, which auto-routes HEAD
-/// to GET handlers; axum's `get` does the same, and this documents OPTIONS.
+/// axum's `get` already routes HEAD to GET handlers; this documents that
+/// OPTIONS is answered by the CORS layer too.
 #[allow(dead_code)]
 fn supported_methods() -> [Method; 3] {
     [Method::GET, Method::HEAD, Method::OPTIONS]
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unmatched_route_matches_nest_404() {
+    async fn unmatched_route_returns_cannot_method_url_404() {
         let response = router(test_state())
             .oneshot(axum::http::Request::builder().uri("/nope?x=1").body(Body::empty()).unwrap())
             .await
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wrong_method_matches_nest_404_not_405() {
+    async fn wrong_method_returns_404_not_405() {
         let response = router(test_state())
             .oneshot(
                 axum::http::Request::builder()
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cors_mirrors_nest_config() {
+    async fn cors_allows_configured_origin() {
         let response = router(test_state())
             .oneshot(
                 axum::http::Request::builder()

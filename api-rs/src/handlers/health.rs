@@ -8,10 +8,10 @@ use serde::Serialize;
 use crate::app::AppState;
 use crate::error::json_response;
 
-/// Terminus body: `{status, info, error, details}` with the `database`
+/// The `/health` contract: `{status, info, error, details}` with the `database`
 /// indicator detail carrying `responseTime` (whole milliseconds, measured
-/// around the ping) and, when down, a `message`. Key order matches terminus's
-/// `HealthIndicatorSession.compose` output.
+/// around the ping) and, when down, a `message`. Key order is fixed because the
+/// committed golden fixtures in `tests/fixtures/` byte-compare it.
 #[derive(Serialize)]
 struct HealthBody {
     status: &'static str,
@@ -65,8 +65,8 @@ pub async fn health(State(state): State<AppState>, request: Request) -> Response
             )
         }
         Ok(Err(error)) => {
-            // terminus puts the thrown error's `message` here; ours is the
-            // sqlx error text — same shape, implementation-specific text.
+            // The thrown error's `message` goes here; ours is the sqlx error
+            // text — same shape, implementation-specific text.
             down_body(error.to_string(), response_time)
         }
         Err(_elapsed) => {
@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn up_body_matches_terminus() {
+    fn up_body_has_contract_key_order() {
         let body = HealthBody {
             status: "ok",
             info: Summary { database: Some(up(3)) },
@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn down_body_matches_terminus() {
+    fn down_body_has_contract_key_order() {
         let (status, body) = down_body("db went away".to_string(), 7);
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(

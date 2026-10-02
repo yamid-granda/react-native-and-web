@@ -54,22 +54,5 @@
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "off" } }
-  },
-  "overrides": [
-    {
-      "includes": ["api/src/**", "api/test/**"],
-      "javascript": {
-        "parser": {
-          "unsafeParameterDecoratorsEnabled": true
-        }
-      },
-      "linter": {
-        "rules": {
-          "style": {
-            "useImportType": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

@@ -12,7 +12,7 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 use crate::app::AppState;
 use crate::config::Config;
-use crate::error::{json_response, NestErrorBody};
+use crate::error::{json_response, ErrorBody};
 
 /// Load protection, deliberately shed before the database can be taken down:
 /// in-process concurrency semaphores (global + per-IP) return 503 when
@@ -176,7 +176,7 @@ pub fn client_ip(headers: &HeaderMap, peer: Option<&SocketAddr>) -> String {
 }
 
 pub fn limited_response() -> Response {
-    let body = NestErrorBody {
+    let body = ErrorBody {
         message: "Too Many Requests".to_string(),
         error: Some("Too Many Requests"),
         status_code: 429,
@@ -185,7 +185,7 @@ pub fn limited_response() -> Response {
 }
 
 pub fn shed_response() -> Response {
-    let body = NestErrorBody {
+    let body = ErrorBody {
         message: "Service Unavailable".to_string(),
         error: Some("Service Unavailable"),
         status_code: 503,

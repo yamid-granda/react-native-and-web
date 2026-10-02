@@ -11,8 +11,8 @@ use crate::error::{json_response, AppError};
 use crate::serde_js::{js_number, js_number_or_nan, prisma_datetime};
 use crate::store::{Product, PAGE_SIZE};
 
-/// Field order and value encoding mirror what the Prisma client hands to
-/// `res.json` in the NestJS API: schema field order, `JSON.stringify` number
+/// Field order and value encoding match the marketplace contract the web and
+/// mobile clients parse: schema field order, `JSON.stringify` number
 /// formatting, and `toISOString()` datetimes.
 #[derive(Serialize)]
 pub struct ProductJson {
@@ -57,19 +57,18 @@ pub struct ProductsPageJson {
 
 pub struct PageQuery {
     pub page: f64,
-    /// The float `skip` exactly as the NestJS controller computes it.
+    /// The float `skip` exactly as the page calculation produces it.
     /// `hasNextPage` is derived from this value, so it stays unwrapped.
     pub skip: f64,
     /// What Prisma actually sends as `OFFSET` — see [`prisma_offset`].
     pub offset: i64,
 }
 
-/// Mirrors `Number(page) || 1` in `products.controller.ts` and the narrowing
-/// Prisma applies to `skip` before it reaches Postgres. Measured against the
-/// running NestJS service rather than assumed, because the interesting cases
-/// are not the ones the Prisma types suggest:
+/// `Number(page) || 1` plus the narrowing Prisma applies to `skip` before it
+/// reaches Postgres. Verified against a running service rather than assumed,
+/// because the interesting cases are not the ones the Prisma types suggest:
 ///
-/// | `?page=` | `skip` | NestJS result |
+/// | `?page=` | `skip` | Result |
 /// |---|---|---|
 /// | `2.5` | `30` | `OFFSET 30`, 200 |
 /// | `2.3` | `25.999999999999996` | `OFFSET 26`, 200 — *not* a validation error |
@@ -86,8 +85,8 @@ pub fn parse_page(raw_query: Option<&str>) -> Result<PageQuery, AppError> {
     let parsed = match values.len() {
         0 => 1.0,
         1 => js_number_or_nan(&values[0]),
-        // Express hands repeated params to Number() as an array; arrays with
-        // more than one element coerce to NaN, which `|| 1` turns into 1.
+        // Repeated `page` params are handed to `Number()` as an array; arrays
+        // with more than one element coerce to NaN, which `|| 1` turns into 1.
         _ => f64::NAN,
     };
     // `|| 1`: NaN and (negative) zero are falsy.
@@ -100,7 +99,7 @@ pub fn parse_page(raw_query: Option<&str>) -> Result<PageQuery, AppError> {
 }
 
 /// Prisma keeps 15 significant digits, truncates toward zero, rejects a
-/// negative result or one that will not fit an i64 (both surface as Nest's
+/// negative result or one that will not fit an i64 (both surface as the
 /// generic 500), then narrows what is left into a u32 — which is where huge
 /// page numbers wrap instead of failing.
 fn prisma_offset(skip: f64) -> Result<i64, AppError> {
@@ -187,7 +186,7 @@ pub async fn detail(
 }
 
 /// `Cache-Control` for the Cloudflare edge tier plus an operational `X-Cache`
-/// marker. Additive headers only — bodies stay byte-identical to Nest's.
+/// marker. Additive headers only — bodies stay byte-identical.
 fn product_headers(state: &AppState, source: Option<HitSource>) -> Vec<(HeaderName, HeaderValue)> {
     let cache_control = HeaderValue::from_str(&state.config.edge_cache_control)
         .unwrap_or_else(|_| HeaderValue::from_static("public"));
@@ -219,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn page_param_matches_nest_coercion() {
+    fn page_param_follows_js_coercion() {
         // `parse_page` takes a raw query string, so the value has to be
         // wrapped in `page=` — otherwise it is parsed as an unrelated key and
         // every case below would silently degrade to the "no page" default.
@@ -235,14 +234,14 @@ mod tests {
         assert_eq!(ok(" 3 ").offset, 40);
         assert_eq!(ok("1e2").page, 100.0);
         assert_eq!(ok("2.0").page, 2.0);
-        // Express: repeated params become an array → Number([...]) is NaN → 1.
+        // Repeated params become an array → Number([...]) is NaN → 1.
         assert_eq!(parse_page(Some("page=4&page=5")).unwrap().page, 1.0);
     }
 
     #[test]
-    fn prisma_skip_validation_matches_nest() {
+    fn prisma_skip_validation_rejects_out_of_range_offsets() {
         let ok = |q: &str| parse_page(Some(&format!("page={q}"))).unwrap();
-        // Negative skips Prisma refuses, which Nest answers with a 500.
+        // Negative skips Prisma refuses, which we answer with a 500.
         assert!(matches!(parse_page(Some("page=-1")), Err(AppError::InvalidPagination)));
         assert!(matches!(parse_page(Some("page=0.5")), Err(AppError::InvalidPagination)));
         assert!(matches!(parse_page(Some("page=0.95")), Err(AppError::InvalidPagination)));

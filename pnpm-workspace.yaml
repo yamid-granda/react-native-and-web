@@ -2,7 +2,6 @@ packages:
   - "components-library"
   - "web-application"
   - "mobile-application"
-  - "api"
   - "api-rs"
 
 catalog:

@@ -1,9 +1,8 @@
 #!/bin/sh
 set -eu
 
-# 3001 is the contract port both clients default to, so api-rs takes it over in
-# dev; `dev:parity` sets 3003 to run beside NestJS (which then keeps 3001) so
-# neither shadows the other and Grafana stays on 3002.
+# 3001 is the contract port both clients default to, so api-rs owns it; Grafana
+# keeps 3002. Override with PORT to run a second instance elsewhere.
 export PORT="${PORT:-3001}"
 
 # Until the Xcode license is accepted, every build script and proc-macro fails

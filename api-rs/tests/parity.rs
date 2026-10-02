@@ -81,34 +81,3 @@ async fn responses_match_committed_golden_fixtures() {
         include_str!("fixtures/health-up.json")
     );
 }
-
-#[tokio::test]
-async fn optionally_compares_live_nest_api() {
-    let Ok(nest_url) = std::env::var("PARITY_API_URL") else {
-        return;
-    };
-    let stack = common::TestStack::start(true, |_| {}).await;
-    let client = Client::new();
-
-    for path in [
-        "/products?page=1",
-        "/products?page=2",
-        "/products/prod-1",
-        "/products/does-not-exist",
-        "/nope?x=1",
-        "/health",
-    ] {
-        let rust = client.get(format!("{}{path}", stack.base_url)).send().await.unwrap();
-        let nest =
-            client.get(format!("{}{path}", nest_url.trim_end_matches('/'))).send().await.unwrap();
-        assert_eq!(rust.status(), nest.status(), "status mismatch on {path}");
-        let rust_body = rust.text().await.unwrap();
-        let nest_body = nest.text().await.unwrap();
-        let (rust_body, nest_body) = if path == "/health" {
-            (normalize_health(rust_body), normalize_health(nest_body))
-        } else {
-            (rust_body, nest_body)
-        };
-        assert_eq!(rust_body, nest_body, "body mismatch on {path}");
-    }
-}
