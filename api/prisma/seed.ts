@@ -70,7 +70,12 @@ const products = [
 // existing idempotency intent for the hand-picked products above.
 faker.seed(20260928)
 
-const generatedProducts = Array.from({ length: 1000 }, (_, i) => {
+const seedCount = Number(process.env.SEED_COUNT ?? 1000)
+if (!Number.isSafeInteger(seedCount) || seedCount < 0) {
+  throw new Error("SEED_COUNT must be a non-negative safe integer")
+}
+
+const generatedProducts = Array.from({ length: seedCount }, (_, i) => {
   const id = `prod-gen-${i + 1}`
   return {
     id,
@@ -93,10 +98,13 @@ async function main() {
     await prisma.product.upsert({ where: { id: product.id }, update: product, create: product })
   }
 
-  // One bulk insert instead of 1000 round trips; skipDuplicates keeps
-  // reruns safe without needing per-row upsert reconciliation, which
-  // doesn't matter for randomly generated filler data.
-  await prisma.product.createMany({ data: generatedProducts, skipDuplicates: true })
+  // Chunked bulk inserts stay below Postgres's bind-parameter limit at 50k.
+  for (let offset = 0; offset < generatedProducts.length; offset += 1000) {
+    await prisma.product.createMany({
+      data: generatedProducts.slice(offset, offset + 1000),
+      skipDuplicates: true,
+    })
+  }
 }
 
 main()
