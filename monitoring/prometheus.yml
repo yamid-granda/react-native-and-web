@@ -6,10 +6,10 @@ rule_files:
   - /etc/prometheus/rules.yml
 
 scrape_configs:
-  # `pnpm dev` runs api-rs on 3003 beside NestJS (3001); Grafana owns 3002.
-  # If you run api-rs on the contract port instead, change this target to
-  # host.docker.internal:3001.
+  # api-rs takes over the contract port 3001 that both clients default to;
+  # Grafana owns 3002. `pnpm dev:parity` moves api-rs to 3003 beside NestJS,
+  # so change this target to host.docker.internal:3003 for that run.
   - job_name: api-rs
     metrics_path: /metrics
     static_configs:
-      - targets: [host.docker.internal:3003]
+      - targets: [host.docker.internal:3001]

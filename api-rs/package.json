@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "sh scripts/dev.sh",
+    "dev:parity": "PORT=3003 sh scripts/dev.sh",
     "build": "cargo build --release",
     "start": "cargo run --release",
     "lint": "cargo fmt --check && cargo clippy --all-targets -- -D warnings",

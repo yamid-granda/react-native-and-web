@@ -21,11 +21,11 @@ http://localhost:3002 (admin / rnw); Prometheus is at http://localhost:9090.
 The `Marketplace API — RED` dashboard shows request rate, p95/p99, cache
 ratios, pool acquisition, 429/load-shed counts, and RSS live.
 
-`pnpm --filter @rnw/api-rs dev` serves api-rs on 3003 (NestJS keeps 3001,
-Grafana keeps 3002), and Prometheus scrapes 3003 — so leave NestJS running
-unless you are capturing its Phase 0 baseline. If you run api-rs on the
-contract port instead, pass `BASE_URL=http://localhost:3001` to k6 and update
-the target in `monitoring/prometheus.yml`.
+`pnpm --filter @rnw/api-rs dev` serves api-rs on the contract port 3001, and
+Prometheus scrapes 3001 — so NestJS is not needed for an api-rs run. For the
+NestJS-versus-Rust comparison, use `pnpm dev:parity` (api-rs on 3003, NestJS on
+3001), pass the matching `BASE_URL`, and point `monitoring/prometheus.yml` at
+the port under test.
 
 The default `PAGE_COUNT=2500` covers 50k products at 20 products per page.
 Override `BASE_URL`, `PAGE_COUNT`, `CLIENT_IPS`, or `K6_*` options as needed.
@@ -66,11 +66,11 @@ or disable it with `RATE_LIMIT_PER_IP_RPS=0`.
 ## NestJS baseline and comparison
 
 Use the same laptop, Docker Postgres, seed size, request mix, k6 version, and
-cache mode for both runs. NestJS remains on port 3001; api-rs runs beside it
-on 3003, so both can be measured in the same session by switching
-`BASE_URL`. To reproduce the production shape instead, stop NestJS and run
-`PORT=3001 pnpm --filter @rnw/api-rs dev`. The production clients remain
-unchanged and use their existing `localhost:3001` defaults.
+cache mode for both runs. Under `pnpm dev:parity` NestJS stays on 3001 and
+api-rs runs beside it on 3003, so both can be measured in the same session by
+switching `BASE_URL` (and the Prometheus target). `pnpm dev` instead gives the
+production shape: only api-rs, on 3001. The clients are unchanged and use
+their existing `localhost:3001` defaults.
 
 | Implementation | Cache | RPS | p95 | p99 at spike | RSS / instance | Notes |
 |---|---|---:|---:|---:|---:|---|

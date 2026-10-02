@@ -1,9 +1,10 @@
 #!/bin/sh
 set -eu
 
-# 3001 is the contract port (NestJS holds it during parity work); 3003 keeps
-# api-rs side-by-side with NestJS without colliding with Grafana on 3002.
-export PORT="${PORT:-3003}"
+# 3001 is the contract port both clients default to, so api-rs takes it over in
+# dev; `dev:parity` sets 3003 to run beside NestJS (which then keeps 3001) so
+# neither shadows the other and Grafana stays on 3002.
+export PORT="${PORT:-3001}"
 
 # Until the Xcode license is accepted, every build script and proc-macro fails
 # at link time with dozens of identical "You have not agreed to the Xcode

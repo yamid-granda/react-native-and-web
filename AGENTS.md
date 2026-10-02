@@ -25,7 +25,8 @@ Run from the repository root:
 
 ```bash
 pnpm install
-pnpm dev                  # start all workspace dev tasks
+pnpm dev                  # start the dev tasks (api-rs serves the API; NestJS is excluded)
+pnpm dev:parity           # both APIs side by side (NestJS 3001, api-rs 3003)
 pnpm lint
 pnpm typecheck
 pnpm test                 # workspace unit/component tests; not end-to-end tests

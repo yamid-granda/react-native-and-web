@@ -29,11 +29,12 @@ cp api-rs/.env.example api-rs/.env
 pnpm --filter @rnw/api-rs dev
 ```
 
-`api-rs dev` uses port 3003 so `pnpm dev` can run NestJS on 3001 and Grafana
-on 3002 beside it during parity testing. Run `PORT=3001 pnpm --filter
-@rnw/api-rs dev` to occupy the production/default port. If `cargo-watch` is
+`api-rs dev` serves the contract port 3001 that both clients default to, so
+NestJS is excluded from the root `pnpm dev` task. Run `pnpm dev:parity` (which
+uses `api-rs dev:parity`) to move api-rs to 3003 and run NestJS on 3001 beside
+it for response comparisons; Grafana stays on 3002. If `cargo-watch` is
 installed the script watches sources; otherwise it runs `cargo run` once.
-Running Cargo directly in `api-rs/` also uses port 3001 unless `api-rs/.env`
+Running Cargo directly in `api-rs/` uses the same default unless `api-rs/.env`
 sets `PORT`.
 
 ## Environment

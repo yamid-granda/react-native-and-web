@@ -113,18 +113,17 @@ pnpm --filter @rnw/api dev
 
 ### API — Rust (api-rs)
 
-Uses the same Postgres migrations and seed as NestJS. Start it beside NestJS
-on port 3003 for parity work:
+Serves the marketplace API on the contract port the web and mobile apps default
+to, using the same Postgres migrations and seed as NestJS:
 
 ```bash
 cp api-rs/.env.example api-rs/.env
 pnpm --filter @rnw/api-rs dev
 ```
 
-→ http://localhost:3003 (`GET /health`, `GET /metrics`). To run api-rs on the
-contract's default port 3001 instead, stop NestJS and run `PORT=3001 pnpm
---filter @rnw/api-rs dev`. For E2E, parity, cache, and rate-limit setup, see
-[`api-rs/README.md`](api-rs/README.md).
+→ http://localhost:3001 (`GET /health`, `GET /metrics`). To run NestJS beside
+it on 3001 instead, move api-rs to 3003 with `pnpm dev:parity`. For E2E,
+parity, cache, and rate-limit setup, see [`api-rs/README.md`](api-rs/README.md).
 
 ### Storybook — components-library
 
@@ -140,12 +139,21 @@ pnpm --filter @rnw/components-library storybook
 pnpm dev
 ```
 
-Runs web-application, mobile-application, both API implementations, and
-Storybook together via Turborepo (`turbo run dev`), output interleaved in
-one terminal. NestJS uses port 3001, api-rs defaults to port 3003 under
-`pnpm dev` so the parity reference remains available, and Grafana (from
-`docker compose`) uses 3002. Postgres and Valkey should be started first with
-`docker compose up -d` and the NestJS migrations applied as above.
+Runs web-application, mobile-application, api-rs, and Storybook together via
+Turborepo (`turbo run dev`), output interleaved in one terminal. api-rs serves
+the contract port 3001 that both clients default to, so NestJS is left out of
+this task; Grafana (from `docker compose`) uses 3002. Postgres and Valkey should
+be started first with `docker compose up -d` and the NestJS migrations applied
+as above.
+
+```bash
+pnpm dev:parity
+```
+
+The two API implementations side by side: NestJS takes 3001 and api-rs moves
+to 3003, so responses can be compared in one session (switch Prometheus's
+target in `monitoring/prometheus.yml` to 3003 for that run). It starts only the
+APIs — run the web/mobile/Storybook tasks separately when you need them.
 
 ## Architecture boundaries and known gotchas (read before "fixing" these)
 
@@ -220,9 +228,10 @@ one terminal. NestJS uses port 3001, api-rs defaults to port 3003 under
   table created by `api/prisma/migrations/`; continue to migrate and seed
   through `@rnw/api`. Keep NestJS runnable as the contract/parity reference
   throughout the api-rs soak period; decommissioning it is a separate change.
-  The two services share routes and response bodies, but run side-by-side on
-  ports 3001 (NestJS) and 3003 (api-rs) during local parity work, so neither
-  shadows the other and Grafana keeps 3002.
+  The two services share routes and response bodies, but the Rust service owns
+  the contract port 3001 in dev (`pnpm dev`) and moves to 3003 only for parity
+  work (`pnpm dev:parity`), so neither shadows the other and Grafana keeps
+  3002.
 - **Detox's test runner is Jest**, isolated in `mobile-application/e2e/`,
   and never mixed with the rest of the repo's Vitest tasks (`turbo run
   test`). This is a hard Detox constraint, not a deviation from "Vitest for
@@ -434,7 +443,7 @@ Start `docker compose up -d` for Valkey, Prometheus, Grafana, and the OTLP
 collector; the pre-provisioned RED/cache/pool dashboard is at
 http://localhost:3002 when Grafana is running (admin / rnw, override the host
 port with `GRAFANA_PORT`). Prometheus scrapes api-rs at
-`host.docker.internal:3003`, which is where `pnpm --filter @rnw/api-rs dev`
+`host.docker.internal:3001`, which is where `pnpm --filter @rnw/api-rs dev`
 listens. Configure a production CDN using
 [`monitoring/cloudflare.md`](monitoring/cloudflare.md); cache headers alone do
 not make Cloudflare cache arbitrary API JSON.

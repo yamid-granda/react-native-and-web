@@ -7,7 +7,8 @@
   },
   "packageManager": "pnpm@9.7.1",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=!@rnw/api",
+    "dev:parity": "turbo run dev --filter=@rnw/api --filter=@rnw/api-rs",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
