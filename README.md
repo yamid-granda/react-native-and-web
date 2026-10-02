@@ -25,6 +25,9 @@ this, not just configured on paper).
 - **`mobile-application`** — Expo SDK 57 (managed), React Navigation,
   TanStack Query.
 - **`api`** — NestJS 12 (ESM) + Prisma 7 (driver adapters) + PostgreSQL.
+- **`api-rs`** — Rust + Axum + sqlx read API, running beside NestJS during
+  parity and soak testing; it uses the same Prisma-owned schema and port
+  contract when selected.
 - pnpm workspaces + Turborepo for task orchestration/caching.
 - Vitest for unit/component tests (web-flavored RN components, plain
   TypeScript utils, Nest); Playwright for web e2e; Detox for native e2e.
@@ -34,11 +37,23 @@ this, not just configured on paper).
 - **Node ≥ 20.19 / 22.12** (NestJS 12 requirement). A `.node-version` file
   pins `22.23.3` — with [fnm](https://github.com/Schniz/fnm) installed, run
   `fnm use` in the repo root.
-- **Docker** (Postgres via `docker-compose.yml`) — not available in the
-  environment this was built in, so the Prisma-backed `/health` check and
-  `api`'s e2e test are configured and typechecked but not run against a
-  real database. Everything else in this README was actually run.
+- **A Docker runtime** — Docker Desktop or, lighter-weight on macOS,
+  [Colima](https://colima.run): `brew install colima docker && colima start`.
+  Needed for `docker-compose.yml` (Postgres/Valkey/Prometheus/Grafana) and for
+  `api-rs`'s testcontainers-based E2E suite. api-rs resolves Colima's socket
+  (`~/.colima/<profile>/docker.sock`) itself, so no `DOCKER_HOST` export is
+  needed; an explicitly set `DOCKER_HOST` always wins. The NestJS `api`'s
+  e2e test and the Prisma-backed `/health` check are configured and
+  typechecked but were not run against a real database here.
 - **pnpm** (`packageManager` is pinned in the root `package.json`).
+- **Rust stable** (api-rs pins 1.99.0 through rustup in `api-rs/rust-toolchain.toml`).
+  On macOS the linker additionally needs the Xcode license accepted
+  (`sudo xcodebuild -license accept`); until that is done every cargo
+  build/test/clippy run fails at link time with
+  `linking with 'cc' failed: ... You have not agreed to the Xcode license`.
+  `cargo-llvm-cov` (only for the `coverage` script), `k6` (only for
+  `load-tests/`), and `critcmp` (only for benchmark diffs) are optional
+  installs.
 
 ## Getting started
 
@@ -96,6 +111,21 @@ pnpm --filter @rnw/api dev
 
 → http://localhost:3001 (`GET /health`)
 
+### API — Rust (api-rs)
+
+Uses the same Postgres migrations and seed as NestJS. Start it beside NestJS
+on port 3003 for parity work:
+
+```bash
+cp api-rs/.env.example api-rs/.env
+pnpm --filter @rnw/api-rs dev
+```
+
+→ http://localhost:3003 (`GET /health`, `GET /metrics`). To run api-rs on the
+contract's default port 3001 instead, stop NestJS and run `PORT=3001 pnpm
+--filter @rnw/api-rs dev`. For E2E, parity, cache, and rate-limit setup, see
+[`api-rs/README.md`](api-rs/README.md).
+
 ### Storybook — components-library
 
 ```bash
@@ -104,18 +134,18 @@ pnpm --filter @rnw/components-library storybook
 
 → http://localhost:6006
 
-### All four together
+### All apps together
 
 ```bash
 pnpm dev
 ```
 
-Runs web-application, mobile-application, api, and Storybook together via
-Turborepo (`turbo run dev`), output interleaved in one terminal — each
-package defines a matching `"dev"` script (`next dev`, `expo start`,
-`nest start --watch`, `storybook dev -p 6006`). The API's `/health` check
-still needs the `cp .env` + `docker compose up -d` step above done first,
-or it'll boot but fail to reach Postgres.
+Runs web-application, mobile-application, both API implementations, and
+Storybook together via Turborepo (`turbo run dev`), output interleaved in
+one terminal. NestJS uses port 3001, api-rs defaults to port 3003 under
+`pnpm dev` so the parity reference remains available, and Grafana (from
+`docker compose`) uses 3002. Postgres and Valkey should be started first with
+`docker compose up -d` and the NestJS migrations applied as above.
 
 ## Architecture boundaries and known gotchas (read before "fixing" these)
 
@@ -186,6 +216,13 @@ or it'll boot but fail to reach Postgres.
   driver adapter to the `PrismaClient` constructor at runtime. Both need
   `DATABASE_URL` in the environment (`dotenv/config` is imported first
   thing in `main.ts` and in `vitest.setup.ts`).
+- **The Rust API does not own migrations.** `api-rs/` reads the `Product`
+  table created by `api/prisma/migrations/`; continue to migrate and seed
+  through `@rnw/api`. Keep NestJS runnable as the contract/parity reference
+  throughout the api-rs soak period; decommissioning it is a separate change.
+  The two services share routes and response bodies, but run side-by-side on
+  ports 3001 (NestJS) and 3003 (api-rs) during local parity work, so neither
+  shadows the other and Grafana keeps 3002.
 - **Detox's test runner is Jest**, isolated in `mobile-application/e2e/`,
   and never mixed with the rest of the repo's Vitest tasks (`turbo run
   test`). This is a hard Detox constraint, not a deviation from "Vitest for
@@ -381,4 +418,23 @@ pnpm --filter @rnw/mobile-application prebuild && npx expo export --platform ios
 
 pnpm --filter @rnw/web-application test:e2e     # Playwright
 pnpm --filter @rnw/mobile-application test:e2e:build && pnpm --filter @rnw/mobile-application test:e2e  # Detox
+
+pnpm --filter @rnw/api-rs test                   # Rust unit tests
+pnpm --filter @rnw/api-rs lint                   # cargo fmt --check + clippy -D warnings
+pnpm --filter @rnw/api-rs test:e2e               # hermetic Postgres/Valkey E2E (needs a Docker runtime)
+pnpm --filter @rnw/api-rs coverage               # cargo-llvm-cov gate (needs cargo-llvm-cov)
+pnpm --filter @rnw/api-rs bench                  # Criterion micro-benchmarks
 ```
+
+## Performance testing and monitoring
+
+The api-rs k6 steady/spike/soak scenarios, SLO thresholds, and NestJS-versus-
+Rust baseline table are in [`load-tests/README.md`](load-tests/README.md).
+Start `docker compose up -d` for Valkey, Prometheus, Grafana, and the OTLP
+collector; the pre-provisioned RED/cache/pool dashboard is at
+http://localhost:3002 when Grafana is running (admin / rnw, override the host
+port with `GRAFANA_PORT`). Prometheus scrapes api-rs at
+`host.docker.internal:3003`, which is where `pnpm --filter @rnw/api-rs dev`
+listens. Configure a production CDN using
+[`monitoring/cloudflare.md`](monitoring/cloudflare.md); cache headers alone do
+not make Cloudflare cache arbitrary API JSON.
