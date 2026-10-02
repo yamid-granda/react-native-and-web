@@ -405,13 +405,24 @@ pnpm --filter @rnw/mobile-application prebuild && npx expo export --platform ios
 
 pnpm --filter @rnw/web-application test:e2e     # Playwright
 pnpm --filter @rnw/mobile-application test:e2e:build && pnpm --filter @rnw/mobile-application test:e2e  # Detox
-
-pnpm --filter @rnw/api-rs test                   # Rust unit tests
-pnpm --filter @rnw/api-rs lint                   # cargo fmt --check + clippy -D warnings
-pnpm --filter @rnw/api-rs test:e2e               # hermetic Postgres/Valkey E2E (needs a Docker runtime)
-pnpm --filter @rnw/api-rs coverage               # cargo-llvm-cov gate (needs cargo-llvm-cov)
-pnpm --filter @rnw/api-rs bench                  # Criterion micro-benchmarks
 ```
+
+### api-rs tests
+
+| Kind | Command | Requires |
+| --- | --- | --- |
+| Unit tests | `pnpm --filter @rnw/api-rs test` | — |
+| Hermetic E2E + contract parity | `pnpm --filter @rnw/api-rs test:e2e` | Docker |
+| **All tests (unit + E2E)** | `pnpm --filter @rnw/api-rs test:all` | Docker |
+| Coverage gate (80% lines) | `pnpm --filter @rnw/api-rs coverage` | `cargo-llvm-cov` |
+| Benchmarks | `pnpm --filter @rnw/api-rs bench` | — |
+| Lint (fmt + clippy) | `pnpm --filter @rnw/api-rs lint` | — |
+| Typecheck | `pnpm --filter @rnw/api-rs typecheck` | — |
+
+`test:all` chains `test` and `test:e2e`. It is not named `test`, so
+`pnpm turbo run test` keeps skipping the Docker-dependent E2E suite. Load tests
+have no `pnpm` script — see [Performance testing and
+monitoring](#performance-testing-and-monitoring).
 
 ## Performance testing and monitoring
 

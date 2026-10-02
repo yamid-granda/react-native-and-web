@@ -1,3 +1,7 @@
 [toolchain]
 channel = "1.99.0"
-components = ["clippy", "rustfmt"]
+# llvm-tools-preview provides the llvm-cov/profdata binaries that
+# cargo-llvm-cov shells out to. Listing it here means rustup provisions it with
+# the pinned toolchain; without it `pnpm coverage` fails at the first run even
+# though cargo-llvm-cov itself is installed.
+components = ["clippy", "rustfmt", "llvm-tools-preview"]

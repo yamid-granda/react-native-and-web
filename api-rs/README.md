@@ -16,7 +16,13 @@ in the repo — the NestJS `api/` it replaced has been decommissioned.
 - Node + pnpm, for the Prisma CLI that drives migrations and seeding.
 - Docker is needed for the hermetic integration tests.
 - `cargo-llvm-cov` is only needed for `pnpm --filter @rnw/api-rs coverage`
-  (`cargo install cargo-llvm-cov`); `test` and `test:e2e` are plain cargo.
+  (`cargo install cargo-llvm-cov`); `test` and `test:e2e` are plain cargo. The
+  `llvm-tools-preview` component it shells out to is listed in
+  `rust-toolchain.toml`, so rustup provisions it with the pinned toolchain — but
+  only for the pinned one, so an existing toolchain installed before that line
+  was added still needs `rustup component add llvm-tools-preview` once.
+  `scripts/coverage.sh` checks for both and prints those commands if either is
+  missing, rather than letting cargo fail with `no such command: llvm-cov`.
 
 ## Run locally
 
@@ -78,17 +84,31 @@ additive.
 ## Tests and quality gates
 
 ```bash
-cargo test --lib                       # unit tests (pnpm test)
-cargo test --test e2e_products --test parity   # hermetic E2E (pnpm test:e2e)
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
-cargo llvm-cov --workspace --fail-under-lines 80 --lcov --output-path lcov.info
-cargo bench
+pnpm test                # cargo test --lib  — unit tests
+pnpm test:e2e            # cargo test --test e2e_products --test parity — hermetic E2E
+pnpm test:all            # both of the above, in order (needs Docker)
+pnpm lint                # cargo fmt --check && cargo clippy --all-targets -- -D warnings
+pnpm typecheck           # cargo check --all-targets
+pnpm coverage            # cargo llvm-cov --workspace --fail-under-lines 80 --lcov --output-path lcov.info
+pnpm bench               # cargo bench (Criterion, in-process, needs no services)
 ```
+
+| Kind | Command | Requires |
+| --- | --- | --- |
+| Unit tests | `pnpm test` | — |
+| Hermetic E2E + contract parity | `pnpm test:e2e` | Docker |
+| All tests (unit + E2E) | `pnpm test:all` | Docker |
+| Coverage gate (80% lines) | `pnpm coverage` | `cargo-llvm-cov` |
+| Benchmarks | `pnpm bench` | — |
+| Lint (fmt + clippy) | `pnpm lint` | — |
+| Typecheck | `pnpm typecheck` | — |
 
 `test`/`test:e2e` deliberately stay on plain `cargo test` so they work with
 only a Rust toolchain; the coverage gate is the separate `coverage` script,
-which needs `cargo-llvm-cov`.
+which needs `cargo-llvm-cov`. `test:all` just chains `test` then `test:e2e` —
+it is deliberately not named `test`, so the root `turbo run test` stays free of
+the Docker-dependent E2E run. From the repository root, prefix each with
+`pnpm --filter @rnw/api-rs`.
 
 Integration tests use testcontainers-rs to start isolated Postgres 17 and
 Valkey 8 containers, apply the Prisma migrations in `prisma/migrations/`, seed

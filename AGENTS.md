@@ -41,6 +41,23 @@ pnpm --filter @rnw/api-rs test:e2e           # hermetic Postgres/Valkey E2E; req
 pnpm --filter @rnw/mobile-application test:e2e # Detox; requires a native build and simulator
 ```
 
+### api-rs checks
+
+| Kind | Command | Requires |
+| --- | --- | --- |
+| Unit tests | `pnpm --filter @rnw/api-rs test` | — |
+| Hermetic E2E + contract parity | `pnpm --filter @rnw/api-rs test:e2e` | Docker |
+| All tests (unit + E2E) | `pnpm --filter @rnw/api-rs test:all` | Docker |
+| Coverage gate (80% lines) | `pnpm --filter @rnw/api-rs coverage` | `cargo-llvm-cov` |
+| Benchmarks | `pnpm --filter @rnw/api-rs bench` | — |
+| Lint (fmt + clippy) | `pnpm --filter @rnw/api-rs lint` | — |
+| Typecheck | `pnpm --filter @rnw/api-rs typecheck` | — |
+
+`test:all` chains the two cargo suites; it is deliberately not named `test`, so
+`turbo run test` stays free of the Docker-dependent E2E run. Load tests are not
+a `pnpm` script — run them by hand with `k6 run load-tests/k6/<scenario>.js` (see
+`load-tests/README.md`).
+
 Run the narrowest relevant checks for a change, then broader checks when practical. Report checks that could not run and why (for example, missing PostgreSQL or a mobile simulator). See `README.md` for service setup, Storybook, and native build details.
 
 ## Working conventions
