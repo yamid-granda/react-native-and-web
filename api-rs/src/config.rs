@@ -26,8 +26,14 @@ const PRISMA_ONLY_PARAMS: &[&str] =
 pub struct Config {
     pub port: u16,
     pub database_url: String,
+    /// Optional read replica. Unset means reads go to the primary, which is the
+    /// pre-replica behaviour and what local dev and CI run.
+    pub database_read_url: Option<String>,
     pub valkey_url: Option<String>,
     pub db_max_connections: u32,
+    /// A budget of its own: `DB_MAX_CONNECTIONS` is per-pool, so two pools
+    /// against one server need arithmetic the operator does deliberately.
+    pub db_read_max_connections: u32,
     pub db_acquire_timeout: Duration,
     pub request_timeout: Duration,
     pub l1_list_ttl: Duration,
@@ -49,8 +55,10 @@ impl Default for Config {
         Self {
             port: 3001,
             database_url: "postgresql://rnw:rnw@localhost:5432/rnw_dev".to_string(),
+            database_read_url: None,
             valkey_url: Some("redis://127.0.0.1:6379".to_string()),
             db_max_connections: 10,
+            db_read_max_connections: 10,
             db_acquire_timeout: Duration::from_millis(2000),
             request_timeout: Duration::from_millis(10_000),
             l1_list_ttl: Duration::from_secs(5),
@@ -75,6 +83,11 @@ impl Config {
         if let Some(raw) = env_str("DATABASE_URL") {
             config.database_url = strip_prisma_only_params(&raw);
         }
+        // Same Prisma-param stripping: operators copy one URL and edit the host,
+        // and a leftover `?schema=public` would fail sqlx's parser at startup.
+        if let Some(raw) = env_str("DATABASE_READ_URL") {
+            config.database_read_url = Some(strip_prisma_only_params(&raw));
+        }
         if let Some(raw) = env_str("PORT") {
             config.port = raw.parse().map_err(|e| ConfigError::invalid("PORT", e))?;
         }
@@ -87,6 +100,10 @@ impl Config {
         if let Some(raw) = env_str("DB_MAX_CONNECTIONS") {
             config.db_max_connections =
                 raw.parse().map_err(|e| ConfigError::invalid("DB_MAX_CONNECTIONS", e))?;
+        }
+        if let Some(raw) = env_str("DB_READ_MAX_CONNECTIONS") {
+            config.db_read_max_connections =
+                raw.parse().map_err(|e| ConfigError::invalid("DB_READ_MAX_CONNECTIONS", e))?;
         }
         config.db_acquire_timeout =
             env_duration_ms("DB_ACQUIRE_TIMEOUT_MS")?.unwrap_or(config.db_acquire_timeout);
@@ -179,9 +196,11 @@ mod tests {
     /// `dotenvy` never loads in tests — cannot change the result.
     const ENV_KEYS: &[&str] = &[
         "DATABASE_URL",
+        "DATABASE_READ_URL",
         "PORT",
         "VALKEY_URL",
         "DB_MAX_CONNECTIONS",
+        "DB_READ_MAX_CONNECTIONS",
         "DB_ACQUIRE_TIMEOUT_MS",
         "REQUEST_TIMEOUT_MS",
         "L1_LIST_TTL_SECS",
@@ -251,7 +270,9 @@ mod tests {
         let config = with_clean_env(|| Config::from_env().expect("no env set"));
         assert_eq!(config.port, 3001);
         assert_eq!(config.database_url, Config::default().database_url);
+        assert_eq!(config.database_read_url, None, "no replica unless one is configured");
         assert_eq!(config.db_max_connections, 10);
+        assert_eq!(config.db_read_max_connections, 10);
         assert_eq!(config.db_acquire_timeout, Duration::from_millis(2000));
         assert_eq!(config.l1_list_ttl, Duration::from_secs(5));
         assert_eq!(config.cors_origin, "http://localhost:3000");
@@ -261,9 +282,11 @@ mod tests {
     fn from_env_reads_every_documented_key() {
         let config = with_clean_env(|| {
             set("DATABASE_URL", "postgresql://u:p@h:5432/db?schema=public&sslmode=require");
+            set("DATABASE_READ_URL", "postgresql://u:p@replica:5432/db?schema=public");
             set("PORT", "8080");
             set("VALKEY_URL", "redis://cache:6379");
             set("DB_MAX_CONNECTIONS", "25");
+            set("DB_READ_MAX_CONNECTIONS", "26");
             set("DB_ACQUIRE_TIMEOUT_MS", "1500");
             set("REQUEST_TIMEOUT_MS", "9000");
             set("L1_LIST_TTL_SECS", "7");
@@ -280,9 +303,11 @@ mod tests {
         });
 
         assert_eq!(config.database_url, "postgresql://u:p@h:5432/db?sslmode=require");
+        assert_eq!(config.database_read_url.as_deref(), Some("postgresql://u:p@replica:5432/db"));
         assert_eq!(config.port, 8080);
         assert_eq!(config.valkey_url.as_deref(), Some("redis://cache:6379"));
         assert_eq!(config.db_max_connections, 25);
+        assert_eq!(config.db_read_max_connections, 26);
         assert_eq!(config.db_acquire_timeout, Duration::from_millis(1500));
         assert_eq!(config.request_timeout, Duration::from_millis(9000));
         assert_eq!(config.l1_list_ttl, Duration::from_secs(7));
@@ -339,6 +364,7 @@ mod tests {
         let cases = [
             ("PORT", "not-a-port"),
             ("DB_MAX_CONNECTIONS", "-1"),
+            ("DB_READ_MAX_CONNECTIONS", "many"),
             ("GLOBAL_CONCURRENCY_LIMIT", "many"),
             ("PER_IP_CONCURRENCY_LIMIT", "1.5"),
             ("RATE_LIMIT_GLOBAL_RPS", "fast"),

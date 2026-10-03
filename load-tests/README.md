@@ -77,6 +77,73 @@ Do not fill the table with benchmark estimates: capture the k6 summary and
 process RSS from the same host and commit the measured values with the test
 environment noted.
 
+## List-query index: measured before/after
+
+`Product_createdAt_id_idx`, added by
+`api-rs/migrations/20261002120000_add_product_list_index.up.sql`, exists so
+the list query's `ORDER BY "createdAt" ASC, "id" ASC LIMIT 20` becomes an index
+scan that stops at the limit, instead of sorting the whole table first.
+
+Measured on Postgres 17 in a throwaway container with 200 000 rows, using the
+exact `LIST_QUERY` from `api-rs/src/store/products.rs`, page 1
+(`OFFSET 0`), cold container:
+
+| | Plan | Shared buffers | Execution time |
+|---|---|---:|---:|
+| Before | `Parallel Seq Scan` → `Gather Merge` → `Sort` (`top-N heapsort`) | 1904 | 16.264 ms |
+| After | `Index Scan using Product_createdAt_id_idx` | 4 | 3.705 ms (first, still reading from disk) |
+| After, warm | `Index Scan using Product_createdAt_id_idx` | 4 | 0.033–0.564 ms |
+
+The `Sort` node disappears entirely, and the scan stops after 20 rows instead of
+reading all 200 000.
+
+What the index does **not** fix: a deep offset still has to walk every skipped
+row, because `LIMIT` cannot help an index scan that must discard them first.
+At `OFFSET 100000` the same plan costs 19.795 ms and reads 100 020 rows. That is
+the measurement that keeps keyset pagination on the list — see the deep-offset
+trade-off in `api-rs/ARCHITECTURE.md` §11.
+
+Reproduce with:
+
+```bash
+docker run -d --name idxcheck -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=t postgres:17-alpine
+# apply api-rs/migrations/ (`pnpm --filter @rnw/api-rs db:migrate`), seed 200k rows, then:
+#   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY without the index>
+#   CREATE INDEX "Product_createdAt_id_idx" ON "Product"("createdAt", "id");
+#   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY>
+```
+
+## Cold-L2 stampede: measured before/after
+
+Singleflight (`api-rs/src/cache/singleflight.rs`) collapses concurrent fills of
+one cache key, so a burst on an expired key costs one store call instead of N.
+
+Measured on a 50 000-row catalog (Postgres 17 + Valkey 8 containers, release
+build), 200 barrier-released concurrent `GET /products` for **one cold key**
+after `FLUSHALL`, so all 200 requests miss both tiers. The baseline binary is
+this branch with only the *page* singleflight removed, which isolates item 1's
+contribution: the cached-`COUNT(*)` flight is present in both.
+
+| | DB round trips | p50 | p99 | max | wall |
+|---|---:|---:|---:|---:|---:|
+| Before (no page singleflight) | 201 | 118.8 ms | 132.8 ms | 133.1 ms | 171 ms |
+| After (singleflight) | **2** | **31.2 ms** | **42.3 ms** | 42.8 ms | 69 ms |
+
+201 → 2 is 1 page `SELECT` + 1 `COUNT(*)` instead of 200 of each, and p99 drops
+3.1×. The follower wait (`cache_singleflight_wait_seconds`) peaks at roughly the
+leader's database round trip, which is the expected shape: a collapsed request
+waits for the leader and is then answered from cache.
+
+This is a per-instance effect by design — cross-instance warming is Valkey's
+job. `cache_singleflight_leader_total` against `cache_singleflight_follower_total`
+is how you confirm it is doing its job in a given deployment.
+
+To reproduce, start the stack, seed, run the release binary with
+`PER_IP_CONCURRENCY_LIMIT=4096 RATE_LIMIT_PER_IP_RPS=0`, flush Valkey, then hit
+one page with N threads released from a barrier. A process-per-request driver
+(`xargs -P`) does *not* work: spawn skew means late requests hit the already
+filled cache and the burst never actually overlaps.
+
 ## Failure drills
 
 - Stop Valkey during a run: product requests should keep succeeding via L1 / Postgres; `cache_l2_errors_total` rises and the Grafana alert fires.

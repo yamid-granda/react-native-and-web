@@ -1,0 +1,1 @@
+DROP INDEX "Product_createdAt_id_idx";

@@ -96,11 +96,13 @@ alone on conflict — so re-running it never duplicates data.
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `DATABASE_URL` | local Postgres URL | Postgres connection, read by the server and by `api-rs-db`. |
+| `DATABASE_URL` | local Postgres URL | Postgres connection, read by the server and by `api-rs-db`. Prisma-only query params such as `schema=public` are stripped so URLs carried over from the old Prisma setup still parse. |
+| `DATABASE_READ_URL` | unset | Optional read replica for product reads. Unset keeps every query on the primary; an unreachable replica also degrades to the primary. `/health` always pings the primary. |
 | `SEED_COUNT` | `1000` | Generated products for `db:seed`; used by the k6 load tests (`SEED_COUNT=50000`). Must be a non-negative integer. |
 | `VALKEY_URL` | `redis://127.0.0.1:6379` | L2 cache + shared rate limits. Set `off` to disable. |
 | `PORT` | `3001` | Listen port. |
-| `DB_MAX_CONNECTIONS` | `10` | Per-instance sqlx pool cap. Budget the sum across replicas against Postgres. |
+| `DB_MAX_CONNECTIONS` | `10` | Per-instance sqlx pool cap for the primary. Budget the sum across replicas against Postgres. |
+| `DB_READ_MAX_CONNECTIONS` | `10` | Separate cap for the read pool. Per-pool, not per-instance. |
 | `DB_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pool connection. |
 | `REQUEST_TIMEOUT_MS` | `10000` | Request deadline. |
 | `L1_LIST_TTL_SECS` | `5` | Per-process list cache TTL. |
@@ -174,6 +176,29 @@ carries its own migrations and needs nothing from `pnpm` at runtime.
 ## Scale path
 
 The service is stateless across instances. Put the binary behind a load
-balancer and Cloudflare; use a shared Valkey, budget each sqlx pool against
-the primary connection limit, and direct read-only product queries to a
-regional PostgreSQL read pool when replicas are introduced.
+balancer and Cloudflare, and use a shared Valkey.
+
+Read replicas are implemented, not aspirational: set `DATABASE_READ_URL` and
+product reads use a second pool while `/health` keeps pinging the primary.
+Budget `DB_MAX_CONNECTIONS` and `DB_READ_MAX_CONNECTIONS` separately — both are
+per-pool, so they add up against Postgres when both point at the same server.
+
+Replica lag means a just-created product can briefly be missing, so reads are
+not read-your-writes. That is fine while products are immutable once visible and
+stops being fine once `POST /products` exists — see `ARCHITECTURE.md` §12.
+
+## Caching and stampede protection
+
+A miss on an expired key does not fan out to Postgres: concurrent fills of one
+cache key are collapsed in-process (`cache/singleflight.rs`), so the first
+request runs the store call and the rest are answered from the cache it fills.
+It is deliberately per instance — an L2 hit never reaches Postgres at all, so
+cross-instance warming is already Valkey's job, and a distributed lock would put
+a network round trip on the one path that must fail open. Watch
+`cache_singleflight_leader_total` against `cache_singleflight_follower_total`
+and `cache_singleflight_wait_seconds` to confirm it is doing its job.
+
+The `COUNT(*)` behind the `total` field is cached under `products:count`, so it
+is paid once per TTL window instead of once per request. The list query's
+`ORDER BY createdAt, id` is backed by `@@index([createdAt, id])`, measured
+before/after in `load-tests/README.md`.
