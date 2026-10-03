@@ -4,6 +4,9 @@ Rust + Axum implementation of the marketplace read API. It serves the contract
 on port 3001, reads the Prisma-managed PostgreSQL schema, and is the only API
 in the repo — the NestJS `api/` it replaced has been decommissioned.
 
+For the design strategy, the challenges it addresses, and diagrammed request
+paths, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ## Prerequisites
 
 - Rust stable (the crate pins 1.99.0 in `rust-toolchain.toml`; rustup installs
