@@ -26,8 +26,8 @@ building this, not just configured on paper).
   TanStack Query.
 - **`api-rs`** — Rust + Axum + sqlx read API serving the contract both clients
   default to, with optional Valkey L2 caching, rate limiting, and OpenTelemetry
-  tracing. It is the only API in the repo; it reads the Prisma-owned schema in
-  `api-rs/prisma/`.
+  tracing. It is the only API in the repo, and it is Rust-only: schema, queries,
+  and migrations all live in `api-rs/`, with no Node toolchain in the loop.
 - pnpm workspaces + Turborepo for task orchestration/caching.
 - Vitest for unit/component tests (web-flavored RN components, plain
   TypeScript utils); Playwright for web e2e; Detox for native e2e.
@@ -57,7 +57,7 @@ building this, not just configured on paper).
 
 ```bash
 pnpm install   # onlyBuiltDependencies in pnpm-workspace.yaml pre-approves
-               # Prisma/esbuild/sharp's postinstall scripts — no manual
+               # esbuild/sharp's postinstall scripts — no manual
                # `pnpm approve-builds` step needed
 ```
 Then see [Development](#development) below to run everything.
@@ -130,7 +130,7 @@ Runs web-application, mobile-application, api-rs, and Storybook together via
 Turborepo (`turbo run dev`), output interleaved in one terminal. api-rs serves
 the contract port 3001 that both clients default to; Grafana (from
 `docker compose`) uses 3002. Postgres and Valkey should be started first with
-`docker compose up -d` and the Prisma migrations applied as above.
+`docker compose up -d` and the migrations applied as above.
 
 ## Architecture boundaries and known gotchas (read before "fixing" these)
 
@@ -195,21 +195,18 @@ the contract port 3001 that both clients default to; Grafana (from
   esbuild dep optimizer until stubbed. None of the web pages/stories render
   `SafeAreaProvider`/`SafeAreaView`, so a plain `View` standing in for it is
   enough. Mobile-application is unaffected (it uses the real package).
-- **Prisma ORM 7 changed how the client connects.** `datasource.url` no
-  longer lives in `schema.prisma` — the CLI (`migrate`, `studio`) reads it
-  from `prisma.config.ts`, and `prisma/seed.ts` passes a `@prisma/adapter-pg`
-  driver adapter to the `PrismaClient` constructor. Both need
-  `DATABASE_URL` in the environment (`dotenv/config` is imported first thing in
-  `prisma.config.ts` and `prisma/seed.ts`).
-- **The Rust API does not own migrations.** `api-rs/` reads the `Product`
-  table created by `api-rs/prisma/migrations/`; `api-rs/package.json`'s
-  `db:migrate` / `db:seed` scripts (which wrap the Prisma CLI configured by
-  `api-rs/prisma.config.ts`) are the only supported way to change them. The
-  NestJS `api/` that previously wrapped those scripts has been decommissioned —
-  don't reintroduce it or any second migration system. The generated Prisma
-  client under `api-rs/generated/` (gitignored) exists purely for
-  `prisma/seed.ts`; the Rust service talks to Postgres through sqlx and never
-  imports it.
+- **api-rs is Rust-only, and it owns its schema.** `api-rs/migrations/` is the
+  single source of truth for the database, applied by sqlx's embedded migrator
+  (`sqlx::migrate!`, tracked in `_sqlx_migrations`). `pnpm --filter @rnw/api-rs
+  db:migrate` and `db:seed` run the `api-rs-db` binary — both are Rust, and
+  both read `api-rs/.env`. Don't reintroduce Prisma, Diesel, or any second
+  migration system: one toolchain, one migration owner. Because the migrator is
+  embedded in the binary, adding a migration also requires a rebuild to take
+  effect; `api-rs/build.rs` handles that by emitting
+  `cargo:rerun-if-changed=migrations`.
+- **`api-rs-db` is not shipped in the container.** The Dockerfile builds
+  `--bin api-rs` only, so migrations run from a checkout (`cargo run --bin
+  api-rs-db`) rather than from inside a deployed instance.
 - **Detox's test runner is Jest**, isolated in `mobile-application/e2e/`,
   and never mixed with the rest of the repo's Vitest tasks (`turbo run
   test`). This is a hard Detox constraint, not a deviation from "Vitest for

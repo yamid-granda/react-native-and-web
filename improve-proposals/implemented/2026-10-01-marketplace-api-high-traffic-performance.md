@@ -2,10 +2,12 @@
 
 > **Note (superseded).** This proposal has since been carried out in full, and
 > its deferred final step — decommissioning the NestJS `api/` workspace — has
-> also been done. `api-rs/` is now the only API; the Prisma schema, migrations,
-> and seed moved to `api-rs/prisma/` and are driven by `api-rs`'s
-> `db:migrate`/`db:seed` scripts. The `api/` paths and `dev:parity`
-> references throughout this document are historical and no longer resolve.
+> also been done. `api-rs/` is now the only API, and it is Rust-only: the
+> schema and seed that used to live in `api-rs/prisma/` are now owned by
+> `api-rs/migrations/` and `api-rs/src/seed.rs`, driven by `api-rs`'s
+> `db:migrate`/`db:seed` scripts. The `api/` paths, the Prisma toolchain, and
+> the `dev:parity` references throughout this document are historical and no
+> longer resolve.
 
 ## Problem / opportunity
 

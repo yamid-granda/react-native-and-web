@@ -19,8 +19,5 @@ catalog:
   react-native: 0.86.3
 
 onlyBuiltDependencies:
-  - "@prisma/client"
-  - "@prisma/engines"
-  - prisma
   - esbuild
   - sharp

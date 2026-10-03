@@ -1,8 +1,8 @@
 # api-rs
 
 Rust + Axum implementation of the marketplace read API. It serves the contract
-on port 3001, reads the Prisma-managed PostgreSQL schema, and is the only API
-in the repo — the NestJS `api/` it replaced has been decommissioned.
+on port 3001, owns its PostgreSQL schema, and is the only API in the repo — the
+NestJS `api/` and the Prisma toolchain it replaced have been decommissioned.
 
 For the design strategy, the challenges it addresses, and diagrammed request
 paths, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -13,10 +13,9 @@ paths, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
   it automatically). On macOS the linker also needs an accepted Xcode license
   (`sudo xcodebuild -license accept`); without it every `cargo build`/`test`
   fails with `linking with 'cc' failed`.
-- Postgres 17 with the Prisma migrations in `prisma/migrations/` applied.
+- Postgres 17, with the migrations in `migrations/` applied.
 - Valkey 8 is optional. Without it, the L1 cache and Postgres path continue to
   serve requests; shared L2 caching and distributed rate limiting fail open.
-- Node + pnpm, for the Prisma CLI that drives migrations and seeding.
 - Docker is needed for the hermetic integration tests.
 - `cargo-llvm-cov` is only needed for `pnpm --filter @rnw/api-rs coverage`
   (`cargo install cargo-llvm-cov`); `test` and `test:e2e` are plain cargo. The
@@ -39,8 +38,9 @@ pnpm --filter @rnw/api-rs db:seed
 pnpm --filter @rnw/api-rs dev
 ```
 
-`db:migrate` and `db:seed` both run `prisma generate` first, so the seed script
-always finds the generated client. If `cargo-watch` is installed the dev script
+Both `db:*` scripts run the `api-rs-db` binary, which reads `DATABASE_URL` from
+`api-rs/.env`. `db:seed` applies pending migrations first, so seeding a fresh
+database is a single command. If `cargo-watch` is installed the dev script
 watches sources; otherwise it runs `cargo run` once. Running Cargo directly in
 `api-rs/` uses the same default unless `api-rs/.env` sets `PORT`.
 
@@ -49,17 +49,55 @@ is part of the root `pnpm dev` task. Grafana stays on 3002.
 
 ## Database ownership
 
-api-rs reads Postgres through sqlx but does **not** own its schema. Migrations
-and seeding stay owned by `prisma/schema.prisma` plus `prisma/migrations/`,
-driven by the Prisma CLI (`prisma.config.ts`) through the `db:*` scripts above
-— do not add a second migration system. `prisma/seed.ts` is the only consumer
-of the generated client; the Rust service never imports it.
+api-rs owns its schema. `migrations/` is the single source of truth, applied by
+sqlx's embedded migrator and tracked in `_sqlx_migrations`; `src/seed.rs` owns
+seeding. Do not add a second migration system.
+
+To change the schema, add a reversible migration pair under `migrations/` named
+`<version>_<description>.up.sql` / `.down.sql` — `cargo sqlx migrate add -r
+<name>` scaffolds them with the right version prefix — then run `db:migrate`.
+The two files must match in style: sqlx rejects a directory that mixes
+reversible and simple migrations.
+
+```bash
+# inside api-rs/, with sqlx-cli installed: cargo install sqlx-cli --no-default-features --features postgres,rustls
+cargo sqlx migrate add -r add_product_rating
+# edit the .up.sql / .down.sql pair
+pnpm db:migrate
+```
+
+`src/migrations.rs` embeds the directory via `sqlx::migrate!`, so the migration
+history ships inside the binary and `build.rs` re-runs the macro when the
+directory changes. The E2E suite applies that same embedded set, which is why a
+test schema can never drift from the committed migrations.
+
+`api-rs-db` is deliberately excluded from the release image (the Dockerfile
+builds `--bin api-rs`), so migrations run from a checkout rather than from a
+deployed instance. `db:migrate` is idempotent, and sqlx takes a Postgres
+advisory lock, so several instances or developers running it at once is safe.
+
+### First-time setup on an existing database
+
+A database already migrated by Prisma has no `_sqlx_migrations` table, so
+sqlx will try to re-apply `create_product` and fail with
+`relation "Product" already exists`. Recreate the schema once:
+
+```bash
+docker compose down -v
+docker compose up -d postgres valkey
+pnpm --filter @rnw/api-rs db:migrate
+pnpm --filter @rnw/api-rs db:seed
+```
+
+`db:seed` is idempotent — fixture rows are upserted and generated rows are left
+alone on conflict — so re-running it never duplicates data.
 
 ## Environment
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `DATABASE_URL` | local Postgres URL | Required Postgres connection. Prisma-only query params such as `schema=public` are stripped. |
+| `DATABASE_URL` | local Postgres URL | Postgres connection, read by the server and by `api-rs-db`. |
+| `SEED_COUNT` | `1000` | Generated products for `db:seed`; used by the k6 load tests (`SEED_COUNT=50000`). Must be a non-negative integer. |
 | `VALKEY_URL` | `redis://127.0.0.1:6379` | L2 cache + shared rate limits. Set `off` to disable. |
 | `PORT` | `3001` | Listen port. |
 | `DB_MAX_CONNECTIONS` | `10` | Per-instance sqlx pool cap. Budget the sum across replicas against Postgres. |
@@ -114,8 +152,8 @@ the Docker-dependent E2E run. From the repository root, prefix each with
 `pnpm --filter @rnw/api-rs`.
 
 Integration tests use testcontainers-rs to start isolated Postgres 17 and
-Valkey 8 containers, apply the Prisma migrations in `prisma/migrations/`, seed
-25 deterministic fixtures, then drive real HTTP. They cover pagination
+Valkey 8 containers, apply the embedded migrations, seed 25 deterministic
+fixtures, then drive real HTTP. They cover pagination
 boundaries, exact JSON goldens, health readiness and the degraded shapes while
 the database is down, cache behavior, 404 shapes, rate limiting, and
 Valkey-absent fail-open behavior. Docker must be running.
@@ -129,6 +167,9 @@ before comparison, since it is timing-dependent by nature.
 `Dockerfile` uses cargo-chef to cache dependency layers and builds one release
 binary with OTLP support. It runs as a non-root user on port 3001. Supply
 `DATABASE_URL`, `VALKEY_URL`, and (optionally) the OTLP endpoint at runtime.
+
+The image contains no Node runtime and no Node toolchain: the built binary
+carries its own migrations and needs nothing from `pnpm` at runtime.
 
 ## Scale path
 
