@@ -9,7 +9,9 @@ Read and follow `.agents/skills/start-task/SKILL.md` and
 Use the given instructions to deduce the task's branch
 (`<owner>/<type>-<summary>`) and work tree name, create that work tree from
 `origin/main` next to the existing ones, move this session into it, and then
-implement the task there.
+implement the task there — never in the work tree the session started in, and
+never in `main`. Create the work tree and confirm the session moved before the
+first edit.
 
 When available, use the `git-ops` Claude subagent for the git operations that
 create the work tree. This skill is an alias for Claude Code; the shared
