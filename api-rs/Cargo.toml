@@ -47,7 +47,23 @@ sqlx = { version = "0.9", default-features = false, features = [
   "tls-rustls-ring",
 ] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+# Features are what this crate *calls*, not what its dependencies happen to
+# enable. Feature unification means `redis`/`sqlx`/`hyper`/`tonic` currently pull
+# in `time`, `sync` and `net` for us, which hides the real dependency: trimming
+# or dropping any one of those crates would then break the build with an error
+# pointing at unrelated files.
+#   time  - metric samplers (telemetry.rs), request + health timeouts, cache tests
+#   sync  - rate limiter's Mutex/Semaphore, and the singleflight fill locks
+#   net   - the TcpListener in main.rs and the E2E server harness
+# Do not "clean up" the seemingly redundant set.
+tokio = { version = "1", features = [
+  "macros",
+  "net",
+  "rt-multi-thread",
+  "signal",
+  "sync",
+  "time",
+] }
 tower = "0.5"
 tower-http = { version = "0.7", features = [
   "compression-br",

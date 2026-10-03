@@ -1,6 +1,6 @@
 use axum::body::Bytes;
 use axum::extract::{Path, Request, State};
-use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use chrono::NaiveDateTime;
 use serde::Serialize;
@@ -131,16 +131,21 @@ pub async fn list(State(state): State<AppState>, request: Request) -> Result<Res
     let key = format!("products:list:{}", query.page.to_bits());
     let conditional = Some((&parts.method, &parts.headers));
 
-    if let Some((bytes, source)) = state.cache.get(Kind::List, &key).await {
-        return Ok(json_response(
-            StatusCode::OK,
-            bytes.to_vec(),
-            &product_headers(&state, Some(source)),
-            conditional,
-        ));
+    if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
+        return Ok(response);
     }
 
-    let (products, total) = state.store.list_page(query.offset, PAGE_SIZE).await?;
+    // Stampede protection. The ordering is the whole design: check, then take
+    // the flight, then check *again*, because the leader we waited behind may
+    // have just populated the cache.
+    let flight = state.cache.flights().for_key(Kind::List, &key).await;
+    let _fill = flight.lock().await;
+    if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
+        return Ok(response);
+    }
+
+    let products = state.store.list_page(query.offset, PAGE_SIZE).await?;
+    let total = catalog_total(&state).await?;
     let item_count = products.len() as f64;
     let body = ProductsPageJson {
         items: products.into_iter().map(ProductJson::from).collect(),
@@ -166,13 +171,16 @@ pub async fn detail(
     let key = format!("products:detail:{id}");
     let conditional = Some((&parts.method, &parts.headers));
 
-    if let Some((bytes, source)) = state.cache.get(Kind::Detail, &key).await {
-        return Ok(json_response(
-            StatusCode::OK,
-            bytes.to_vec(),
-            &product_headers(&state, Some(source)),
-            conditional,
-        ));
+    if let Some(response) = cached(&state, Kind::Detail, &key, conditional).await {
+        return Ok(response);
+    }
+
+    // Same two-phase check as `list`: a viral product link fans out exactly the
+    // way a hot page does.
+    let flight = state.cache.flights().for_key(Kind::Detail, &key).await;
+    let _fill = flight.lock().await;
+    if let Some(response) = cached(&state, Kind::Detail, &key, conditional).await {
+        return Ok(response);
     }
 
     match state.store.find_by_id(&id).await? {
@@ -183,6 +191,54 @@ pub async fn detail(
         }
         None => Err(AppError::ProductNotFound(id)),
     }
+}
+
+/// A cached response, or `None` on a miss. The `X-Cache` header reports where
+/// it came from, so a follower served here honestly reads as a hit.
+async fn cached(
+    state: &AppState,
+    kind: Kind,
+    key: &str,
+    conditional: Option<(&Method, &HeaderMap)>,
+) -> Option<Response> {
+    let (bytes, source) = state.cache.get(kind, key).await?;
+    Some(json_response(
+        StatusCode::OK,
+        bytes.to_vec(),
+        &product_headers(state, Some(source)),
+        conditional,
+    ))
+}
+
+/// Cache key for the catalog-wide `total`. Its own entry rather than a field of
+/// the page entry, because the count is identical for every page and every
+/// request — caching it per page would still re-run `COUNT(*)` once per page
+/// per TTL window.
+const COUNT_KEY: &str = "products:count";
+
+/// `total` for the envelope, evaluated at most once per cache TTL window.
+///
+/// Fail-open in the same shape as every other cache read: an unreachable tier
+/// or an unreadable entry falls through to the store rather than failing the
+/// page. A genuine store error still surfaces as the same 500 it always did.
+/// The flight stops a cold burst across *different* pages from turning into one
+/// `COUNT(*)` per page.
+async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
+    let flight = state.cache.flights().for_key(Kind::List, COUNT_KEY).await;
+    let _fill = flight.lock().await;
+
+    if let Some((bytes, _source)) = state.cache.get(Kind::List, COUNT_KEY).await {
+        // Only ever written by the `to_string` below, but a hand-edited or
+        // truncated entry must not become a 500.
+        if let Ok(total) = std::str::from_utf8(&bytes).unwrap_or_default().trim().parse::<i64>() {
+            return Ok(total);
+        }
+        tracing::warn!("discarding unreadable cached product count");
+    }
+
+    let total = state.store.count().await?;
+    state.cache.set(Kind::List, COUNT_KEY, Bytes::from(total.to_string())).await;
+    Ok(total)
 }
 
 /// `Cache-Control` for the Cloudflare edge tier plus an operational `X-Cache`
@@ -196,7 +252,19 @@ fn product_headers(state: &AppState, source: Option<HitSource>) -> Vec<(HeaderNa
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::Router;
     use chrono::NaiveDateTime;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use crate::app::router;
+    use crate::config::Config;
+    use crate::store::{InMemoryStore, Product, ProductStore, StoreError};
 
     use super::*;
 
@@ -285,5 +353,258 @@ mod tests {
             r#"{"items":[{"id":"prod-1","title":"Test","description":null,"price":89.5,"#
         ));
         assert!(json.ends_with(r#""page":1,"limit":20,"total":1,"hasNextPage":false}"#));
+    }
+
+    /// Wraps [`InMemoryStore`] to count the queries that actually reach the
+    /// database, and to make each one slow enough that concurrent requests
+    /// genuinely collide on a single fill instead of racing past it.
+    #[derive(Clone)]
+    struct CountingStore {
+        inner: InMemoryStore,
+        list_calls: Arc<AtomicUsize>,
+        count_calls: Arc<AtomicUsize>,
+        find_calls: Arc<AtomicUsize>,
+        delay: Duration,
+        fail_list: Arc<AtomicBool>,
+        fail_count: Arc<AtomicBool>,
+    }
+
+    impl CountingStore {
+        fn new(products: usize) -> Self {
+            Self {
+                inner: InMemoryStore::new(
+                    (0..products).map(|index| product(&format!("prod-{index}"), 10.0)).collect(),
+                ),
+                list_calls: Arc::new(AtomicUsize::new(0)),
+                count_calls: Arc::new(AtomicUsize::new(0)),
+                find_calls: Arc::new(AtomicUsize::new(0)),
+                delay: Duration::from_millis(30),
+                fail_list: Arc::new(AtomicBool::new(false)),
+                fail_count: Arc::new(AtomicBool::new(false)),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ProductStore for CountingStore {
+        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+            self.list_calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            // Consumed on use, so only the first attempt fails.
+            if self.fail_list.swap(false, Ordering::SeqCst) {
+                return Err(StoreError::Database("injected list failure".to_string()));
+            }
+            self.inner.list_page(offset, limit).await
+        }
+
+        async fn count(&self) -> Result<i64, StoreError> {
+            self.count_calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_count.load(Ordering::SeqCst) {
+                return Err(StoreError::Database("injected count failure".to_string()));
+            }
+            self.inner.count().await
+        }
+
+        async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
+            self.find_calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            self.inner.find_by_id(id).await
+        }
+
+        async fn ping(&self) -> Result<(), StoreError> {
+            self.inner.ping().await
+        }
+    }
+
+    /// The concurrency limiter is a confounder in these tests: they assert how
+    /// many queries reach the database, not that load was shed.
+    fn base_config() -> Config {
+        Config {
+            global_concurrency_limit: 4096,
+            per_ip_concurrency_limit: 4096,
+            rate_limit_global_rps: 0,
+            rate_limit_per_ip_rps: 0,
+            ..Config::default()
+        }
+    }
+
+    fn counting_state(store: CountingStore) -> AppState {
+        AppState::new(base_config(), Arc::new(store), None, None)
+    }
+
+    fn get(uri: &str) -> axum::http::Request<Body> {
+        axum::http::Request::builder().uri(uri).body(Body::empty()).unwrap()
+    }
+
+    /// Drives `uris` as genuinely concurrent requests. Cloning the `Router`
+    /// clones the `AppState`, which is the point: the singleflight map has to
+    /// be shared across those clones to deduplicate anything.
+    async fn get_all(app: Router, uris: &[String]) -> Vec<StatusCode> {
+        let tasks: Vec<_> = uris
+            .iter()
+            .map(|uri| {
+                let app = app.clone();
+                let uri = uri.clone();
+                tokio::spawn(async move { app.oneshot(get(&uri)).await.unwrap().status() })
+            })
+            .collect();
+        let mut statuses = Vec::new();
+        for task in tasks {
+            statuses.push(task.await.unwrap());
+        }
+        statuses
+    }
+
+    async fn body_of(response: Response) -> serde_json::Value {
+        let bytes: Bytes = response.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// The stampede this replaces: 64 concurrent requests on a cold key issued
+    /// 64 identical page queries plus 64 identical `COUNT(*)`.
+    #[tokio::test]
+    async fn concurrent_cold_page_requests_fill_once() {
+        let store = CountingStore::new(200);
+        let list_calls = Arc::clone(&store.list_calls);
+        let count_calls = Arc::clone(&store.count_calls);
+        let app = router(counting_state(store));
+
+        let statuses = get_all(app, &vec!["/products".to_string(); 64]).await;
+
+        assert!(statuses.iter().all(|status| *status == StatusCode::OK), "{statuses:?}");
+        assert_eq!(list_calls.load(Ordering::SeqCst), 1, "one page query, not 64");
+        assert_eq!(count_calls.load(Ordering::SeqCst), 1, "one COUNT(*), not 64");
+    }
+
+    #[tokio::test]
+    async fn concurrent_cold_detail_requests_fill_once() {
+        let store = CountingStore::new(200);
+        let find_calls = Arc::clone(&store.find_calls);
+        let app = router(counting_state(store));
+
+        let statuses = get_all(app, &vec!["/products/prod-7".to_string(); 64]).await;
+
+        assert!(statuses.iter().all(|status| *status == StatusCode::OK), "{statuses:?}");
+        assert_eq!(find_calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// The other half of the contract: collapsing must not serialise unrelated
+    /// keys into one queue.
+    #[tokio::test]
+    async fn distinct_pages_are_not_serialised() {
+        let store = CountingStore::new(200 * PAGE_SIZE as usize);
+        let list_calls = Arc::clone(&store.list_calls);
+        let app = router(counting_state(store));
+
+        let uris: Vec<String> = (1..=64).map(|page| format!("/products?page={page}")).collect();
+        let statuses = get_all(app, &uris).await;
+
+        assert!(statuses.iter().all(|status| *status == StatusCode::OK), "{statuses:?}");
+        assert_eq!(list_calls.load(Ordering::SeqCst), 64, "each page is its own key");
+    }
+
+    /// A leader whose store call fails must leave nothing behind: no cached
+    /// failure, no stuck key, no need for a dead-letter path.
+    #[tokio::test]
+    async fn a_failed_fill_is_retried_rather_than_replayed() {
+        let store = CountingStore::new(5);
+        store.fail_list.store(true, Ordering::SeqCst);
+        let list_calls = Arc::clone(&store.list_calls);
+        let app = router(counting_state(store));
+
+        let failed = get_all(app.clone(), &["/products".to_string()]).await;
+        assert_eq!(failed, vec![StatusCode::INTERNAL_SERVER_ERROR]);
+
+        let recovered = get_all(app, &["/products".to_string()]).await;
+        assert_eq!(recovered, vec![StatusCode::OK]);
+        assert_eq!(list_calls.load(Ordering::SeqCst), 2, "the failure must not be cached");
+    }
+
+    /// A client disconnect or the request timeout drops the future mid-fill.
+    /// The guard goes with it, so the key must not stay locked.
+    #[tokio::test]
+    async fn a_cancelled_request_does_not_wedge_the_key() {
+        let store = CountingStore::new(200);
+        let app = router(counting_state(store));
+
+        let in_flight = tokio::spawn({
+            let app = app.clone();
+            async move { app.oneshot(get("/products")).await.unwrap().status() }
+        });
+        // Well inside the store's 30 ms, i.e. holding the fill lock.
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        in_flight.abort();
+        let _ = in_flight.await;
+
+        let statuses = get_all(app, &["/products".to_string()]).await;
+        assert_eq!(statuses, vec![StatusCode::OK], "the key must still be fillable");
+    }
+
+    /// `total` is per-catalog, so it is cached across pages rather than
+    /// recomputed per request.
+    #[tokio::test]
+    async fn the_catalog_total_is_counted_once_per_ttl_window() {
+        let store = CountingStore::new(200);
+        let count_calls = Arc::clone(&store.count_calls);
+        let app = router(counting_state(store));
+
+        for page in [1, 2, 1, 2] {
+            let uris = vec![format!("/products?page={page}"); 8];
+            let statuses = get_all(app.clone(), &uris).await;
+            assert!(statuses.iter().all(|status| *status == StatusCode::OK), "{statuses:?}");
+        }
+
+        assert_eq!(count_calls.load(Ordering::SeqCst), 1, "COUNT(*) is per catalog, not per page");
+    }
+
+    #[tokio::test]
+    async fn an_expired_total_is_recomputed_not_served_stale() {
+        let store = CountingStore::new(200);
+        let count_calls = Arc::clone(&store.count_calls);
+        // A zero list TTL means the count entry can never be read back, which
+        // is the "expired between check and use" case.
+        let state = AppState::new(
+            Config { l1_list_ttl: Duration::ZERO, ..base_config() },
+            Arc::new(store),
+            None,
+            None,
+        );
+        let app = router(state);
+
+        for _ in 0..2 {
+            let response = app.clone().oneshot(get("/products")).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(body_of(response).await["total"], 200);
+            // moka expiry is lazy; the existing zero-TTL test waits for it too.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(count_calls.load(Ordering::SeqCst), 2, "an expired total is recomputed");
+    }
+
+    /// Fail-open: a cache entry that cannot be read costs a recompute, never a
+    /// failed page.
+    #[tokio::test]
+    async fn an_unreadable_cached_total_degrades_to_the_store() {
+        let store = CountingStore::new(200);
+        let count_calls = Arc::clone(&store.count_calls);
+        let state = counting_state(store);
+        state.cache.set(Kind::List, COUNT_KEY, Bytes::from_static(b"not-a-number")).await;
+
+        let response = router(state).oneshot(get("/products")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_of(response).await["total"], 200);
+        assert_eq!(count_calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// Fail-*closed* only where it always was: a genuine store failure still
+    /// surfaces as the contract 500 rather than a page with a wrong `total`.
+    #[tokio::test]
+    async fn a_store_count_failure_still_fails_the_page() {
+        let store = CountingStore::new(200);
+        store.fail_count.store(true, Ordering::SeqCst);
+        let app = router(counting_state(store));
+
+        let response = app.oneshot(get("/products")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

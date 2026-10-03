@@ -24,4 +24,9 @@ model Product {
   imageUrl    String?
   stock       Int      @default(0)
   createdAt   DateTime @default(now())
+
+  // Backs the list query's ORDER BY ("createdAt" ASC, "id" ASC). Without it
+  // every page sorts the whole table before LIMIT applies. The tuple matches
+  // the ordering exactly, so Postgres walks the index and stops at the limit.
+  @@index([createdAt, id])
 }

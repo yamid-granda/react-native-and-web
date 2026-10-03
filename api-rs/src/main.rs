@@ -20,16 +20,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .acquire_timeout(config.db_acquire_timeout)
         .connect(&config.database_url)
         .await?;
-    telemetry::spawn_pool_sampler(pool.clone());
+    telemetry::spawn_pool_sampler(pool.clone(), "primary");
     telemetry::spawn_rss_sampler();
+
+    // A read replica is an accelerator, not a dependency: unreachable or
+    // misconfigured means reads stay on the primary, exactly as before.
+    let read_pool = match config.database_read_url.as_deref() {
+        Some(url) => {
+            let pool = api_rs::store::connect_read_replica(
+                url,
+                config.db_read_max_connections,
+                config.db_acquire_timeout,
+            )
+            .await;
+            if let Some(pool) = &pool {
+                telemetry::spawn_pool_sampler(pool.clone(), "read");
+            }
+            pool
+        }
+        None => None,
+    };
 
     let valkey = match config.valkey_url.as_deref() {
         Some(url) => connect_valkey(url).await,
         None => None,
     };
 
-    let state =
-        AppState::new(config.clone(), Arc::new(SqlProductStore::new(pool)), valkey, metrics);
+    let store = match read_pool {
+        Some(read) => SqlProductStore::with_read_replica(pool, read),
+        None => SqlProductStore::new(pool),
+    };
+    let state = AppState::new(config.clone(), Arc::new(store), valkey, metrics);
     let app = router(state);
 
     let address = SocketAddr::from(([0, 0, 0, 0], config.port));

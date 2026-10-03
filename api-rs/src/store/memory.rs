@@ -25,10 +25,14 @@ impl InMemoryStore {
 
 #[async_trait]
 impl ProductStore for InMemoryStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<(Vec<Product>, i64), StoreError> {
+    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
         let start = (offset.max(0) as usize).min(self.products.len());
         let end = ((offset.max(0) + limit.max(0)) as usize).min(self.products.len());
-        Ok((self.products[start..end].to_vec(), self.products.len() as i64))
+        Ok(self.products[start..end].to_vec())
+    }
+
+    async fn count(&self) -> Result<i64, StoreError> {
+        Ok(self.products.len() as i64)
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {

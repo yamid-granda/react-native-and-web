@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use api_rs::app::{router, AppState};
 use api_rs::config::Config;
-use api_rs::store::SqlProductStore;
+use api_rs::store::{connect_read_replica, ProductStore, SqlProductStore};
 use chrono::NaiveDateTime;
 use redis::aio::ConnectionManager;
 use serde::Deserialize;
@@ -38,10 +38,32 @@ pub struct TestStack {
     pub base_url: String,
     pub pool: PgPool,
     pub valkey: Option<ConnectionManager>,
+    config: Config,
+    /// Extra servers from [`TestStack::serve_with_store`], kept alive so their
+    /// ports stay open for the duration of the test.
+    extra_servers: std::sync::Mutex<Vec<JoinHandle<()>>>,
     _postgres: ContainerAsync<GenericImage>,
     _valkey: Option<ContainerAsync<GenericImage>>,
     _server: JoinHandle<()>,
 }
+
+/// A stand-in read replica: a second database on the same server, holding the
+/// same fixtures plus one row the primary does not have.
+///
+/// This is deliberately not streaming replication. A real replica is
+/// byte-identical to the primary apart from lag, and lag is not assertable in a
+/// test. What *is* assertable — and what the store code actually decides — is
+/// which pool a query is issued against, so the replica database is given
+/// distinguishable contents and the marker row becomes the proof.
+pub struct ReplicaDatabase {
+    pub url: String,
+    pub pool: PgPool,
+}
+
+/// The row that exists only in the replica database.
+pub const REPLICA_ONLY_ID: &str = "replica-only";
+
+const REPLICA_DB: &str = "rnw_replica";
 
 /// Point testcontainers at the Docker socket that actually exists.
 ///
@@ -136,6 +158,25 @@ impl UnreachableDbStack {
 
 impl TestStack {
     pub async fn start(with_valkey: bool, config_patch: impl FnOnce(&mut Config)) -> Self {
+        Self::start_inner(with_valkey, config_patch, false).await.0
+    }
+
+    /// [`TestStack::start`] plus a stand-in replica database, with the store's
+    /// read pool pointed at it exactly as `main.rs` does when
+    /// `DATABASE_READ_URL` is set.
+    pub async fn start_with_read_replica(
+        with_valkey: bool,
+        config_patch: impl FnOnce(&mut Config),
+    ) -> (Self, ReplicaDatabase) {
+        let (stack, replica) = Self::start_inner(with_valkey, config_patch, true).await;
+        (stack, replica.expect("start_with_read_replica builds a replica"))
+    }
+
+    async fn start_inner(
+        with_valkey: bool,
+        config_patch: impl FnOnce(&mut Config),
+        with_read_replica: bool,
+    ) -> (Self, Option<ReplicaDatabase>) {
         use_colima_socket_if_present();
         // `with_exposed_port` and `with_wait_for` are inherent to `GenericImage` and
         // must come before any `ImageExt` call, which turns the image into a
@@ -167,6 +208,12 @@ impl TestStack {
         apply_migrations(&pool).await;
         seed_fixtures(&pool).await;
 
+        let replica = if with_read_replica {
+            Some(ReplicaDatabase::create(&pool, &database_url).await)
+        } else {
+            None
+        };
+
         let (valkey, valkey_container) = if with_valkey {
             let container = GenericImage::new("valkey/valkey", "8")
                 .with_exposed_port(6379.tcp())
@@ -187,7 +234,10 @@ impl TestStack {
 
         let mut config = Config {
             database_url,
+            database_read_url: replica.as_ref().map(|replica| replica.url.clone()),
             valkey_url: None,
+            db_max_connections: 5,
+            db_read_max_connections: 5,
             db_acquire_timeout: Duration::from_millis(500),
             request_timeout: Duration::from_secs(5),
             l1_list_ttl: Duration::from_secs(60),
@@ -198,23 +248,84 @@ impl TestStack {
             ..Config::default()
         };
         config_patch(&mut config);
-        let state = AppState::new(
-            config,
-            Arc::new(SqlProductStore::new(pool.clone())),
-            valkey.clone(),
-            None,
-        );
+        let store = Arc::new(match &replica {
+            // Routed exactly as `main.rs` routes it, so the test covers the
+            // real fail-open path rather than a stand-in.
+            Some(replica) => match connect_read_replica(
+                &replica.url,
+                config.db_read_max_connections,
+                config.db_acquire_timeout,
+            )
+            .await
+            {
+                Some(read) => SqlProductStore::with_read_replica(pool.clone(), read),
+                None => SqlProductStore::new(pool.clone()),
+            },
+            None => SqlProductStore::new(pool.clone()),
+        });
+        let state = AppState::new(config.clone(), store, valkey.clone(), None);
 
         let (base_url, server) = spawn_server(state).await;
 
-        Self {
+        let stack = Self {
             base_url,
             pool,
             valkey,
+            config,
+            extra_servers: std::sync::Mutex::new(Vec::new()),
             _postgres: postgres,
             _valkey: valkey_container,
             _server: server,
-        }
+        };
+        (stack, replica)
+    }
+
+    /// An additional server over the *same* database with a caller-supplied
+    /// store, for scenarios the standard wiring cannot express — a read pool
+    /// that is present but broken, for instance.
+    pub async fn serve_with_store(&self, store: Arc<dyn ProductStore>) -> String {
+        let state = AppState::new(self.config.clone(), store, self.valkey.clone(), None);
+        let (base_url, server) = spawn_server(state).await;
+        self.extra_servers.lock().expect("extra server handles").push(server);
+        base_url
+    }
+
+    /// A pool that is configured but cannot connect, standing in for a replica
+    /// that is unreachable in a way that still produced a pool object.
+    pub fn broken_read_pool() -> PgPool {
+        PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_millis(200))
+            .connect_lazy("postgresql://rnw:rnw@127.0.0.1:1/rnw_replica")
+            .expect("lazy pool for the unreachable replica")
+    }
+}
+
+impl ReplicaDatabase {
+    async fn create(primary: &PgPool, primary_url: &str) -> Self {
+        // A literal, not `format!`: sqlx only accepts constant SQL without an
+        // explicit injection audit, and the name never varies.
+        sqlx::query("CREATE DATABASE rnw_replica")
+            .execute(primary)
+            .await
+            .expect("create the stand-in replica database");
+        let (server, _database) =
+            primary_url.rsplit_once('/').expect("the test database url has a path");
+        let url = format!("{server}/{REPLICA_DB}");
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(Duration::from_secs(5))
+            .connect(&url)
+            .await
+            .expect("connect the replica database");
+
+        apply_migrations(&pool).await;
+        seed_fixtures(&pool).await;
+        // The marker: identical to a fixture except for the id and price, so a
+        // response carrying it can only have come from here.
+        insert_product(&pool, REPLICA_ONLY_ID, 424.25).await;
+
+        Self { url, pool }
     }
 }
 
@@ -240,6 +351,10 @@ async fn apply_migrations(pool: &PgPool) {
         .execute(pool)
         .await
         .expect("apply stock Prisma migration");
+    sqlx::raw_sql(include_str!("../../prisma/migrations/20261002120000/migration.sql"))
+        .execute(pool)
+        .await
+        .expect("apply Product_createdAt_id_idx Prisma migration");
 }
 
 async fn seed_fixtures(pool: &PgPool) {
@@ -265,4 +380,24 @@ async fn seed_fixtures(pool: &PgPool) {
         .await
         .expect("insert fixture product");
     }
+}
+
+/// One row shaped exactly like a fixture. The replica marker uses this so the
+/// only thing distinguishing it is its id and price.
+async fn insert_product(pool: &PgPool, id: &str, price: f64) {
+    sqlx::query(
+        r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
+    )
+    .bind(id)
+    .bind("Replica only")
+    .bind(None::<String>)
+    .bind(price)
+    .bind("USD")
+    .bind(None::<String>)
+    .bind(0_i32)
+    .bind(NaiveDateTime::parse_from_str("2026-01-01 00:00:00.000", "%Y-%m-%d %H:%M:%S%.3f")
+        .expect("marker timestamp"))
+    .execute(pool)
+    .await
+    .expect("insert replica-only marker product");
 }

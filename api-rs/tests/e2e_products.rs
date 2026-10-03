@@ -1,9 +1,12 @@
 mod common;
 
+use std::sync::Arc;
+
 use reqwest::StatusCode;
 use serde_json::Value;
 
 use api_rs::config::Config;
+use api_rs::store::SqlProductStore;
 
 #[tokio::test]
 async fn product_read_contract_and_pagination_boundaries() {
@@ -132,4 +135,80 @@ async fn degraded_shapes_while_the_database_is_down() {
         response.text().await.unwrap(),
         r#"{"statusCode":500,"message":"Internal server error"}"#
     );
+}
+
+/// Reads are routed to the replica while the primary stays the health target.
+/// The replica database holds a row the primary does not, which is what makes
+/// the routing observable rather than assumed.
+#[tokio::test]
+async fn reads_are_served_from_the_read_replica() {
+    let (stack, replica) = common::TestStack::start_with_read_replica(true, |_| {}).await;
+    let client = reqwest::Client::new();
+
+    // Present only in the replica database: a 200 proves `find_by_id` used the
+    // read pool.
+    let response = client
+        .get(format!("{}/products/{}", stack.base_url, common::REPLICA_ONLY_ID))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail: Value = response.json().await.unwrap();
+    assert_eq!(detail["id"], common::REPLICA_ONLY_ID);
+    assert_eq!(detail["price"], 424.25);
+
+    // The same has to hold for the paged read and its `COUNT(*)`: the replica
+    // carries the 25 fixtures plus the marker, the primary only the fixtures.
+    let response = client.get(format!("{}/products", stack.base_url)).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: Value = response.json().await.unwrap();
+    assert_eq!(page["total"], 26);
+    assert_eq!(page["items"].as_array().unwrap().len(), 20);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM \"Product\"")
+        .fetch_one(&replica.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 26, "the replica is what the response total reflects");
+}
+
+/// The flip side: `/health` must keep reporting on the primary, or a reachable
+/// replica would mask a dead primary. A read pool that cannot connect makes the
+/// direction unambiguous — reads fail, health does not.
+#[tokio::test]
+async fn health_checks_the_primary_even_when_reads_target_the_replica() {
+    let stack = common::TestStack::start(false, |_| {}).await;
+    let base_url = stack
+        .serve_with_store(Arc::new(SqlProductStore::with_read_replica(
+            stack.pool.clone(),
+            common::TestStack::broken_read_pool(),
+        )))
+        .await;
+    let client = reqwest::Client::new();
+
+    let response = client.get(format!("{base_url}/health")).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let health: Value = response.json().await.unwrap();
+    assert_eq!(health["status"], "ok", "ping must not touch the read pool");
+
+    // The same store does route reads to the replica, which is why they fail.
+    let response = client.get(format!("{base_url}/products")).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// An unreachable replica degrades to primary reads rather than a dead service.
+#[tokio::test]
+async fn an_unreachable_replica_reads_from_the_primary() {
+    let stack = common::TestStack::start(true, |config: &mut Config| {
+        // Port 1 on loopback refuses immediately, and `connect_read_replica`
+        // is fail-open, so the store ends up with no read pool at all.
+        config.database_read_url = Some("postgresql://rnw:rnw@127.0.0.1:1/rnw_replica".to_string());
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let response = client.get(format!("{}/products/prod-1", stack.base_url)).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail: Value = response.json().await.unwrap();
+    assert_eq!(detail["id"], "prod-1");
 }

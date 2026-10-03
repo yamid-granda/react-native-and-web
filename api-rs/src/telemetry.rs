@@ -84,13 +84,15 @@ pub fn spawn_rss_sampler() {
     });
 }
 
-pub fn spawn_pool_sampler(pool: PgPool) {
+/// `role` labels the pool the gauge describes, so the primary and a read
+/// replica are told apart on the dashboard.
+pub fn spawn_pool_sampler(pool: PgPool, role: &'static str) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(5));
         loop {
             ticker.tick().await;
-            metrics::gauge!("sqlx_pool_size").set(pool.size() as f64);
-            metrics::gauge!("sqlx_pool_idle").set(pool.num_idle() as f64);
+            metrics::gauge!("sqlx_pool_size", "pool" => role).set(pool.size() as f64);
+            metrics::gauge!("sqlx_pool_idle", "pool" => role).set(pool.num_idle() as f64);
         }
     });
 }
