@@ -25,14 +25,15 @@ async fn product_read_contract_and_pagination_boundaries() {
     assert_eq!(page_one["items"].as_array().unwrap().len(), 20);
     assert_eq!(page_one["page"], 1);
     assert_eq!(page_one["limit"], 20);
-    assert_eq!(page_one["total"], 25);
+    // 26 fixtures: the 25 seeded rows plus prod-owned-1, the one with a seller.
+    assert_eq!(page_one["total"], 26);
     assert_eq!(page_one["hasNextPage"], true);
     assert_eq!(page_one["items"][0]["id"], "prod-1");
     assert_eq!(page_one["items"][0]["price"], 129.99);
 
     let response = client.get(format!("{}/products?page=2", stack.base_url)).send().await.unwrap();
     let page_two: Value = response.json().await.unwrap();
-    assert_eq!(page_two["items"].as_array().unwrap().len(), 5);
+    assert_eq!(page_two["items"].as_array().unwrap().len(), 6);
     assert_eq!(page_two["page"], 2);
     assert_eq!(page_two["hasNextPage"], false);
 
@@ -62,6 +63,10 @@ async fn detail_404_health_and_cache_are_contract_compatible() {
     let detail: Value = response.json().await.unwrap();
     assert_eq!(detail["id"], "prod-1");
     assert_eq!(detail["createdAt"], "2026-01-01T00:00:00.000Z");
+    // A seeded product has no seller, and the wire says so explicitly rather than
+    // omitting the keys.
+    assert!(detail["storeId"].is_null());
+    assert!(detail["storeName"].is_null());
 
     sqlx::query(r#"UPDATE "Product" SET "title" = 'mutated' WHERE "id" = 'prod-1'"#)
         .execute(&stack.pool)
@@ -158,18 +163,18 @@ async fn reads_are_served_from_the_read_replica() {
     assert_eq!(detail["price"], 424.25);
 
     // The same has to hold for the paged read and its `COUNT(*)`: the replica
-    // carries the 25 fixtures plus the marker, the primary only the fixtures.
+    // carries the 26 fixtures plus the marker, the primary only the fixtures.
     let response = client.get(format!("{}/products", stack.base_url)).send().await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let page: Value = response.json().await.unwrap();
-    assert_eq!(page["total"], 26);
+    assert_eq!(page["total"], 27);
     assert_eq!(page["items"].as_array().unwrap().len(), 20);
 
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM \"Product\"")
         .fetch_one(&replica.pool)
         .await
         .unwrap();
-    assert_eq!(count, 26, "the replica is what the response total reflects");
+    assert_eq!(count, 27, "the replica is what the response total reflects");
 }
 
 /// The flip side: `/health` must keep reporting on the primary, or a reachable

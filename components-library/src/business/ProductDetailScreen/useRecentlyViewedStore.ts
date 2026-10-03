@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { persist } from "zustand/middleware"
+import { createPersistStorage } from "../../utils/persistStorage"
 import type { ProductData } from "../../types/Product"
 
 const MAX_ITEMS = 10
@@ -8,23 +9,6 @@ type RecentlyViewedState = {
   items: ProductData[]
   recordView: (product: ProductData) => void
 }
-
-// see useCartStore.ts for why web persists to localStorage and native falls
-// back to an in-memory store
-const memoryStorage = new Map<string, string>()
-const inMemoryFallback: StateStorage = {
-  getItem: (name) => memoryStorage.get(name) ?? null,
-  setItem: (name, value) => {
-    memoryStorage.set(name, value)
-  },
-  removeItem: (name) => {
-    memoryStorage.delete(name)
-  },
-}
-
-const storage = createJSONStorage<RecentlyViewedState>(() =>
-  typeof localStorage !== "undefined" ? localStorage : inMemoryFallback,
-)
 
 export const useRecentlyViewedStore = create<RecentlyViewedState>()(
   persist(
@@ -39,6 +23,6 @@ export const useRecentlyViewedStore = create<RecentlyViewedState>()(
           ),
         })),
     }),
-    { name: "recently-viewed-storage", storage },
+    { name: "recently-viewed-storage", storage: createPersistStorage<RecentlyViewedState>() },
   ),
 )

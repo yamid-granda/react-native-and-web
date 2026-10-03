@@ -110,4 +110,46 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from wishlist"))
     expect(useWishlistStore.getState().items["1"]).toBeUndefined()
   })
+
+  describe("Sold by", () => {
+    const sold = { ...product, storeId: "usr_1", storeName: "Riverbend Vintage" }
+
+    it("is absent for a product with no seller", () => {
+      render(<ProductDetailScreen product={product} />)
+      expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument()
+    })
+
+    it("is absent when the wire sends a null store name", () => {
+      render(<ProductDetailScreen product={{ ...product, storeId: null, storeName: null }} />)
+      expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument()
+    })
+
+    it("names the store and opens it on press", () => {
+      const onOpenStore = vi.fn()
+      render(<ProductDetailScreen product={sold} onOpenStore={onOpenStore} />)
+      expect(screen.getByText("Sold by Riverbend Vintage")).toBeInTheDocument()
+
+      fireEvent.click(screen.getByLabelText("Sold by Riverbend Vintage"))
+      expect(onOpenStore).toHaveBeenCalledWith("usr_1")
+    })
+
+    it("still names the store when there is nowhere to navigate to", () => {
+      render(<ProductDetailScreen product={sold} />)
+      expect(screen.getByText("Sold by Riverbend Vintage")).toBeInTheDocument()
+      // Not focusable: an inert button in the tab order is worse than plain text.
+      expect(screen.getByLabelText("Sold by Riverbend Vintage")).toBeDisabled()
+    })
+
+    it("does not fire without a store id, even with a handler", () => {
+      const onOpenStore = vi.fn()
+      render(
+        <ProductDetailScreen
+          product={{ ...product, storeId: undefined, storeName: "Riverbend Vintage" }}
+          onOpenStore={onOpenStore}
+        />,
+      )
+      fireEvent.click(screen.getByLabelText("Sold by Riverbend Vintage"))
+      expect(onOpenStore).not.toHaveBeenCalled()
+    })
+  })
 })

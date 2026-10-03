@@ -36,6 +36,9 @@ otlp = [
 ]
 
 [dependencies]
+# Password hashing. Deliberately not sha2/bcrypt: those are fast hashes, which
+# is the wrong primitive for a guessable secret (see src/auth/password.rs).
+argon2 = "0.6"
 async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
@@ -51,6 +54,10 @@ redis = { version = "1", features = ["connection-manager", "tokio-comp"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
+# Only to hash session tokens, where the input is 256 bits of CSPRNG output
+# and therefore unguessable — sha256 is right *there* precisely because it is
+# not a password hash. See src/auth/token.rs.
+sha2 = "0.10"
 sqlx = { version = "0.9", default-features = false, features = [
   "chrono",
   "macros",
@@ -103,6 +110,10 @@ http-body-util = "0.1"
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 testcontainers = "0.27"
 tower = { version = "0.5", features = ["util"] }
+# `test-util` only for `#[tokio::test(start_paused = true)]`. The bootstrap-budget
+# test needs to spend a real 22 s of virtual time to prove the retry loop
+# terminates; without auto-advancing time that is 22 s of wall clock per run.
+tokio = { version = "1", features = ["test-util"] }
 
 [profile.release]
 lto = "thin"

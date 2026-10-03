@@ -10,7 +10,7 @@ use std::time::Duration;
 use api_rs::app::{router, AppState};
 use api_rs::config::Config;
 use api_rs::migrations;
-use api_rs::store::{connect_read_replica, ProductStore, SqlProductStore};
+use api_rs::store::{connect_read_replica, MarketplaceStore, SqlProductStore};
 use chrono::NaiveDateTime;
 use redis::aio::ConnectionManager;
 use serde::Deserialize;
@@ -33,7 +33,18 @@ struct FixtureProduct {
     image_url: Option<String>,
     stock: i32,
     created_at: String,
+    /// Absent for every seeded row; `prod-owned-1` is the one fixture with a
+    /// seller, so the store `LEFT JOIN` has something to find.
+    owner_id: Option<String>,
 }
+
+/// The seller behind the `prod-owned-1` fixture row. Mirrors the constants in
+/// `tests/fixtures/generate_goldens.py`, which is what writes the byte-compared
+/// goldens these rows have to reproduce.
+pub const FIXTURE_STORE_ID: &str = "usr_fixture_store";
+pub const FIXTURE_STORE_NAME: &str = "Riverbend Vintage";
+/// Created before any product: `Product.ownerId` references it.
+const FIXTURE_STORE_CREATED_AT: &str = "2026-01-01 00:00:00.000";
 
 pub struct TestStack {
     pub base_url: String,
@@ -65,6 +76,23 @@ pub struct ReplicaDatabase {
 pub const REPLICA_ONLY_ID: &str = "replica-only";
 
 const REPLICA_DB: &str = "rnw_replica";
+
+/// A per-test-unique suffix, for the addresses the auth suites register. They all
+/// share one throwaway database, and a duplicate registration is a 409 by design.
+pub fn unique_suffix() -> String {
+    use base64::Engine as _;
+    use rand::TryRng as _;
+    let mut bytes = [0u8; 6];
+    rand::rngs::SysRng
+        .try_fill_bytes(&mut bytes)
+        .expect("the OS RNG is available in a test binary");
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// The stored form of a token, for asserting what the database holds.
+pub fn hash_token(token: &str) -> String {
+    api_rs::auth::token::hash_token(token)
+}
 
 /// Point testcontainers at the Docker socket that actually exists.
 ///
@@ -284,7 +312,7 @@ impl TestStack {
     /// An additional server over the *same* database with a caller-supplied
     /// store, for scenarios the standard wiring cannot express — a read pool
     /// that is present but broken, for instance.
-    pub async fn serve_with_store(&self, store: Arc<dyn ProductStore>) -> String {
+    pub async fn serve_with_store(&self, store: Arc<dyn MarketplaceStore>) -> String {
         let state = AppState::new(self.config.clone(), store, self.valkey.clone(), None);
         let (base_url, server) = spawn_server(state).await;
         self.extra_servers.lock().expect("extra server handles").push(server);
@@ -332,7 +360,13 @@ impl ReplicaDatabase {
 
 /// Binds an ephemeral port and serves `state` on a background task, returning
 /// the base URL plus the join handle that keeps the server alive.
+///
+/// The list-generation refresher is started here for the same reason `main.rs`
+/// starts it: `AppState::new` is synchronous, so a real server needs someone to
+/// keep its local view of the shared counter fresh. Without it a second server
+/// over the same Valkey would never notice another instance's write.
 async fn spawn_server(state: AppState) -> (String, JoinHandle<()>) {
+    state.cache.spawn_generation_refresher(state.config.l2_ttl);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind ephemeral port");
     let address: SocketAddr = listener.local_addr().expect("listener address");
     let server = tokio::spawn(async move {
@@ -350,15 +384,27 @@ async fn apply_migrations(pool: &PgPool) {
 }
 
 async fn seed_fixtures(pool: &PgPool) {
+    // The seller first: `Product.ownerId` references it.
+    sqlx::query(
+        r#"INSERT INTO "User" ("id", "email", "passwordHash", "storeName", "createdAt") VALUES ($1, $2, $3, $4, $5)"#,
+    )
+    .bind(FIXTURE_STORE_ID)
+    .bind("fixture-store@rnw.test")
+    // Not a hash anything logs in with: the E2E suites register their own sellers
+    // over HTTP. This row exists only so the `LEFT JOIN` resolves.
+    .bind("$argon2id$fixture-not-a-real-hash")
+    .bind(FIXTURE_STORE_NAME)
+    .bind(parse_timestamp(FIXTURE_STORE_CREATED_AT))
+    .execute(pool)
+    .await
+    .expect("insert fixture seller");
+
     let fixtures: Vec<FixtureProduct> =
         serde_json::from_str(include_str!("../fixtures/products.json"))
             .expect("valid product fixture JSON");
     for product in fixtures {
-        let created_at =
-            NaiveDateTime::parse_from_str(&product.created_at, "%Y-%m-%d %H:%M:%S%.3f")
-                .expect("fixture timestamp");
         sqlx::query(
-            r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
+            r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt", "ownerId") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
         )
         .bind(product.id)
         .bind(product.title)
@@ -367,11 +413,16 @@ async fn seed_fixtures(pool: &PgPool) {
         .bind(product.currency)
         .bind(product.image_url)
         .bind(product.stock)
-        .bind(created_at)
+        .bind(parse_timestamp(&product.created_at))
+        .bind(product.owner_id)
         .execute(pool)
         .await
         .expect("insert fixture product");
     }
+}
+
+fn parse_timestamp(raw: &str) -> NaiveDateTime {
+    NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S%.3f").expect("fixture timestamp")
 }
 
 /// One row shaped exactly like a fixture. The replica marker uses this so the

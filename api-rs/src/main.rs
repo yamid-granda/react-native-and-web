@@ -15,11 +15,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     telemetry::init_tracing().await;
     let metrics = telemetry::init_metrics();
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(config.db_max_connections)
-        .acquire_timeout(config.db_acquire_timeout)
-        .connect(&config.database_url)
-        .await?;
+    let pool = api_rs::store::connect_primary_pool(
+        &config.database_url,
+        config.db_max_connections,
+        config.db_acquire_timeout,
+    )
+    .await?;
     telemetry::spawn_pool_sampler(pool.clone(), "primary");
     telemetry::spawn_rss_sampler();
 
@@ -51,6 +52,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => SqlProductStore::new(pool),
     };
     let state = AppState::new(config.clone(), Arc::new(store), valkey, metrics);
+    // The list-key generation counter (§12) is held in process and refreshed
+    // here, on the L2 TTL: that is how long a retired list entry can still be
+    // addressable, so this interval is what bounds cross-instance staleness
+    // after a write. Started after `AppState::new` because that constructor is
+    // synchronous and is also used by tests and benches that want no task.
+    state.cache.spawn_generation_refresher(state.config.l2_ttl);
     let app = router(state);
 
     let address = SocketAddr::from(([0, 0, 0, 0], config.port));

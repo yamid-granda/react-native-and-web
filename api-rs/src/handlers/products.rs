@@ -27,6 +27,14 @@ pub struct ProductJson {
     pub stock: i32,
     #[serde(rename = "createdAt", serialize_with = "prisma_datetime")]
     pub created_at: NaiveDateTime,
+    /// Always present, `null` for a seeded or imported product. Not optional:
+    /// `skip_serializing_if` is an error-body convention (see [`ErrorBody`]), and
+    /// a key that appears and disappears between responses is a client bug
+    /// waiting to happen.
+    #[serde(rename = "storeId")]
+    pub store_id: Option<String>,
+    #[serde(rename = "storeName")]
+    pub store_name: Option<String>,
 }
 
 impl From<Product> for ProductJson {
@@ -40,6 +48,8 @@ impl From<Product> for ProductJson {
             image_url: product.image_url,
             stock: product.stock,
             created_at: product.created_at,
+            store_id: product.owner_id,
+            store_name: product.store_name,
         }
     }
 }
@@ -128,7 +138,7 @@ fn round_to_significant_digits(value: f64, digits: i32) -> f64 {
 pub async fn list(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
     let query = parse_page(parts.uri.query())?;
-    let key = format!("products:list:{}", query.page.to_bits());
+    let key = list_key(&state, query.page);
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
@@ -210,11 +220,29 @@ async fn cached(
     ))
 }
 
+/// The catalog list key: namespace generation, then the page's float bits.
+///
+/// The generation is what makes a write path possible at all. Page keys cannot
+/// be enumerated — `products:list:<bits>` over every page a shopper has ever
+/// asked for is not a list anyone can walk — so a price change would otherwise
+/// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
+/// that a write bumps retires all of them at once, with one `INCR` and no
+/// `SCAN` (see `ARCHITECTURE.md` §12).
+pub fn list_key(state: &AppState, page: f64) -> String {
+    format!("products:list:{}:{}", state.cache.generation(), page.to_bits())
+}
+
 /// Cache key for the catalog-wide `total`. Its own entry rather than a field of
 /// the page entry, because the count is identical for every page and every
 /// request — caching it per page would still re-run `COUNT(*)` once per page
-/// per TTL window.
-const COUNT_KEY: &str = "products:count";
+/// per TTL window. It carries the generation too: `total` is the field a new
+/// product changes most visibly, so a retired entry here is the one a shopper
+/// would actually notice.
+const COUNT_KEY_PREFIX: &str = "products:count";
+
+fn count_key(state: &AppState) -> String {
+    format!("{COUNT_KEY_PREFIX}:{}", state.cache.generation())
+}
 
 /// `total` for the envelope, evaluated at most once per cache TTL window.
 ///
@@ -224,10 +252,11 @@ const COUNT_KEY: &str = "products:count";
 /// The flight stops a cold burst across *different* pages from turning into one
 /// `COUNT(*)` per page.
 async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
-    let flight = state.cache.flights().for_key(Kind::List, COUNT_KEY).await;
+    let key = count_key(state);
+    let flight = state.cache.flights().for_key(Kind::List, &key).await;
     let _fill = flight.lock().await;
 
-    if let Some((bytes, _source)) = state.cache.get(Kind::List, COUNT_KEY).await {
+    if let Some((bytes, _source)) = state.cache.get(Kind::List, &key).await {
         // Only ever written by the `to_string` below, but a hand-edited or
         // truncated entry must not become a 500.
         if let Ok(total) = std::str::from_utf8(&bytes).unwrap_or_default().trim().parse::<i64>() {
@@ -237,7 +266,7 @@ async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
     }
 
     let total = state.store.count().await?;
-    state.cache.set(Kind::List, COUNT_KEY, Bytes::from(total.to_string())).await;
+    state.cache.set(Kind::List, &key, Bytes::from(total.to_string())).await;
     Ok(total)
 }
 
@@ -282,6 +311,8 @@ mod tests {
                 "%Y-%m-%d %H:%M:%S%.3f",
             )
             .unwrap(),
+            owner_id: None,
+            store_name: None,
         }
     }
 
@@ -335,12 +366,23 @@ mod tests {
         let json = serde_json::to_string(&ProductJson::from(product("prod-1", 18.0))).unwrap();
         assert_eq!(
             json,
-            r#"{"id":"prod-1","title":"Test","description":null,"price":18,"currency":"USD","imageUrl":null,"stock":0,"createdAt":"2026-01-01T00:00:00.000Z"}"#
+            r#"{"id":"prod-1","title":"Test","description":null,"price":18,"currency":"USD","imageUrl":null,"stock":0,"createdAt":"2026-01-01T00:00:00.000Z","storeId":null,"storeName":null}"#
         );
     }
 
     #[test]
-    fn page_envelope_matches_service_shape() {
+    fn a_product_with_a_seller_names_the_store_in_the_payload() {
+        let mut owned = product("prod-9", 4.0);
+        owned.owner_id = Some("usr_7".to_string());
+        owned.store_name = Some("Corner Shop".to_string());
+        assert_eq!(
+            serde_json::to_string(&ProductJson::from(owned)).unwrap(),
+            r#"{"id":"prod-9","title":"Test","description":null,"price":4,"currency":"USD","imageUrl":null,"stock":0,"createdAt":"2026-01-01T00:00:00.000Z","storeId":"usr_7","storeName":"Corner Shop"}"#
+        );
+    }
+
+    #[test]
+    fn the_page_envelope_keeps_its_shape_with_the_new_trailing_keys() {
         let page = ProductsPageJson {
             items: vec![ProductJson::from(product("prod-1", 89.5))],
             page: 1.0,
@@ -353,6 +395,20 @@ mod tests {
             r#"{"items":[{"id":"prod-1","title":"Test","description":null,"price":89.5,"#
         ));
         assert!(json.ends_with(r#""page":1,"limit":20,"total":1,"hasNextPage":false}"#));
+    }
+
+    /// The generation is what a write bumps, so a page cached under one must
+    /// become unreachable under the next.
+    #[tokio::test]
+    async fn a_bump_changes_the_list_key() {
+        let state = counting_state(CountingStore::new(1));
+        let before = list_key(&state, 1.0);
+        state.cache.bump_list_generation().await;
+        let after = list_key(&state, 1.0);
+        assert_ne!(before, after);
+        assert!(before.starts_with("products:list:0:"), "{before}");
+        assert!(after.starts_with("products:list:1:"), "{after}");
+        assert_ne!(count_key(&state), format!("{COUNT_KEY_PREFIX}:0"));
     }
 
     /// Wraps [`InMemoryStore`] to count the queries that actually reach the
@@ -413,6 +469,102 @@ mod tests {
 
         async fn ping(&self) -> Result<(), StoreError> {
             self.inner.ping().await
+        }
+
+        // The owner-scoped and write paths are pass-throughs too: the tests in
+        // this module are about the read path's cache behaviour, and
+        // `handlers/my_store.rs` is where a mutation is asserted.
+        async fn list_owned_page(
+            &self,
+            owner_id: &str,
+            offset: i64,
+            limit: i64,
+        ) -> Result<Vec<Product>, StoreError> {
+            self.inner.list_owned_page(owner_id, offset, limit).await
+        }
+
+        async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
+            self.inner.count_owned(owner_id).await
+        }
+
+        async fn find_owned_by_id(
+            &self,
+            owner_id: &str,
+            id: &str,
+        ) -> Result<Option<Product>, StoreError> {
+            self.inner.find_owned_by_id(owner_id, id).await
+        }
+
+        async fn create(
+            &self,
+            owner_id: &str,
+            new_product: crate::store::NewProduct,
+        ) -> Result<Product, StoreError> {
+            self.inner.create(owner_id, new_product).await
+        }
+
+        async fn update_owned(
+            &self,
+            owner_id: &str,
+            id: &str,
+            patch: crate::store::ProductPatch,
+        ) -> Result<Option<Product>, StoreError> {
+            self.inner.update_owned(owner_id, id, patch).await
+        }
+
+        async fn delete_owned(&self, owner_id: &str, id: &str) -> Result<bool, StoreError> {
+            self.inner.delete_owned(owner_id, id).await
+        }
+    }
+
+    /// The read-path tests above never touch identity, so these two are plain
+    /// pass-throughs to the in-memory store's own maps. They exist only because
+    /// `AppState` holds one `Arc<dyn MarketplaceStore>` rather than three
+    /// handles.
+    #[async_trait::async_trait]
+    impl crate::store::UserStore for CountingStore {
+        async fn find_user_by_email(
+            &self,
+            email: &str,
+        ) -> Result<Option<crate::store::UserRecord>, StoreError> {
+            self.inner.find_user_by_email(email).await
+        }
+
+        async fn find_user_by_id(
+            &self,
+            id: &str,
+        ) -> Result<Option<crate::store::StoreUser>, StoreError> {
+            self.inner.find_user_by_id(id).await
+        }
+
+        async fn create_user(
+            &self,
+            new_user: crate::store::NewUser,
+        ) -> Result<crate::store::StoreUser, StoreError> {
+            self.inner.create_user(new_user).await
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::store::SessionStore for CountingStore {
+        async fn find_valid_session(
+            &self,
+            token_hash: &str,
+        ) -> Result<Option<crate::store::Session>, StoreError> {
+            self.inner.find_valid_session(token_hash).await
+        }
+
+        async fn create_session(
+            &self,
+            token_hash: &str,
+            user_id: &str,
+            expires_at: chrono::NaiveDateTime,
+        ) -> Result<(), StoreError> {
+            self.inner.create_session(token_hash, user_id, expires_at).await
+        }
+
+        async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
+            self.inner.delete_session(token_hash).await
         }
     }
 
@@ -588,7 +740,7 @@ mod tests {
         let store = CountingStore::new(200);
         let count_calls = Arc::clone(&store.count_calls);
         let state = counting_state(store);
-        state.cache.set(Kind::List, COUNT_KEY, Bytes::from_static(b"not-a-number")).await;
+        state.cache.set(Kind::List, &count_key(&state), Bytes::from_static(b"not-a-number")).await;
 
         let response = router(state).oneshot(get("/products")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);

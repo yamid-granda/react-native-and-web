@@ -10,10 +10,12 @@ building this, not just configured on paper).
 ## Stack
 
 - **`components-library`** — shared UI, in two Storybook categories:
-  - `src/common/` — generic, reusable primitives (`Button`).
+  - `src/common/` — generic, reusable primitives (`Button`, `Input`, `Label`).
   - `src/business/` — full app screens (`HomeScreen`, used unmodified as
     both mobile-application's Home tab and web-application's `/` page,
-    including its Zustand-backed counter state).
+    including its Zustand-backed counter state and its My Store entry;
+    `AuthScreen`, `StoreScreen`, `ProductFormScreen` and `PublicStoreScreen`
+    for the seller storefront).
 
   Components are written with React Native primitives (`View`, `Text`,
   `Pressable`) styled with [NativeWind](https://www.nativewind.dev)
@@ -358,6 +360,30 @@ the contract port 3001 that both clients default to; Grafana (from
   sets `optimizeDeps.esbuildOptions.loader: { ".js": "jsx" }` to fix it,
   the same way it already overrides `resolveExtensions` for
   `react-native-svg`.
+- **A write has to invalidate the public cache, and api-rs's list keys cannot be
+  enumerated.** `GET /products?page=N` is cached under
+  `products:list:<generation>:<page bits>`, so there is no list of "every page a
+  shopper has asked for" to walk when a price changes. The write path bumps that
+  namespace generation instead — one `INCR`, after which every previously cached
+  page is simply unreachable — and calls `invalidate_detail(id)` *before* it, so
+  a reader can never pair a fresh detail entry with a list filled before the
+  write. Three list families fold in the counter: the marketplace, a public
+  storefront, and `products:count` (which is the field `total` comes from). The
+  generation is held in process rather than read per request, so the cost is
+  bounded staleness on instances that did not perform the write — see
+  `api-rs/ARCHITECTURE.md` §12 for the arithmetic rather than assuming it is
+  still 5 s.
+- **A credential does not get the cart's storage.** `useCartStore`,
+  `useWishlistStore`, `useRecentlyViewedStore` and `useSessionStore` all share
+  one `createPersistStorage` helper (`localStorage` on web, an in-memory `Map` on
+  native), which is right for a cart and wrong for a session token: on native the
+  token is dropped on any JS reload, so the seller is silently signed out, and on
+  web `localStorage` is readable by any script on the page. The honest fixes are
+  `expo-secure-store` for native — which costs a development build for the whole
+  mobile app, since a new native module means Expo Go stops being enough — and an
+  `httpOnly` cookie session for web. Both are recorded as follow-ups in
+  `components-library/src/business/AuthScreen/useSessionStore.ts`; neither is
+  something to bolt on silently.
 - **`BottomNav` (rendered directly by `web-application`; mobile builds an
   equivalent bar from its exports — see the `TabList` bullet above) floats
   over content with a real transparent `marginBottom`, not a filled

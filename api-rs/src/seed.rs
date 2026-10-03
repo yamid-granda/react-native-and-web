@@ -37,8 +37,7 @@ const NOUNS: &[&str] = &[
     "Trail Camera",
 ];
 
-const INSERT_COLUMNS: &str =
-    r#"("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt")"#;
+const INSERT_COLUMNS: &str = r#"("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt", "ownerId")"#;
 
 struct SeedProduct {
     id: String,
@@ -47,6 +46,7 @@ struct SeedProduct {
     price: f64,
     image_url: Option<String>,
     stock: i32,
+    owner_id: Option<String>,
 }
 
 /// Fixed ids so both platforms' e2e specs can target a known product, and so
@@ -110,6 +110,7 @@ fn fixture_products() -> Vec<SeedProduct> {
             true,
             60,
         ),
+        owned_fixture(),
     ]
 }
 
@@ -128,7 +129,70 @@ fn seed(
         price,
         image_url: with_image.then(|| format!("https://picsum.photos/seed/{id}/400/400")),
         stock,
+        owner_id: None,
     }
+}
+
+/// The one product that belongs to a seller, so the `LEFT JOIN` in the read path
+/// and the owner-scoped queries are exercisable from a fresh `db:seed`. Fixed id
+/// because both platforms' e2e specs target it.
+fn owned_fixture() -> SeedProduct {
+    SeedProduct {
+        id: "prod-owned-1".to_string(),
+        title: "Leather Weekender Bag".to_string(),
+        description: Some("Hand-stitched full-grain leather, brass hardware.".to_string()),
+        price: 189.0,
+        image_url: Some("https://picsum.photos/seed/prod-owned-1/400/400".to_string()),
+        stock: 6,
+        owner_id: Some(DEMO_SELLER_ID.to_string()),
+    }
+}
+
+/// The demo seller behind `prod-owned-1`.
+///
+/// A real password hash, so `POST /auth/login` works against a fresh `db:seed`
+/// without registering first. Deliberately cheap argon2 parameters: this is
+/// development fixture data with a published password, and a hash at production
+/// cost would make every local login pay for nothing. It is a *seller*, never a
+/// session — no session row is seeded, because a seeded token would be a live
+/// credential in every developer's database.
+pub const DEMO_SELLER_ID: &str = "usr_demo_seller";
+pub const DEMO_SELLER_EMAIL: &str = "seller@rnw.test";
+pub const DEMO_SELLER_PASSWORD: &str = "rnw-demo-password";
+pub const DEMO_STORE_NAME: &str = "Riverbend Vintage";
+
+#[derive(Debug)]
+struct SeedSeller {
+    id: &'static str,
+    email: &'static str,
+    password_hash: String,
+    store_name: &'static str,
+}
+
+fn demo_sellers() -> Vec<SeedSeller> {
+    let hasher = argon2::Argon2::from(seed_params());
+    vec![SeedSeller {
+        id: DEMO_SELLER_ID,
+        email: DEMO_SELLER_EMAIL,
+        password_hash: argon2::PasswordHasher::hash_password(
+            &hasher,
+            DEMO_SELLER_PASSWORD.as_bytes(),
+        )
+        .expect("the demo password always hashes")
+        .to_string(),
+        store_name: DEMO_STORE_NAME,
+    }]
+}
+
+fn seed_params() -> argon2::Params {
+    // m=64 KiB, t=1, p=1 — see the note on `DEMO_SELLER_PASSWORD`.
+    argon2::Params::new(64, 1, 1, None).expect("cheap seed params are valid")
+}
+
+/// How many fixed rows [`run`] upserts, so `api-rs-db` can report a number it did
+/// not hardcode and drift from.
+pub fn fixture_count() -> usize {
+    fixture_products().len() + demo_sellers().len()
 }
 
 /// Rejects a bad `SEED_COUNT` rather than silently seeding an empty or enormous
@@ -142,10 +206,14 @@ pub fn seed_count_from_env() -> Result<usize, String> {
         .map_err(|_| format!("SEED_COUNT must be a non-negative integer, got {raw:?}"))
 }
 
-/// Populates the catalogue: the fixture rows by upsert, then `count` generated
-/// rows inserted in chunks. Re-running is safe — fixtures are updated to match
-/// and generated rows are left alone on conflict.
+/// Populates the catalogue: the demo seller first (products reference it), then
+/// the fixture rows by upsert, then `count` generated rows in chunks.
+/// Re-running is safe — fixtures are updated to match and generated rows are left
+/// alone on conflict.
 pub async fn run(pool: &PgPool, count: usize) -> Result<(), sqlx::Error> {
+    for seller in demo_sellers() {
+        upsert_seller(pool, &seller).await?;
+    }
     for product in fixture_products() {
         upsert_fixture(pool, &product).await?;
     }
@@ -166,17 +234,39 @@ pub async fn run(pool: &PgPool, count: usize) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// Upsert, so a re-seed updates the stored hash whenever the password or the
+/// argon2 parameters change — a hash is not something to leave behind.
+async fn upsert_seller(pool: &PgPool, seller: &SeedSeller) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"INSERT INTO "User" ("id", "email", "passwordHash", "storeName")
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT ("id") DO UPDATE SET
+             "email" = EXCLUDED."email",
+             "passwordHash" = EXCLUDED."passwordHash",
+             "storeName" = EXCLUDED."storeName""#,
+    )
+    .bind(seller.id)
+    .bind(seller.email)
+    .bind(&seller.password_hash)
+    .bind(seller.store_name)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn upsert_fixture(pool: &PgPool, product: &SeedProduct) -> Result<(), sqlx::Error> {
     sqlx::query(
-        r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock")
-           VALUES ($1, $2, $3, $4, 'USD', $5, $6)
+        r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock", "ownerId")
+           VALUES ($1, $2, $3, $4, 'USD', $5, $6, $7)
            ON CONFLICT ("id") DO UPDATE SET
              "title" = EXCLUDED."title",
              "description" = EXCLUDED."description",
              "price" = EXCLUDED."price",
              "currency" = EXCLUDED."currency",
              "imageUrl" = EXCLUDED."imageUrl",
-             "stock" = EXCLUDED."stock""#,
+             "stock" = EXCLUDED."stock",
+             "ownerId" = EXCLUDED."ownerId""#,
     )
     .bind(&product.id)
     .bind(&product.title)
@@ -184,6 +274,7 @@ async fn upsert_fixture(pool: &PgPool, product: &SeedProduct) -> Result<(), sqlx
     .bind(product.price)
     .bind(&product.image_url)
     .bind(product.stock)
+    .bind(&product.owner_id)
     .execute(pool)
     .await?;
 
@@ -201,7 +292,11 @@ async fn insert_generated(pool: &PgPool, batch: &[SeedProduct]) -> Result<(), sq
             .push_bind("USD")
             .push_bind(&product.image_url)
             .push_bind(product.stock)
-            .push_bind(chrono::Utc::now().naive_utc());
+            .push_bind(chrono::Utc::now().naive_utc())
+            // Generated rows stay ownerless: they are catalogue filler, and giving
+            // them all one seller would make the demo store look far busier than
+            // it is.
+            .push_bind(None::<&str>);
     });
     query.push(" ON CONFLICT (\"id\") DO NOTHING");
 
@@ -230,6 +325,7 @@ fn generate(rng: &mut StdRng, index: usize) -> SeedProduct {
             10..25 => rng.random_range(1..=5),
             _ => rng.random_range(6..=200),
         },
+        owner_id: None,
         id,
     }
 }
@@ -259,13 +355,42 @@ mod tests {
     #[test]
     fn fixture_rows_are_the_ones_the_e2e_specs_target() {
         let fixtures = fixture_products();
-        assert_eq!(fixtures.len(), 8);
+        assert_eq!(fixtures.len(), 9);
         assert_eq!(fixtures[0].id, "prod-1");
         assert_eq!(fixtures[0].title, "Wireless Headphones");
         assert_eq!(fixtures[0].price, 129.99);
         // prod-5 and prod-7 exist to cover the null image/description paths.
         assert!(fixtures[4].image_url.is_none());
         assert!(fixtures[6].description.is_none());
+        // Only the last fixture has an owner, so a fresh database has exactly one
+        // seller-scoped row for the storefront and My Store paths to find.
+        let owned: Vec<_> = fixtures.iter().filter(|product| product.owner_id.is_some()).collect();
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].id, "prod-owned-1");
+        assert_eq!(owned[0].owner_id.as_deref(), Some(DEMO_SELLER_ID));
+    }
+
+    #[test]
+    fn the_demo_seller_hash_is_real_and_matches_the_published_password() {
+        let sellers = demo_sellers();
+        assert_eq!(sellers.len(), 1);
+        let seller = &sellers[0];
+        assert_eq!(seller.email, DEMO_SELLER_EMAIL);
+        assert_eq!(seller.store_name, DEMO_STORE_NAME);
+        assert!(seller.password_hash.starts_with("$argon2id$"), "{}", seller.password_hash);
+        assert!(
+            crate::auth::password::verify_password(&seller.password_hash, DEMO_SELLER_PASSWORD),
+            "the published demo password must actually work"
+        );
+        assert!(!crate::auth::password::verify_password(&seller.password_hash, "wrong"));
+    }
+
+    /// A seeded *session* would be a live credential in every developer's
+    /// database, so `run` writes sellers and products only. Asserted by the
+    /// absence of any `Session` reference in `demo_sellers`.
+    #[test]
+    fn the_demo_seller_has_no_session_of_its_own() {
+        assert!(!format!("{:?}", demo_sellers()).contains("tokenHash"));
     }
 
     #[test]

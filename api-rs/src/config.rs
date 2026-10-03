@@ -45,6 +45,14 @@ pub struct Config {
     pub rate_limit_global_rps: u64,
     /// Requests per second per client IP; 0 disables the check.
     pub rate_limit_per_ip_rps: u64,
+    /// How long a session token stays valid. Long enough that a seller is not
+    /// signed out mid-edit, short enough that a leaked token expires on its own
+    /// even if `POST /auth/logout` is never reached.
+    pub session_ttl_secs: u64,
+    /// Login and registration attempts per client IP per minute. A second
+    /// window on top of `rate_limit_per_ip_rps`, because a password guess is
+    /// cheap to make and expensive to serve (see `src/auth/password.rs`).
+    pub auth_login_attempts_per_min: u64,
     pub edge_cache_control: String,
     pub cors_origin: String,
     pub health_ping_timeout_ms: u64,
@@ -68,6 +76,8 @@ impl Default for Config {
             per_ip_concurrency_limit: 64,
             rate_limit_global_rps: 0,
             rate_limit_per_ip_rps: 100,
+            session_ttl_secs: 7 * 24 * 60 * 60,
+            auth_login_attempts_per_min: 10,
             edge_cache_control: "public, max-age=0, s-maxage=30, stale-while-revalidate=60"
                 .to_string(),
             cors_origin: "http://localhost:3000".to_string(),
@@ -128,6 +138,14 @@ impl Config {
         if let Some(raw) = env_str("RATE_LIMIT_PER_IP_RPS") {
             config.rate_limit_per_ip_rps =
                 raw.parse().map_err(|e| ConfigError::invalid("RATE_LIMIT_PER_IP_RPS", e))?;
+        }
+        if let Some(raw) = env_str("SESSION_TTL_SECS") {
+            config.session_ttl_secs =
+                raw.parse().map_err(|e| ConfigError::invalid("SESSION_TTL_SECS", e))?;
+        }
+        if let Some(raw) = env_str("AUTH_LOGIN_ATTEMPTS_PER_MIN") {
+            config.auth_login_attempts_per_min =
+                raw.parse().map_err(|e| ConfigError::invalid("AUTH_LOGIN_ATTEMPTS_PER_MIN", e))?;
         }
         if let Some(raw) = env_str("EDGE_CACHE_CONTROL") {
             config.edge_cache_control = raw;
@@ -210,6 +228,8 @@ mod tests {
         "PER_IP_CONCURRENCY_LIMIT",
         "RATE_LIMIT_GLOBAL_RPS",
         "RATE_LIMIT_PER_IP_RPS",
+        "SESSION_TTL_SECS",
+        "AUTH_LOGIN_ATTEMPTS_PER_MIN",
         "EDGE_CACHE_CONTROL",
         "CORS_ORIGIN",
         "HEALTH_PING_TIMEOUT_MS",
@@ -263,6 +283,10 @@ mod tests {
         assert_eq!(config.port, 3001);
         assert_eq!(config.rate_limit_per_ip_rps, 100);
         assert_eq!(config.health_ping_timeout_ms, 1000);
+        // A week: long enough for a real editing session, short enough that a
+        // token nobody revoked still ages out.
+        assert_eq!(config.session_ttl_secs, 604_800);
+        assert_eq!(config.auth_login_attempts_per_min, 10);
     }
 
     #[test]
@@ -296,6 +320,8 @@ mod tests {
             set("PER_IP_CONCURRENCY_LIMIT", "12");
             set("RATE_LIMIT_GLOBAL_RPS", "13");
             set("RATE_LIMIT_PER_IP_RPS", "14");
+            set("SESSION_TTL_SECS", "3600");
+            set("AUTH_LOGIN_ATTEMPTS_PER_MIN", "3");
             set("EDGE_CACHE_CONTROL", "public, max-age=60");
             set("CORS_ORIGIN", "https://example.test");
             set("HEALTH_PING_TIMEOUT_MS", "1500");
@@ -317,6 +343,8 @@ mod tests {
         assert_eq!(config.per_ip_concurrency_limit, 12);
         assert_eq!(config.rate_limit_global_rps, 13);
         assert_eq!(config.rate_limit_per_ip_rps, 14);
+        assert_eq!(config.session_ttl_secs, 3600);
+        assert_eq!(config.auth_login_attempts_per_min, 3);
         assert_eq!(config.edge_cache_control, "public, max-age=60");
         assert_eq!(config.cors_origin, "https://example.test");
         assert_eq!(config.health_ping_timeout_ms, 1500);
@@ -369,6 +397,8 @@ mod tests {
             ("PER_IP_CONCURRENCY_LIMIT", "1.5"),
             ("RATE_LIMIT_GLOBAL_RPS", "fast"),
             ("RATE_LIMIT_PER_IP_RPS", "fast"),
+            ("SESSION_TTL_SECS", "forever"),
+            ("AUTH_LOGIN_ATTEMPTS_PER_MIN", "many"),
             ("HEALTH_PING_TIMEOUT_MS", "soon"),
             ("DB_ACQUIRE_TIMEOUT_MS", "later"),
             ("REQUEST_TIMEOUT_MS", "later"),

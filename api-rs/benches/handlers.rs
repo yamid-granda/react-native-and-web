@@ -23,6 +23,8 @@ fn products(count: usize) -> Vec<Product> {
             image_url: None,
             stock: 100,
             created_at,
+            owner_id: None,
+            store_name: None,
         })
         .collect()
 }

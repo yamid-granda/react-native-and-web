@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { persist } from "zustand/middleware"
+import { createPersistStorage } from "../../utils/persistStorage"
 import type { ProductData } from "../../types/Product"
 
 export type CartItem = {
@@ -15,26 +16,6 @@ type CartState = {
   decrementQuantity: (id: string) => void
   clear: () => void
 }
-
-// react-native-web's MainNav renders a plain <a href>, which Next.js doesn't
-// intercept for client-side routing — navigating to /cart is a full page
-// reload, which would otherwise wipe an in-memory-only store. Persist to
-// localStorage on web; React Native has no localStorage, but its navigation
-// never reloads the JS runtime, so an in-memory fallback there is enough.
-const memoryStorage = new Map<string, string>()
-const inMemoryFallback: StateStorage = {
-  getItem: (name) => memoryStorage.get(name) ?? null,
-  setItem: (name, value) => {
-    memoryStorage.set(name, value)
-  },
-  removeItem: (name) => {
-    memoryStorage.delete(name)
-  },
-}
-
-const storage = createJSONStorage<CartState>(() =>
-  typeof localStorage !== "undefined" ? localStorage : inMemoryFallback,
-)
 
 export const useCartStore = create<CartState>()(
   persist(
@@ -82,7 +63,7 @@ export const useCartStore = create<CartState>()(
 
       clear: () => set({ items: {} }),
     }),
-    { name: "cart-storage", storage },
+    { name: "cart-storage", storage: createPersistStorage<CartState>() },
   ),
 )
 

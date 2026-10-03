@@ -29,11 +29,26 @@ const ClassNameTextInput = TextInput as ComponentType<
 >
 
 export type InputProps = TextInputProps & {
+  /** Styles the wrapping box, not the text field inside it. */
   className?: string
   prependIcon?: ComponentType<IconProps>
+  /**
+   * `testID` for the `TextInput` itself.
+   *
+   * A separate prop because the wrapper already claims `input-container`, and a
+   * multi-field form needs a distinct selector per field — `getByTestId` cannot
+   * tell three of them apart otherwise.
+   */
+  inputTestID?: string
 }
 
-export function Input({ prependIcon: PrependIcon, className, ...rest }: InputProps) {
+export function Input({
+  prependIcon: PrependIcon,
+  className,
+  inputTestID,
+  multiline,
+  ...rest
+}: InputProps) {
   const inputRef = useRef<TextInput>(null)
 
   return (
@@ -47,7 +62,10 @@ export function Input({ prependIcon: PrependIcon, className, ...rest }: InputPro
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        "flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3 py-2",
+        "rounded-lg border border-surface-muted bg-surface px-3 py-2",
+        // A one-line input centres its content; a tall one has to start at the
+        // top or the first line floats in the middle of the box.
+        multiline ? "items-start" : "flex-row items-center",
         className,
       )}
     >
@@ -56,7 +74,14 @@ export function Input({ prependIcon: PrependIcon, className, ...rest }: InputPro
         ref={inputRef}
         underlineColorAndroid="transparent"
         {...rest}
-        className="flex-1 text-sm text-foreground outline-none placeholder:text-muted"
+        multiline={multiline}
+        testID={inputTestID}
+        // After `{...rest}` and therefore not overridable: a taller box comes from
+        // the wrapper's className above, and a textarea aligns to the top.
+        className={cn(
+          "flex-1 text-sm text-foreground outline-none placeholder:text-muted",
+          multiline && "min-h-20 text-left",
+        )}
       />
     </ClassNamePressable>
   )

@@ -75,6 +75,45 @@ impl L2Cache {
         }
     }
 
+    /// The shared list-namespace counter. Absent means 0, so the very first
+    /// deployment needs no seeding step.
+    pub async fn get_generation(&self) -> Option<i64> {
+        let mut conn = self.conn.clone();
+        let result: redis::RedisResult<Option<i64>> = redis::cmd("GET")
+            .arg(Self::prefixed(super::GENERATION_KEY))
+            .query_async(&mut conn)
+            .await;
+        match result {
+            Ok(value) => value,
+            Err(error) => {
+                self.record_error("get-generation", &error);
+                None
+            }
+        }
+    }
+
+    /// `INCR` the counter. Never expires: it is a monotonic counter, not an
+    /// entry, and losing it would let every retired list page be addressed
+    /// again.
+    ///
+    /// `None` when Valkey is unreachable. The caller decides the local
+    /// fallback, so the single copy of the local value stays on `CacheTier`
+    /// where the read side reads it from.
+    pub async fn bump_generation(&self) -> Option<i64> {
+        let mut conn = self.conn.clone();
+        let result: redis::RedisResult<i64> = redis::cmd("INCR")
+            .arg(Self::prefixed(super::GENERATION_KEY))
+            .query_async(&mut conn)
+            .await;
+        match result {
+            Ok(generation) => Some(generation),
+            Err(error) => {
+                self.record_error("incr-generation", &error);
+                None
+            }
+        }
+    }
+
     fn record_error(&self, op: &str, error: &redis::RedisError) {
         tracing::warn!(op, error = %error, "L2 cache operation failed; falling through");
         metrics::counter!("cache_l2_errors_total", "op" => op.to_string()).increment(1);
