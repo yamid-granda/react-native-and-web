@@ -63,6 +63,15 @@ where
 /// Installs the global metrics recorder and returns its render handle for
 /// `/metrics`. `None` (with a warning) if a recorder is already installed.
 pub fn init_metrics() -> Option<PrometheusHandle> {
+    // Described up front so the series exists — at zero — before the first login
+    // ever happens. A brute-force attempt is invisible until someone looks, and
+    // "the counter is missing" and "nobody has tried to log in" must not look the
+    // same on a dashboard. This is the reason the per-IP login throttle exists.
+    metrics::describe_counter!(
+        "auth_login_total",
+        metrics::Unit::Count,
+        "Password login attempts by outcome: result=ok|invalid"
+    );
     match PrometheusBuilder::new().install_recorder() {
         Ok(handle) => Some(handle),
         Err(error) => {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -14,16 +14,23 @@ use crate::app::AppState;
 use crate::config::Config;
 use crate::error::{json_response, ErrorBody};
 
+/// One fixed window per key per scope. The public read path gets a one-second
+/// window; the credential endpoints get a minute, because the thing they are
+/// bounding is a guess rate rather than a burst.
+const GENERAL_WINDOW: Duration = Duration::from_secs(1);
+const AUTH_WINDOW: Duration = Duration::from_secs(60);
+
 /// Load protection, deliberately shed before the database can be taken down:
 /// in-process concurrency semaphores (global + per-IP) return 503 when
 /// saturated, and Valkey-backed fixed-window counters return 429 past the
-/// configured rps. Counters live in Valkey so limits are consistent across
+/// configured limit. Counters live in Valkey so limits are consistent across
 /// instances. Every Valkey failure is fail-open (allow + count the error).
 #[derive(Clone)]
 pub struct RateLimiter {
     conn: Option<ConnectionManager>,
     global_rps: u64,
     per_ip_rps: u64,
+    auth_per_min: u64,
     global_slots: Arc<Semaphore>,
     ip_slots: Arc<IpConcurrency>,
 }
@@ -39,12 +46,34 @@ pub struct Permits {
     _ip: Option<OwnedSemaphorePermit>,
 }
 
+/// The credential-endpoint throttle, as its own middleware.
+///
+/// It checks *only* the per-IP window, not the concurrency semaphores: the
+/// outer `rate_limit::enforce` already holds those for this request, and
+/// taking a second permit for the same in-flight work would make the two limits
+/// disagree about how much load exists.
+///
+/// Fail-open, like every Valkey consumer here: an unreachable Valkey removes the
+/// login throttle, exactly as it removes the read-path L2 cache. A per-*account*
+/// limit is not available on an unauthenticated endpoint without first telling
+/// the caller which accounts exist, so per-IP is the right bound here.
+pub struct AuthVerdict {
+    limited: bool,
+}
+
+impl AuthVerdict {
+    pub fn is_limited(&self) -> bool {
+        self.limited
+    }
+}
+
 impl RateLimiter {
     pub fn new(config: &Config, conn: Option<ConnectionManager>) -> Self {
         Self {
             conn,
             global_rps: config.rate_limit_global_rps,
             per_ip_rps: config.rate_limit_per_ip_rps,
+            auth_per_min: config.auth_login_attempts_per_min,
             global_slots: Arc::new(Semaphore::new(config.global_concurrency_limit.max(1))),
             ip_slots: Arc::new(IpConcurrency::new(config.per_ip_concurrency_limit.max(1), 100_000)),
         }
@@ -64,11 +93,13 @@ impl RateLimiter {
         };
 
         if let Some(conn) = &self.conn {
-            if self.global_rps > 0 && window_exceeded(conn, "global", self.global_rps).await {
+            if self.global_rps > 0
+                && window_exceeded(conn, "global", self.global_rps, GENERAL_WINDOW).await
+            {
                 return Verdict::Limited("global");
             }
             if self.per_ip_rps > 0
-                && window_exceeded(conn, &format!("ip:{ip}"), self.per_ip_rps).await
+                && window_exceeded(conn, &format!("ip:{ip}"), self.per_ip_rps, GENERAL_WINDOW).await
             {
                 return Verdict::Limited("ip");
             }
@@ -76,21 +107,46 @@ impl RateLimiter {
 
         Verdict::Allowed(Permits { _global: Some(global), _ip: ip_permit })
     }
+
+    /// The `/auth/*` window: `auth_login_attempts_per_min` per client IP per
+    /// minute. `Allowed` costs nothing and holds nothing.
+    pub async fn check_auth(&self, ip: &str) -> AuthVerdict {
+        let limited = match &self.conn {
+            Some(conn) if self.auth_per_min > 0 => {
+                window_exceeded(conn, &format!("auth:{ip}"), self.auth_per_min, AUTH_WINDOW).await
+            }
+            _ => false,
+        };
+        AuthVerdict { limited }
+    }
 }
 
-/// One fixed 1-second window per key. INCR creates the key on first hit, and
-/// EXPIRE is set then so stale windows clean themselves up.
-async fn window_exceeded(conn: &ConnectionManager, key: &str, limit: u64) -> bool {
-    let window = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let full_key = format!("api-rs:rl:{key}:{window}");
+/// One fixed window per key, bucketed by `now / window`. `INCR` creates the key
+/// on first hit, and `EXPIRE` is set then so stale windows clean themselves up.
+///
+/// Bucketing rather than "key includes the window start" is what makes a one
+/// second window behave exactly as it did before: for a one-second window,
+/// `now / 1` *is* the window start.
+async fn window_exceeded(
+    conn: &ConnectionManager,
+    key: &str,
+    limit: u64,
+    window: Duration,
+) -> bool {
+    let seconds = window.as_secs().max(1);
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let full_key = format!("api-rs:rl:{key}:{}", now / seconds);
     let mut conn = conn.clone();
     let count: redis::RedisResult<i64> =
         redis::cmd("INCR").arg(&full_key).query_async(&mut conn).await;
     match count {
         Ok(count) => {
             if count == 1 {
-                let expire: redis::RedisResult<redis::Value> =
-                    redis::cmd("EXPIRE").arg(&full_key).arg(2).query_async(&mut conn).await;
+                let expire: redis::RedisResult<redis::Value> = redis::cmd("EXPIRE")
+                    .arg(&full_key)
+                    .arg(seconds * 2)
+                    .query_async(&mut conn)
+                    .await;
                 if let Err(error) = expire {
                     record_redis_error("expire", &error);
                 }
@@ -212,6 +268,19 @@ pub async fn enforce(State(state): State<AppState>, request: Request, next: Next
             limited_response()
         }
     }
+}
+
+/// The credential-endpoint throttle. Scoped with `route_layer` to
+/// `/auth/login` and `/auth/register`, so it never sees the marketplace.
+pub async fn enforce_auth(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
+    let ip = client_ip(request.headers(), peer.as_ref());
+
+    if state.limiter.check_auth(&ip).await.is_limited() {
+        metrics::counter!("http_rate_limited_total", "scope" => "auth").increment(1);
+        return limited_response();
+    }
+    next.run(request).await
 }
 
 #[cfg(test)]

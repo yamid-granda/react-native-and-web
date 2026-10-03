@@ -38,6 +38,14 @@ export type ProductDetailScreenProps = {
   isLoading?: boolean
   error?: Error | null
   onGoToCart?: () => void
+  /**
+   * Opens the seller's storefront. Supplied by the app, because routing is the
+   * app's business — same rule as `onGoToCart`.
+   *
+   * Omitted, the "Sold by" line still renders as plain text: a product with a
+   * seller is worth naming even where there is nowhere to navigate to.
+   */
+  onOpenStore?: (storeId: string) => void
 }
 
 export function ProductDetailScreen({
@@ -45,6 +53,7 @@ export function ProductDetailScreen({
   isLoading,
   error,
   onGoToCart,
+  onOpenStore,
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
   const recordView = useRecentlyViewedStore((state) => state.recordView)
@@ -86,6 +95,27 @@ export function ProductDetailScreen({
             {formatPrice(product.price, product.currency)}
           </ClassNameText>
           <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
+          {/* Inline rather than a new common/ component: it has exactly one call
+              site, and the pressable wrapper is conditional so a seeded product
+              with no seller is not focusable at all. */}
+          {product.storeName ? (
+            <ClassNamePressable
+              accessibilityRole="button"
+              accessibilityLabel={`Sold by ${product.storeName}`}
+              disabled={!product.storeId || !onOpenStore}
+              onPress={() => {
+                if (product.storeId) onOpenStore?.(product.storeId)
+              }}
+              className={onOpenStore ? "self-start" : undefined}
+            >
+              <ClassNameText
+                testID="product-detail-store"
+                className={onOpenStore ? "text-sm text-brand" : "text-sm text-muted"}
+              >
+                Sold by {product.storeName}
+              </ClassNameText>
+            </ClassNamePressable>
+          ) : null}
           <ClassNameView className="flex-row items-center gap-3">
             <ClassNamePressable
               accessibilityRole="button"

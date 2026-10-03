@@ -248,5 +248,16 @@
     "imageUrl": null,
     "stock": 25,
     "createdAt": "2026-01-01 00:00:00.000"
+  },
+  {
+    "id": "prod-owned-1",
+    "title": "Leather Weekender Bag",
+    "description": "Hand-stitched full-grain leather, brass hardware.",
+    "price": 189,
+    "currency": "USD",
+    "imageUrl": "https://picsum.photos/seed/prod-owned-1/400/400",
+    "stock": 6,
+    "createdAt": "2026-02-01 00:00:00.000",
+    "ownerId": "usr_fixture_store"
   }
 ]

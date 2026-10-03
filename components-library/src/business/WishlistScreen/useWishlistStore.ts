@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { persist } from "zustand/middleware"
+import { createPersistStorage } from "../../utils/persistStorage"
 import type { ProductData } from "../../types/Product"
 
 type WishlistState = {
@@ -7,22 +8,6 @@ type WishlistState = {
   toggleItem: (product: ProductData) => void
   removeItem: (id: string) => void
 }
-
-// see useCartStore.ts for why persistence is split this way
-const memoryStorage = new Map<string, string>()
-const inMemoryFallback: StateStorage = {
-  getItem: (name) => memoryStorage.get(name) ?? null,
-  setItem: (name, value) => {
-    memoryStorage.set(name, value)
-  },
-  removeItem: (name) => {
-    memoryStorage.delete(name)
-  },
-}
-
-const storage = createJSONStorage<WishlistState>(() =>
-  typeof localStorage !== "undefined" ? localStorage : inMemoryFallback,
-)
 
 export const useWishlistStore = create<WishlistState>()(
   persist(
@@ -44,7 +29,7 @@ export const useWishlistStore = create<WishlistState>()(
           return { items: rest }
         }),
     }),
-    { name: "wishlist-storage", storage },
+    { name: "wishlist-storage", storage: createPersistStorage<WishlistState>() },
   ),
 )
 
