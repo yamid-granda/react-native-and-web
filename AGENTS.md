@@ -7,7 +7,7 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - `components-library/src/common/` — reusable UI components; `src/business/` — shared screens and state; `src/icons/` — icons.
 - `web-application/` — Next.js App Router app and Playwright end-to-end tests. Read its `AGENTS.md` before changing web code.
 - `mobile-application/src/app/` — Expo Router routes and layouts; keep non-route code outside `src/app/`. Read its `AGENTS.md` before changing mobile code.
-- `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/prisma/` — schema, migrations, and seed data (api-rs owns these; see its `README.md`).
+- `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/migrations/` — the schema (sqlx migrations); `api-rs/src/seed.rs` and `api-rs-db` — dev data. api-rs is Rust-only and owns all of it; see its `README.md`.
 - `improve-proposals/` — feature proposals and implemented proposal records.
 
 ## Architecture and implementation
@@ -16,7 +16,7 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - UI used by both apps belongs in `components-library` and should be imported by both. Keep platform routing and app-specific wiring in thin app wrappers; only split implementations when platform behavior genuinely requires it.
 - Shared components use React Native primitives and NativeWind. Follow nearby component, test, and Storybook patterns rather than introducing a second styling or state approach.
 - Keep route definitions in each app's existing router. Do not move app-specific routing into the shared library.
-- Use pnpm (version pinned in the root `package.json`) and the existing workspace scripts. Do not edit generated output such as `api-rs/generated/prisma/` directly; update the Prisma schema and use `api-rs`'s `db:migrate`/`db:seed` scripts instead.
+- Use pnpm (version pinned in the root `package.json`) and the existing workspace scripts. To change the database schema, add a reversible migration pair under `api-rs/migrations/` and run `api-rs`'s `db:migrate`/`db:seed` scripts — that is the only supported path, and adding a second migration toolchain is not.
 - Check the relevant scoped `AGENTS.md` and installed framework documentation before changing Next.js or Expo APIs; versions and conventions may differ from prior releases.
 
 ## Common commands

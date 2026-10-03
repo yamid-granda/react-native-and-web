@@ -40,7 +40,7 @@ traffic. Broken down into things a system design can actually answer:
 | **X6** | Degradation is unmeasurable | No metrics, no traces, no cache-hit ratio, no pool visibility — so X1–X5 cannot even be tuned. |
 | **X7** | Nothing protects the database | No admission control: load reaches Postgres at full strength until it falls over. |
 | **X8** | Contract drift during a rewrite | A faster service that serializes `18.0` instead of `18`, or 404s differently, is a broken service. |
-| **X9** | Schema ownership ambiguity | Two toolchains (Prisma + Rust) touching one database invites a second migration owner. |
+| **X9** | Schema ownership ambiguity | A second migration toolchain touching one database invites a second migration owner. Answered by having only one: the crate's own sqlx migrations. |
 | **X10** | Performance claims are unfalsifiable | No load tooling and no benchmarks — claims decay into opinions. |
 
 ## 3. The capability map
@@ -63,7 +63,7 @@ flowchart TB
         direction TB
         mw["Middleware stack<br/>trace › compress › CORS › 10s timeout<br/>› RED metrics › load protection"]
         handlers["Handlers<br/>products::list · products::detail · health"]
-        fidelity["Contract fidelity layer<br/>JS + Prisma semantics re-implemented in Rust"]
+        fidelity["Contract fidelity layer<br/>JS + ORM semantics re-implemented in Rust"]
         cache["Cache tier — read-through, fail-open<br/>L1 moka (per process) › L2 Valkey (shared)"]
         store["Store trait ProductStore<br/>list_page · find_by_id · ping"]
         mw --> handlers --> fidelity --> cache --> store
@@ -71,7 +71,7 @@ flowchart TB
 
     subgraph state["Tier 2 — replaceable state, none of it required for correctness"]
         valkey[("Valkey 8<br/>L2 entries + shared rps windows")]
-        pg[("PostgreSQL 17<br/>schema owned by Prisma")]
+        pg[("PostgreSQL 17<br/>schema owned by api-rs migrations")]
     end
 
     clients -->|"GET /products?page=2"| cf
@@ -142,11 +142,12 @@ Two details worth internalising, because they are the difference between
   shape. `AppError::ProductNotFound` yields
   `{"message":"Product X not found","error":"Not Found","statusCode":404}`.
 
-**X9 (schema ownership)** is answered by *not* solving it in Rust: `api-rs`
-reads tables with sqlx, but `prisma/schema.prisma` + `prisma/migrations/` +
-`prisma.config.ts` remain the only migration authority, driven by the
-`db:migrate` / `db:seed` scripts. The generated Prisma client exists only for
-the seed script.
+**X9 (schema ownership)** is answered by collapsing to a single owner. The crate
+is the only thing that touches the database: `migrations/` is applied by the
+embedded sqlx migrator in `src/migrations.rs`, and seeding lives in
+`src/seed.rs`, both reached through the `api-rs-db` binary. There is no second
+toolchain to disagree about the schema, and nothing in the runtime path depends
+on a Node package.
 
 ## 5. C2 — The read path: two cache tiers, one store, no cascade
 
@@ -290,9 +291,9 @@ Verification layers, cheapest first:
 | Load | `k6 run load-tests/k6/spike.js` | Origin behaviour under 100 → 5 000 rps; SLO thresholds fail the run |
 | Coverage | `pnpm --filter @rnw/api-rs coverage` | 80 % line gate over unit + E2E |
 
-The E2E suite boots containers with the Prisma migration SQL compiled in via
-`include_str!`, so the schema under test can never drift from the committed
-migrations. It also resolves Colima's non-standard Docker socket, which is what
+The E2E suite boots containers and applies the same embedded migrator the
+served binary carries, so the schema under test is by construction the schema
+that ships. It also resolves Colima's non-standard Docker socket, which is what
 makes `pnpm test:e2e` work from an IDE or CI runner.
 
 ## 9. Scaling out: which challenge each step removes
@@ -328,6 +329,8 @@ A reading order that follows the request path:
 |---|---|
 | `src/main.rs` | Bootstrap order, bounded pool, optional Valkey, graceful shutdown |
 | `src/config.rs` | Every knob and its default — the service's real policy surface |
+| `src/migrations.rs` | The embedded migrator; the single owner of the schema |
+| `src/seed.rs` | Fixture and generated rows, chunked inserts, `SEED_COUNT` |
 | `src/app.rs` | `AppState`, the router, middleware order, RED metrics, the 404 fallback |
 | `src/middleware/rate_limit.rs` | Shedding and limiting, IP resolution, the fail-open decisions |
 | `src/cache/` | Read-through tiering, TTLs, key format, fail-open everywhere |
@@ -354,3 +357,12 @@ A reading order that follows the request path:
   `/metrics` and JSON logs carry the observability load by default.
 - **`/products` deep offsets stay slow.** `OFFSET 4294967276` is accepted for
   contract compatibility, and Postgres still has to walk the rows.
+- **The list query has no covering index.** `ORDER BY "createdAt", "id"` is a
+  sort on every cache miss. That was true before the migration toolchain was
+  removed and is unchanged by it; adding an index is a deliberate,
+  separately-reviewed step, not a side effect of this refactor.
+- **`api-rs-db` ships separately from the server binary.** The release image
+  contains only `--bin api-rs`, so applying migrations means running the tool
+  from a checkout. The alternative — migrating on startup — would give every
+  replica write access to the schema, which is a larger change than the problem
+  warrants.
