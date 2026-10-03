@@ -1,5 +1,22 @@
 # Close the deferred scale gaps in api-rs: singleflight, list index, read replica, write seam
 
+> **Note (superseded).** All four items in this proposal have been carried out,
+> and item 2.4 (keyset pagination) remains explicitly deferred for the reason
+> given below. Two details in this document no longer resolve, because the
+> schema moved to sqlx-owned migrations while the proposal was open:
+>
+> - `api-rs/prisma/schema.prisma` and `api-rs/prisma/migrations/` are gone. The
+>   `@@index([createdAt, id])` of item 2.1 ships as
+>   `api-rs/migrations/20261002120000_add_product_list_index.up.sql`, and the
+>   `pnpm --filter @rnw/api-rs db:migrate` step in item 2.1 now applies the
+>   `api-rs/migrations/` set.
+> - The "List sort support" row of the stack table describes the same change in
+>   Prisma terms. The index, its name, and its plan are unchanged.
+>
+> The measurements the items claim are recorded in `load-tests/README.md`
+> ("List-query index: measured before/after" and "Cold-L2 stampede: measured
+> before/after"), and the write-path design from item 4 is `ARCHITECTURE.md` §12.
+
 ## Problem / opportunity
 
 `api-rs` shipped the high-traffic rewrite (see

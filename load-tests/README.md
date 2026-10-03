@@ -79,7 +79,8 @@ environment noted.
 
 ## List-query index: measured before/after
 
-`@@index([createdAt, id])` on `Product` (`Product_createdAt_id_idx`) exists so
+`Product_createdAt_id_idx`, added by
+`api-rs/migrations/20261002120000_add_product_list_index.up.sql`, exists so
 the list query's `ORDER BY "createdAt" ASC, "id" ASC LIMIT 20` becomes an index
 scan that stops at the limit, instead of sorting the whole table first.
 
@@ -106,7 +107,7 @@ Reproduce with:
 
 ```bash
 docker run -d --name idxcheck -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=t postgres:17-alpine
-# apply api-rs/prisma/migrations/, seed 200k rows, then:
+# apply api-rs/migrations/ (`pnpm --filter @rnw/api-rs db:migrate`), seed 200k rows, then:
 #   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY without the index>
 #   CREATE INDEX "Product_createdAt_id_idx" ON "Product"("createdAt", "id");
 #   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY>
