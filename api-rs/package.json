@@ -14,16 +14,7 @@
     "test:all": "pnpm test && pnpm test:e2e",
     "coverage": "sh scripts/coverage.sh",
     "bench": "cargo bench",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev && prisma generate",
-    "db:seed": "prisma generate && prisma db seed"
-  },
-  "devDependencies": {
-    "@faker-js/faker": "^9.9.0",
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
-    "dotenv": "^18.0.3",
-    "prisma": "^7.10.0",
-    "tsx": "^4.19.0"
+    "db:migrate": "cargo run --bin api-rs-db -- migrate",
+    "db:seed": "cargo run --bin api-rs-db -- seed"
   }
 }

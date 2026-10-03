@@ -16,8 +16,9 @@ impl ConfigError {
 
 type Result<T> = std::result::Result<T, ConfigError>;
 
-/// Prisma-only `DATABASE_URL` query params that sqlx's URL parser rejects, so
-/// both services can share one env value.
+/// Params that were only ever meaningful to the retired Prisma client. Existing
+/// `.env` files and deployment configs still carry them, and sqlx's URL parser
+/// rejects the whole connection string over one unknown param.
 const PRISMA_ONLY_PARAMS: &[&str] =
     &["schema", "connection_limit", "pool_timeout", "pgbouncer", "sslaccept", "channel_binding"];
 

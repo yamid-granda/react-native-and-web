@@ -40,10 +40,6 @@ pnpm-debug.log*
 !.vscode/extensions.json
 .idea/
 
-# prisma
-api-rs/prisma/migrations/dev.db*
-api-rs/generated/
-
 # misc
 *.pem
 .env.vault
