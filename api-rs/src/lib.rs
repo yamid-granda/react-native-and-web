@@ -4,6 +4,8 @@ pub mod config;
 pub mod error;
 pub mod handlers;
 pub mod middleware;
+pub mod migrations;
+pub mod seed;
 pub mod serde_js;
 pub mod store;
 pub mod telemetry;

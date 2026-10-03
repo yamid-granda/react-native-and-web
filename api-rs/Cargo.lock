@@ -93,6 +93,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "rand 0.10.3",
  "redis",
  "reqwest",
  "serde",

@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use api_rs::app::{router, AppState};
 use api_rs::config::Config;
+use api_rs::migrations;
 use api_rs::store::{connect_read_replica, ProductStore, SqlProductStore};
 use chrono::NaiveDateTime;
 use redis::aio::ConnectionManager;
@@ -343,18 +344,9 @@ async fn spawn_server(state: AppState) -> (String, JoinHandle<()>) {
 }
 
 async fn apply_migrations(pool: &PgPool) {
-    sqlx::raw_sql(include_str!("../../prisma/migrations/20260926133034/migration.sql"))
-        .execute(pool)
-        .await
-        .expect("apply initial Prisma migration");
-    sqlx::raw_sql(include_str!("../../prisma/migrations/20260929101635/migration.sql"))
-        .execute(pool)
-        .await
-        .expect("apply stock Prisma migration");
-    sqlx::raw_sql(include_str!("../../prisma/migrations/20261002120000/migration.sql"))
-        .execute(pool)
-        .await
-        .expect("apply Product_createdAt_id_idx Prisma migration");
+    // The same embedded set the served binary carries, so the schema under
+    // test cannot drift from the committed migrations.
+    migrations::run(pool).await.expect("apply embedded migrations");
 }
 
 async fn seed_fixtures(pool: &PgPool) {

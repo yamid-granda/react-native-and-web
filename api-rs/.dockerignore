@@ -2,4 +2,3 @@ target
 .env
 .git
 lcov.info
-generated

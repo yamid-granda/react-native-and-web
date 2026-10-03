@@ -13,6 +13,12 @@ path = "src/lib.rs"
 name = "api-rs"
 path = "src/main.rs"
 
+# Schema and seed management. Excluded from the release build by
+# `cargo build --bin api-rs`, which is what the Dockerfile ships.
+[[bin]]
+name = "api-rs-db"
+path = "src/bin/api-rs-db.rs"
+
 [features]
 default = []
 # OTLP trace export is opt-in: it pulls the opentelemetry/tonic stack, which
@@ -35,6 +41,7 @@ memory-stats = "1"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 moka = { version = "0.12", features = ["future"] }
+rand = "0.10"
 redis = { version = "1", features = ["connection-manager", "tokio-comp"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -42,6 +49,7 @@ sha1 = "0.10"
 sqlx = { version = "0.9", default-features = false, features = [
   "chrono",
   "macros",
+  "migrate",
   "postgres",
   "runtime-tokio",
   "tls-rustls-ring",

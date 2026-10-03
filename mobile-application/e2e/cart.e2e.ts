@@ -17,7 +17,7 @@ describe("Cart flow", () => {
     await element(by.text("Cart")).tap()
 
     await expect(element(by.id("cart-screen"))).toBeVisible()
-    // prod-1 is seeded at $129.99 (api-rs/prisma/seed.ts) — exact text match,
+    // prod-1 is seeded at $129.99 (api-rs/src/seed.rs) — exact text match,
     // Detox's by.text() doesn't support regex like Playwright's locators do.
     await expect(element(by.text("Total: $129.99"))).toBeVisible()
   })
