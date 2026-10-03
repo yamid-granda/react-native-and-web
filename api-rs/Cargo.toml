@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 publish = false
+# This crate has two binaries — the server and the `api-rs-db` schema tool — so
+# a bare `cargo run` is ambiguous and cargo refuses to guess. The server is the
+# primary artifact (it is what the Dockerfile ships), so name it as the default
+# rather than making every caller pass `--bin api-rs`.
+default-run = "api-rs"
 
 [lib]
 name = "api_rs"
