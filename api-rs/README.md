@@ -47,6 +47,11 @@ watches sources; otherwise it runs `cargo run` once. Running Cargo directly in
 `api-rs dev` serves port 3001, the contract port both clients default to, so it
 is part of the root `pnpm dev` task. Grafana stays on 3002.
 
+On startup it retries the first Postgres connection for a few seconds before
+giving up, so a database that is still coming up does not take the rest of
+`pnpm dev` down with it. That is a courtesy, not a setup order: run the `db:*`
+scripts first, because a reachable database with no schema still fails.
+
 ## Database ownership
 
 api-rs owns its schema. `migrations/` is the single source of truth, applied by
@@ -78,15 +83,65 @@ advisory lock, so several instances or developers running it at once is safe.
 
 ### First-time setup on an existing database
 
-A database already migrated by Prisma has no `_sqlx_migrations` table, so
-sqlx will try to re-apply `create_product` and fail with
-`relation "Product" already exists`. Recreate the schema once:
+A database migrated by Prisma has an **empty** `_sqlx_migrations` table, so sqlx
+tries to re-apply `create_product` and fails with
+`relation "Product" already exists`. The objects are already there — the table,
+its columns, and every product row — so the fix is to tell sqlx those migrations
+ran, not to recreate the schema.
+
+```sql
+-- Baseline only the migrations whose effects are already in the schema.
+-- `checksum` is the SHA-384 of that migration's `.up.sql`, hex, as a bytea
+-- literal — copy it from the command below rather than typing it.
+INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+VALUES (20260926133034, 'create product', now(), true, '\x<sha384 of create_product.up.sql>', 0),
+       (20260929101635, 'add product stock', now(), true, '\x<sha384 of add_product_stock.up.sql>', 0)
+ON CONFLICT (version) DO NOTHING;
+```
+
+Compute a checksum without guessing:
 
 ```bash
-docker compose down -v
-docker compose up -d postgres valkey
+# inside api-rs/
+python3 -c "import hashlib,sys;print(hashlib.sha384(open(sys.argv[1],'rb').read()).hexdigest())" \
+  migrations/20260929101635_add_product_stock.up.sql
+```
+
+sqlx compares that digest on **every** subsequent run and refuses with
+`VersionMismatch` if it differs (`sqlx-core`'s `Migrator::run`), so a checksum
+typed by hand that is even slightly wrong turns into a different confusing
+failure. Only `.up.sql` is hashed — `.down.sql` is skipped by `run()`.
+
+Then migrate and seed as usual:
+
+```bash
 pnpm --filter @rnw/api-rs db:migrate
 pnpm --filter @rnw/api-rs db:seed
+```
+
+Check what the schema already has before baselining anything, so you only mark
+what is genuinely applied:
+
+```bash
+psql "$DATABASE_URL" -c '\d "Product"'          # columns and indexes
+psql "$DATABASE_URL" -c 'SELECT * FROM _sqlx_migrations ORDER BY version;'
+psql "$DATABASE_URL" -c 'SELECT * FROM _prisma_migrations ORDER BY started_at;'
+```
+
+`Product_createdAt_id_idx` is a common one to be missing — it is a later migration
+than the Prisma-era pair, so it is *not* baselined and `db:migrate` creates it.
+
+**Recreating the schema (`docker compose down -v`) throws the catalogue away.**
+It is the right answer only for a disposable database, and it is the wrong answer
+when Postgres is not the compose container at all: `down -v` removes the
+*compose project's* volume, so a database served by a natively-installed Postgres
+on `localhost:5432` — which shadows the published container port — survives the
+command untouched and is still broken afterwards. Check which server actually
+answers before reaching for either route:
+
+```bash
+psql "$DATABASE_URL" -c 'SELECT current_database(), inet_server_port();'
+lsof -nP -iTCP:5432 -sTCP:LISTEN    # a second listener on the loopback port wins
 ```
 
 `db:seed` is idempotent — fixture rows are upserted and generated rows are left
@@ -103,7 +158,7 @@ alone on conflict — so re-running it never duplicates data.
 | `PORT` | `3001` | Listen port. |
 | `DB_MAX_CONNECTIONS` | `10` | Per-instance sqlx pool cap for the primary. Budget the sum across replicas against Postgres. |
 | `DB_READ_MAX_CONNECTIONS` | `10` | Separate cap for the read pool. Per-pool, not per-instance. |
-| `DB_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pool connection. |
+| `DB_ACQUIRE_TIMEOUT_MS` | `2000` | Maximum wait for a pool connection **during a request**. Startup does not use this: sqlx bounds the first connection by the same value, so the bootstrap probes with its own 4 s deadline and retries (see `ARCHITECTURE.md` §7). |
 | `REQUEST_TIMEOUT_MS` | `10000` | Request deadline. |
 | `L1_LIST_TTL_SECS` | `5` | Per-process list cache TTL. |
 | `L1_DETAIL_TTL_SECS` | `60` | Per-process detail cache TTL. |
@@ -112,6 +167,8 @@ alone on conflict — so re-running it never duplicates data.
 | `PER_IP_CONCURRENCY_LIMIT` | `64` | In-flight requests per client IP. |
 | `RATE_LIMIT_GLOBAL_RPS` | `0` | Fleet-wide Valkey-backed requests/second; zero disables. |
 | `RATE_LIMIT_PER_IP_RPS` | `100` | Per-IP Valkey-backed requests/second; zero disables. |
+| `AUTH_LOGIN_ATTEMPTS_PER_MIN` | `10` | Per-IP login/registration attempts per minute, on its own 60-second window. This one bounds a password-guess rate rather than a traffic burst; zero disables it. |
+| `SESSION_TTL_SECS` | `604800` (7 days) | How long a session token stays valid. `POST /auth/logout` revokes immediately; this is the backstop for a token nobody revoked. |
 | `EDGE_CACHE_CONTROL` | `public, max-age=0, s-maxage=30, stale-while-revalidate=60` | Cache policy for product GETs at Cloudflare. |
 | `CORS_ORIGIN` | `http://localhost:3000` | Browser origin allowed by CORS. |
 | `HEALTH_PING_TIMEOUT_MS` | `1000` | Database readiness probe timeout. |
@@ -124,11 +181,55 @@ alone on conflict — so re-running it never duplicates data.
 and serialization that the web and mobile clients parse; edge/cache headers are
 additive.
 
+## Auth and seller storefronts
+
+The marketplace itself is public and unauthenticated. Selling is not: a seller
+registers, gets an opaque bearer token, and manages their own products under
+`/my-store`.
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `POST /auth/register` | — | Create a seller and a session. `201 { user, token }`. |
+| `POST /auth/login` | — | Exchange credentials for a token. `200 { user, token }`. |
+| `POST /auth/logout` | Bearer | Delete the session row. `204`, so the token stops working immediately. |
+| `GET /auth/me` | Bearer | The signed-in seller. `200 { user }`. |
+| `GET /my-store/products?page=N` | Bearer | The caller's own products. Never cached. |
+| `POST /my-store/products` | Bearer | Create a product owned by the caller. `201`. |
+| `PATCH /my-store/products/{id}` | Bearer | Update one of the caller's products. |
+| `DELETE /my-store/products/{id}` | Bearer | Delete one of the caller's products. `204`. |
+| `GET /stores/{id}` | — | A store's public record. |
+| `GET /stores/{id}/products?page=N` | — | That store's public catalogue. |
+
+Four things about that table are design decisions rather than implementation
+details:
+
+- **Only the SHA-256 of a token is stored**, never the token. A database leak
+  must not hand over live sessions.
+- **Passwords are argon2id**, verified on `spawn_blocking`, because the default
+  parameters cost tens of milliseconds of pure CPU and that belongs on the
+  blocking pool rather than on an async worker.
+- **A `PATCH`/`DELETE` on someone else's product is a `404`, not a `403`.** A 403
+  would confirm the id exists on a public catalogue.
+- **Every authenticated or mutating response is `Cache-Control: no-store`,** and
+  `/my-store/products` is never entered into `CacheTier` at all.
+
+`db:seed` creates one demo seller (`seller@rnw.test` / `rnw-demo-password`,
+store `Riverbend Vintage`) with one owned product, so the storefront paths are
+exercisable locally. **No session is ever seeded** — a seeded token would be a
+live credential in every developer's database.
+
+Login is throttled per client IP on its own 60-second window
+(`AUTH_LOGIN_ATTEMPTS_PER_MIN`), separately from the general requests-per-second
+limiter, because a password guess is cheap to make and expensive to serve. Like
+every Valkey consumer here it is fail-open: an unreachable Valkey removes the
+throttle. Watch `auth_login_total{result="invalid"}` — the limiter exists to be
+observable.
+
 ## Tests and quality gates
 
 ```bash
 pnpm test                # cargo test --lib  — unit tests
-pnpm test:e2e            # cargo test --test e2e_products --test parity — hermetic E2E
+pnpm test:e2e            # cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity
 pnpm test:all            # both of the above, in order (needs Docker)
 pnpm lint                # cargo fmt --check && cargo clippy --all-targets -- -D warnings
 pnpm typecheck           # cargo check --all-targets
@@ -154,11 +255,14 @@ the Docker-dependent E2E run. From the repository root, prefix each with
 `pnpm --filter @rnw/api-rs`.
 
 Integration tests use testcontainers-rs to start isolated Postgres 17 and
-Valkey 8 containers, apply the embedded migrations, seed 25 deterministic
-fixtures, then drive real HTTP. They cover pagination
-boundaries, exact JSON goldens, health readiness and the degraded shapes while
-the database is down, cache behavior, 404 shapes, rate limiting, and
-Valkey-absent fail-open behavior. Docker must be running.
+Valkey 8 containers, apply the embedded migrations, seed 26 deterministic
+fixtures (including one owned by a seller), then drive real HTTP. They cover
+pagination boundaries, exact JSON goldens, health readiness and the degraded
+shapes while the database is down, cache behavior, 404 shapes, rate limiting, and
+Valkey-absent fail-open behavior. `e2e_auth.rs` and `e2e_my_store.rs` add the
+auth and write paths: concurrent registration, session revocation, read-your-writes
+for the seller, the `404`-not-`403` ownership rule, and cache invalidation against a
+warm cache. Docker must be running.
 
 `cargo test --test parity` compares every response byte-for-byte against the
 committed fixtures in `tests/fixtures/`. Health `responseTime` is normalized
@@ -183,9 +287,11 @@ product reads use a second pool while `/health` keeps pinging the primary.
 Budget `DB_MAX_CONNECTIONS` and `DB_READ_MAX_CONNECTIONS` separately — both are
 per-pool, so they add up against Postgres when both point at the same server.
 
-Replica lag means a just-created product can briefly be missing, so reads are
-not read-your-writes. That is fine while products are immutable once visible and
-stops being fine once `POST /products` exists — see `ARCHITECTURE.md` §12.
+Replica lag means a just-created product can briefly be missing from the *public*
+reads, so those are not read-your-writes. Owner-scoped reads and every write are
+routed to the primary unconditionally, so a seller never sees that lag. Unsetting
+`DATABASE_READ_URL` puts every read on the primary if the public lag is not
+acceptable — see `ARCHITECTURE.md` §5.
 
 ## Caching and stampede protection
 
@@ -202,3 +308,28 @@ The `COUNT(*)` behind the `total` field is cached under `products:count`, so it
 is paid once per TTL window instead of once per request. The list query's
 `ORDER BY createdAt, id` is backed by `@@index([createdAt, id])`, measured
 before/after in `load-tests/README.md`.
+
+## The write path
+
+The first mutations landed with the seller storefronts, and they had to retire
+the cache the read path depends on. Both tiers key list pages under a namespace
+counter (`api-rs:products:list:gen`), so one `INCR` after a write makes every
+cached page unreachable at once — including `products:count`, which is the field a
+new product changes most visibly. `invalidate_detail(id)` runs *first*, so no
+reader can pair a fresh detail entry with a list that was filled before the write.
+
+Three list families fold in that counter: `products:list` (the marketplace) and
+`stores:{id}:products:list` (a public storefront). The owner-scoped list is not
+cached at all, because it is per-user.
+
+The counter is held in process rather than read per request: `bump` writes through
+to the local value and refreshes the shared one, and a background task re-reads it
+every `L2_TTL_SECS`. The trade-off is that an instance which did not perform the
+write may serve a pre-write list page until its next refresh. See
+`ARCHITECTURE.md` §12.
+
+Owner-scoped reads and every write go to the **primary**, so a seller always sees
+their own changes immediately. `GET /products` and `GET /stores/{id}/products` read
+from the replica, so the *public* marketplace may show a just-created product only
+after replica lag. Unsetting `DATABASE_READ_URL` puts every read on the primary
+and is a one-line change.

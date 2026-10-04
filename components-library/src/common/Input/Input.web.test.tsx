@@ -61,4 +61,21 @@ describe("Input (web, via react-native-web)", () => {
     )
     expect(screen.getByTestId("input-container")).toHaveStyle({ cursor: "text" })
   })
+
+  it("gives the text field its own testID, distinct from the container's", () => {
+    // The wrapper already claims `input-container`; a multi-field form needs a
+    // selector that tells its fields apart.
+    render(<Input inputTestID="product-title" value="" onChangeText={vi.fn()} />)
+    expect(screen.getByTestId("product-title")).toBeInTheDocument()
+    expect(screen.getAllByTestId("input-container")).toHaveLength(1)
+  })
+
+  it("renders a multiline field as a textarea that grows", () => {
+    const { container } = render(<Input multiline inputTestID="notes" value="" onChangeText={vi.fn()} />)
+    const textarea = container.querySelector("textarea")
+    expect(textarea).not.toBeNull()
+    expect(screen.getByTestId("notes")).toBe(textarea)
+    // A one-line box centres its content; a tall one has to start at the top.
+    expect(screen.getByTestId("input-container").className).not.toContain("items-center")
+  })
 })

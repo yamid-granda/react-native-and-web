@@ -8,10 +8,48 @@ use crate::store::StoreError;
 
 pub const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
 
+/// For every authenticated or mutating response. No seller response ever enters
+/// `CacheTier`, and `no-store` says the same thing to the browser and to any
+/// shared cache in front of the service — a stale product edit served out of a
+/// cache is the whole failure mode the write path exists to prevent.
+pub const NO_STORE: (HeaderName, HeaderValue) =
+    (header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+
+/// A bodiless 204. Built directly rather than through [`json_response`], which
+/// would stamp a content type and a weak ETag onto an empty body.
+pub fn no_content() -> Response {
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(axum::body::Body::empty())
+        .expect("a 204 with no headers always builds")
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("product {0} not found")]
     ProductNotFound(String),
+    #[error("store {0} not found")]
+    StoreNotFound(String),
+    /// A malformed or rejected request body. The only new 4xx shape on the
+    /// public contract, and the only one whose message is caller-specific: it
+    /// echoes back what was wrong with *their* input, never anything about the
+    /// database.
+    #[error("{0}")]
+    Validation(String),
+    /// One variant, one message, for every way a bearer token can fail to
+    /// identify a caller: absent, malformed, unknown, expired. Distinguishing
+    /// them would tell an attacker which of the four happened.
+    #[error("unauthorized")]
+    Unauthorized,
+    /// Reserved. No route returns it today: a seller touching a product they do
+    /// not own gets [`Self::ProductNotFound`] instead, because a 403 confirms
+    /// the id exists on a public catalogue. Kept for the authorisation cases
+    /// that are genuinely about the caller's role rather than about a
+    /// resource's existence.
+    #[error("forbidden")]
+    Forbidden,
+    #[error("email already registered")]
+    EmailTaken,
     /// `?page=` values that survive JS coercion but fail the positive-offset
     /// validation in [`crate::handlers::products`] surface as the generic 500.
     #[error("invalid pagination")]
@@ -55,7 +93,11 @@ fn internal_error_body() -> Vec<u8> {
 impl AppError {
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::ProductNotFound(_) => StatusCode::NOT_FOUND,
+            Self::ProductNotFound(_) | Self::StoreNotFound(_) => StatusCode::NOT_FOUND,
+            Self::Validation(_) => StatusCode::BAD_REQUEST,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::EmailTaken | Self::Store(StoreError::EmailTaken) => StatusCode::CONFLICT,
             Self::InvalidPagination | Self::Store(_) | Self::Serialization(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -70,6 +112,37 @@ impl AppError {
                 status_code: 404,
             }
             .to_vec(),
+            Self::StoreNotFound(id) => ErrorBody {
+                message: format!("Store {id} not found"),
+                error: Some("Not Found"),
+                status_code: 404,
+            }
+            .to_vec(),
+            Self::Validation(message) => {
+                ErrorBody { message: message.clone(), error: Some("Bad Request"), status_code: 400 }
+                    .to_vec()
+            }
+            Self::Unauthorized => ErrorBody {
+                // Deliberately not "Invalid email or password" or "Session
+                // expired": every way a token fails gets this one string, so the
+                // 401 body reveals nothing about which check failed.
+                message: "Unauthorized".to_string(),
+                error: Some("Unauthorized"),
+                status_code: 401,
+            }
+            .to_vec(),
+            Self::Forbidden => ErrorBody {
+                message: "Forbidden".to_string(),
+                error: Some("Forbidden"),
+                status_code: 403,
+            }
+            .to_vec(),
+            Self::EmailTaken | Self::Store(StoreError::EmailTaken) => ErrorBody {
+                message: "Email already registered".to_string(),
+                error: Some("Conflict"),
+                status_code: 409,
+            }
+            .to_vec(),
             _ => internal_error_body(),
         }
     }
@@ -81,7 +154,11 @@ impl IntoResponse for AppError {
             tracing::error!(error = %self, "request failed");
         }
         let status = self.status();
-        json_response(status, self.body(), &[], None)
+        // `no-store` on errors too: an error body describes one caller's failed
+        // request, and heuristic caching of a 401 or a 500 is exactly the kind of
+        // thing that turns one bad session into a shared one. Additive, so the
+        // committed error goldens (which are bodies) do not change.
+        json_response(status, self.body(), &[NO_STORE], None)
     }
 }
 
@@ -164,6 +241,76 @@ mod tests {
             r#"{"statusCode":500,"message":"Internal server error"}"#
         );
         assert_eq!(error.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn the_new_client_errors_keep_the_same_key_order() {
+        let cases = [
+            (
+                AppError::Validation("price must be positive".to_string()),
+                StatusCode::BAD_REQUEST,
+                r#"{"message":"price must be positive","error":"Bad Request","statusCode":400}"#,
+            ),
+            (
+                AppError::Unauthorized,
+                StatusCode::UNAUTHORIZED,
+                r#"{"message":"Unauthorized","error":"Unauthorized","statusCode":401}"#,
+            ),
+            (
+                AppError::Forbidden,
+                StatusCode::FORBIDDEN,
+                r#"{"message":"Forbidden","error":"Forbidden","statusCode":403}"#,
+            ),
+            (
+                AppError::EmailTaken,
+                StatusCode::CONFLICT,
+                r#"{"message":"Email already registered","error":"Conflict","statusCode":409}"#,
+            ),
+            (
+                AppError::StoreNotFound("usr-9".to_string()),
+                StatusCode::NOT_FOUND,
+                r#"{"message":"Store usr-9 not found","error":"Not Found","statusCode":404}"#,
+            ),
+        ];
+        for (error, status, body) in cases {
+            assert_eq!(error.status(), status);
+            assert_eq!(String::from_utf8(error.body()).unwrap(), body);
+        }
+    }
+
+    /// The whole point of one `Unauthorized` variant: four different failures,
+    /// one indistinguishable answer.
+    #[test]
+    fn every_unauthorized_reason_produces_the_same_body() {
+        assert_eq!(
+            String::from_utf8(AppError::Unauthorized.body()).unwrap(),
+            String::from_utf8(AppError::Unauthorized.body()).unwrap()
+        );
+        assert!(!String::from_utf8(AppError::Unauthorized.body()).unwrap().contains("token"));
+    }
+
+    #[test]
+    fn a_unique_email_violation_is_a_conflict_not_a_five_hundred() {
+        let error = AppError::from(StoreError::EmailTaken);
+        assert_eq!(error.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            String::from_utf8(error.body()).unwrap(),
+            r#"{"message":"Email already registered","error":"Conflict","statusCode":409}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn no_content_is_bare() {
+        let response = no_content();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(!response.headers().contains_key(header::CONTENT_TYPE));
+        assert!(!response.headers().contains_key(header::ETAG));
+    }
+
+    #[test]
+    fn no_store_is_the_literally_documented_value() {
+        assert_eq!(NO_STORE.0, header::CACHE_CONTROL);
+        assert_eq!(NO_STORE.1, "no-store");
     }
 
     #[test]

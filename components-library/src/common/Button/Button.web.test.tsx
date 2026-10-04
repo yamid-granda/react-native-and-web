@@ -55,6 +55,11 @@ describe("Button (web, via react-native-web)", () => {
         }
       }
     })
+
+    it("keeps the same testID while loading, since it comes from label not text", () => {
+      render(<Button label="Save changes" loading />)
+      expect(screen.getByTestId("save-changes")).toBeInTheDocument()
+    })
   })
 
   describe("accessibility", () => {
@@ -88,6 +93,25 @@ describe("Button (web, via react-native-web)", () => {
       expect(onPress).not.toHaveBeenCalled()
     })
 
+    it("keeps its accessible name while loading", () => {
+      // The visible label becomes "…", which on its own would leave a screen reader
+      // with nothing to announce.
+      render(<Button label="Save changes" loading />)
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument()
+    })
+
+    it("announces the busy state", () => {
+      const { unmount } = render(<Button label="Save changes" loading />)
+      expect(screen.getByRole("button", { name: "Save changes" })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      )
+      unmount()
+
+      render(<Button label="Go" />)
+      expect(screen.getByRole("button", { name: "Go" })).toHaveAttribute("aria-busy", "false")
+    })
+
     it("exposes aria-selected on a chip, and only on a chip", () => {
       const { rerender } = render(<Button label="Relevance" variant="chip" selected={false} />)
       expect(screen.getByRole("button")).toHaveAttribute("aria-selected", "false")
@@ -97,6 +121,18 @@ describe("Button (web, via react-native-web)", () => {
 
       rerender(<Button label="Relevance" />)
       expect(screen.getByRole("button")).not.toHaveAttribute("aria-selected")
+    })
+  })
+
+  describe("loading", () => {
+    it("shows an ellipsis and refuses presses", () => {
+      const onPress = vi.fn()
+      render(<Button label="Save changes" onPress={onPress} loading />)
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument()
+      expect(screen.getByText("…")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled()
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }))
+      expect(onPress).not.toHaveBeenCalled()
     })
   })
 
@@ -120,6 +156,16 @@ describe("Button (web, via react-native-web)", () => {
       )
       fireEvent.click(screen.getByTestId("close"))
       expect(onPress).toHaveBeenCalledTimes(1)
+    })
+
+    it("keeps children while loading, so an icon button never becomes a bare ellipsis", () => {
+      render(
+        <Button label="Close" size="icon" loading>
+          <HeartIcon size={18} />
+        </Button>,
+      )
+      expect(screen.queryByText("…")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Close" })).toBeDisabled()
     })
   })
 })

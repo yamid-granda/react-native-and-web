@@ -27,6 +27,14 @@ export type ProductDetailScreenProps = {
   isLoading?: boolean
   error?: Error | null
   onGoToCart?: () => void
+  /**
+   * Opens the seller's storefront. Supplied by the app, because routing is the
+   * app's business — same rule as `onGoToCart`.
+   *
+   * Omitted, the "Sold by" line still renders as plain text: a product with a
+   * seller is worth naming even where there is nowhere to navigate to.
+   */
+  onOpenStore?: (storeId: string) => void
 }
 
 export function ProductDetailScreen({
@@ -34,6 +42,7 @@ export function ProductDetailScreen({
   isLoading,
   error,
   onGoToCart,
+  onOpenStore,
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
   const recordView = useRecentlyViewedStore((state) => state.recordView)
@@ -75,6 +84,25 @@ export function ProductDetailScreen({
             {formatPrice(product.price, product.currency)}
           </ClassNameText>
           <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
+          {/* Inline rather than a new common/ component: it has exactly one call
+              site, and the pressable wrapper is conditional so a seeded product
+              with no seller is not focusable at all. */}
+          {product.storeName ? (
+            <Button
+              label={`Sold by ${product.storeName}`}
+              variant="ghost"
+              size="sm"
+              disabled={!product.storeId || !onOpenStore}
+              onPress={() => {
+                if (product.storeId) onOpenStore?.(product.storeId)
+              }}
+              // The ghost label is brand-blue, but an unopenable store link has
+              // to read as inert rather than as an invitation.
+              labelClassName={onOpenStore ? undefined : "text-muted"}
+              testID="product-detail-store"
+              className={onOpenStore ? "self-start" : undefined}
+            />
+          ) : null}
           <ClassNameView className="flex-row items-center gap-3">
             <Button
               label={product.stock === 0 ? "Out of stock" : "Add to Cart"}

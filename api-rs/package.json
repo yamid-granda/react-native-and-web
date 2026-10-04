@@ -10,7 +10,7 @@
     "lint": "cargo fmt --check && cargo clippy --all-targets -- -D warnings",
     "typecheck": "cargo check --all-targets",
     "test": "cargo test --lib",
-    "test:e2e": "cargo test --test e2e_products --test parity",
+    "test:e2e": "cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity",
     "test:all": "pnpm test && pnpm test:e2e",
     "coverage": "sh scripts/coverage.sh",
     "bench": "cargo bench",

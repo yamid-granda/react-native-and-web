@@ -16,6 +16,9 @@ export default function ProductDetail() {
       isLoading={isLoading}
       error={error}
       onGoToCart={() => router.push("/cart")}
+      // Only rendered when the product actually has a seller, so a seeded product
+      // gets no dead affordance.
+      onOpenStore={(storeId) => router.push({ pathname: "/stores/[id]", params: { id: storeId } })}
     />
   )
 }

@@ -34,7 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let count = seed::seed_count_from_env()?;
             migrations::run(&pool).await?;
             seed::run(&pool, count).await?;
-            println!("seeded 8 fixture products and {count} generated products");
+            println!(
+                "seeded {} fixture rows (one seller, one owned product) and {count} generated products",
+                seed::fixture_count(),
+            );
         }
         other => return Err(format!("unknown command {other:?}\n\n{}", usage()).into()),
     }

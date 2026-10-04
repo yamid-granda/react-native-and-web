@@ -53,6 +53,24 @@ async fn responses_match_committed_golden_fixtures() {
         include_str!("fixtures/product-prod-1.json"),
     )
     .await;
+    // The one fixture with a seller: proves the store `LEFT JOIN` fills
+    // `storeId`/`storeName` rather than leaving them null everywhere.
+    assert_golden(
+        &client,
+        &stack.base_url,
+        "/products/prod-owned-1",
+        StatusCode::OK,
+        include_str!("fixtures/product-prod-owned-1.json"),
+    )
+    .await;
+    assert_golden(
+        &client,
+        &stack.base_url,
+        &format!("/stores/{}", common::FIXTURE_STORE_ID),
+        StatusCode::OK,
+        include_str!("fixtures/store-fixture.json"),
+    )
+    .await;
     assert_golden(
         &client,
         &stack.base_url,
@@ -67,6 +85,14 @@ async fn responses_match_committed_golden_fixtures() {
         "/nope?x=1",
         StatusCode::NOT_FOUND,
         include_str!("fixtures/route-404.json"),
+    )
+    .await;
+    assert_golden(
+        &client,
+        &stack.base_url,
+        "/auth/me",
+        StatusCode::UNAUTHORIZED,
+        include_str!("fixtures/unauthorized-401.json"),
     )
     .await;
 

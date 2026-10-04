@@ -92,7 +92,20 @@ export type ButtonProps = {
   onPress?: () => void
   variant?: ButtonVariant
   size?: ButtonSize
+  /**
+   * Greys the button out and stops it firing. `Pressable` already knows about
+   * `disabled`; what it does not know is that the label has to look inert too.
+   */
   disabled?: boolean
+  /**
+   * Swaps the label for "…" while a mutation is in flight.
+   *
+   * Not a spinner: the shared button has no icon slot, and a save button whose
+   * label says what it is about to do beats one that disappears. Pair it with
+   * `disabled` at the call site — a loading button that can still be pressed
+   * twice is worse than one that cannot.
+   */
+  loading?: boolean
   /** Only meaningful for `variant="chip"`; also drives `aria-selected`. */
   selected?: boolean
   /** Overrides `label` as the accessible name when the visible text is a poor one. */
@@ -110,12 +123,14 @@ export function Button({
   variant = "primary",
   size = "md",
   disabled,
+  loading,
   selected,
   accessibilityLabel,
   testID,
   className,
   labelClassName,
 }: ButtonProps) {
+  const inert = Boolean(disabled || loading)
   const style =
     variant === "chip"
       ? selected
@@ -127,25 +142,37 @@ export function Button({
 
   return (
     <ClassNamePressable
+      // Derived from `label` rather than from the rendered text, so a button
+      // keeps the same test id while `loading` swaps the label for "…".
       testID={testID ?? toButtonTestId(label)}
       accessibilityRole="button"
+      // The visible label becomes "…" while loading, which would leave a screen
+      // reader with nothing to announce — so the name is carried explicitly and
+      // the busy state is announced alongside it.
       accessibilityLabel={accessibilityLabel ?? label}
-      // RN's own Pressable folds `disabled` and `aria-selected` into
-      // `accessibilityState` (Pressable.js), so nothing else to set here.
+      // `aria-busy` rather than `accessibilityState.busy`: react-native-web only
+      // reads the aria-* spelling, and RN 0.71+ accepts it natively too. Verified
+      // in react-native-web's createDOMProps — `accessibilityState.busy` is
+      // dropped on web, so using it here would announce nothing.
+      aria-busy={Boolean(loading)}
+      // `disabled` needs no `accessibilityState`: RN's own Pressable folds it in
+      // (Pressable.js), which is also what renders `disabled` on the web <button>.
+      // `aria-selected` is passed the same way, because RNW drops the
+      // accessibilityState spelling of it too.
       aria-selected={variant === "chip" ? Boolean(selected) : undefined}
-      disabled={disabled}
+      disabled={inert}
       onPress={onPress}
       className={cn(
         BUTTON_BASE_CLASSNAME,
         style.container,
         sizeClassNames[size],
-        disabled && "opacity-50",
+        inert && "opacity-50",
         className,
       )}
     >
       {children ?? (
         <ClassNameText className={cn(style.label, labelSize, labelClassName)}>
-          {label}
+          {loading ? "…" : label}
         </ClassNameText>
       )}
     </ClassNamePressable>

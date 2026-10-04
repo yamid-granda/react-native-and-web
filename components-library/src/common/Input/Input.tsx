@@ -29,11 +29,26 @@ const ClassNameTextInput = TextInput as ComponentType<
 >
 
 export type InputProps = TextInputProps & {
+  /** Styles the wrapping box, not the text field inside it. */
   className?: string
   prependIcon?: ComponentType<IconProps>
+  /**
+   * `testID` for the `TextInput` itself.
+   *
+   * A separate prop because the wrapper already claims `input-container`, and a
+   * multi-field form needs a distinct selector per field — `getByTestId` cannot
+   * tell three of them apart otherwise.
+   */
+  inputTestID?: string
 }
 
-export function Input({ prependIcon: PrependIcon, className, ...rest }: InputProps) {
+export function Input({
+  prependIcon: PrependIcon,
+  className,
+  inputTestID,
+  multiline,
+  ...rest
+}: InputProps) {
   const inputRef = useRef<TextInput>(null)
 
   return (
@@ -47,9 +62,13 @@ export function Input({ prependIcon: PrependIcon, className, ...rest }: InputPro
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        // h-control is the shared control height (tailwind-preset.cjs) — the
-        // same token Button uses, so inputs and buttons line up in every form.
-        "h-control flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3",
+        "gap-2 rounded-lg border border-surface-muted bg-surface px-3",
+        // A one-line input is the shared control height (h-control,
+        // tailwind-preset.cjs — the same token Button uses) so inputs and
+        // buttons line up. A multiline one has to grow, so it gets padding
+        // instead of a fixed height, and starts at the top or the first line
+        // would float in the middle of the box.
+        multiline ? "items-start py-2" : "h-control flex-row items-center",
         className,
       )}
     >
@@ -58,7 +77,14 @@ export function Input({ prependIcon: PrependIcon, className, ...rest }: InputPro
         ref={inputRef}
         underlineColorAndroid="transparent"
         {...rest}
-        className="flex-1 text-sm text-foreground outline-none placeholder:text-muted"
+        multiline={multiline}
+        testID={inputTestID}
+        // After `{...rest}` and therefore not overridable: a taller box comes from
+        // the wrapper's className above, and a textarea aligns to the top.
+        className={cn(
+          "flex-1 text-sm text-foreground outline-none placeholder:text-muted",
+          multiline && "min-h-20 text-left",
+        )}
       />
     </ClassNamePressable>
   )

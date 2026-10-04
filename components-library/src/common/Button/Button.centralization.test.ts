@@ -13,6 +13,8 @@ const SRC_ROOT = fileURLToPath(new URL("../../", import.meta.url))
  * than a button someone presses to run an action.
  */
 const NOT_A_BUTTON: Record<string, string> = {
+  "business/HomeScreen/HomeScreen.tsx":
+    '"My Store" card: a title plus a subtitle, not a single action label',
   "common/Drawer/Drawer.tsx": "overlay click-catcher that dismisses the drawer",
   "common/MainNav/MainNav.tsx": "nav item (icon + label + badge)",
   "common/MainNav/MainNav.web.tsx": "nav item (icon + label + badge), web wiring",
@@ -36,6 +38,11 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
 }
 
+// Matches the JSX spelling (`accessibilityRole="button"`), the object-literal
+// one (`accessibilityRole: "button" as const`) and a JSX expression container,
+// but not other roles — Label legitimately sets `accessibilityRole="text"`.
+const BUTTON_ROLE = /accessibilityRole[=:]\s*(?:\{\s*)?["']button["']/
+
 describe("Button centralization", () => {
   it("is the only component that marks something as a button", () => {
     const offenders: string[] = []
@@ -43,7 +50,7 @@ describe("Button centralization", () => {
     for (const path of sourceFiles(SRC_ROOT)) {
       const relativePath = path.slice(SRC_ROOT.length).replace(/\\/g, "/")
       if (relativePath === "common/Button/Button.tsx") continue
-      if (!stripComments(readFileSync(path, "utf8")).includes("accessibilityRole")) continue
+      if (!BUTTON_ROLE.test(stripComments(readFileSync(path, "utf8")))) continue
 
       if (!NOT_A_BUTTON[relativePath]) {
         offenders.push(relativePath)
@@ -58,7 +65,7 @@ describe("Button centralization", () => {
     // otherwise the entry is dead weight pretending to permit something.
     for (const relativePath of Object.keys(NOT_A_BUTTON)) {
       const source = stripComments(readFileSync(join(SRC_ROOT, relativePath), "utf8"))
-      expect(source, relativePath).toContain("accessibilityRole")
+      expect(BUTTON_ROLE.test(source), relativePath).toBe(true)
     }
   })
 })
