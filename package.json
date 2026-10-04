@@ -16,11 +16,11 @@
     "typecheck": "turbo run typecheck",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "routine:status": "launchctl list | grep -F ai.opencode.routine || echo 'not loaded -- run: pnpm routine:start'",
-    "routine:start": "launchctl bootstrap gui/$(id -u) \"$HOME/Library/LaunchAgents/ai.opencode.routine.plist\" 2>/dev/null; launchctl list | grep -qF ai.opencode.routine && echo 'routine loaded -- runs hourly' || echo 'failed to load -- check ~/Library/LaunchAgents/ai.opencode.routine.plist'",
-    "routine:stop": "launchctl bootout gui/$(id -u)/ai.opencode.routine 2>/dev/null; launchctl list | grep -qF ai.opencode.routine && echo 'still loaded -- stop failed' || echo 'routine unloaded'",
-    "routine:run": "launchctl kickstart -p gui/$(id -u)/ai.opencode.routine && echo 'routine triggered -- follow with: pnpm routine:logs'",
-    "routine:logs": "tail -f \"$HOME/.local/state/opencode-routine/runs.log\"",
+    "routine:status": "launchctl list | grep -F code-optimization-proposals || echo 'not loaded -- no scheduler job registered'",
+    "routine:start": "plist=$(ls \"$HOME\"/Library/LaunchAgents/com.opencode.job.*.code-optimization-proposals.plist 2>/dev/null | head -1); [ -n \"$plist\" ] && launchctl bootstrap \"gui/$(id -u)\" \"$plist\" 2>/dev/null; launchctl list | grep -qF code-optimization-proposals && echo 'job loaded -- runs hourly at :00' || echo 'not loaded -- no plist found; create it with the opencode-scheduler plugin'",
+    "routine:stop": "plist=$(ls \"$HOME\"/Library/LaunchAgents/com.opencode.job.*.code-optimization-proposals.plist 2>/dev/null | head -1); [ -n \"$plist\" ] && launchctl bootout \"gui/$(id -u)/$(basename \"$plist\" .plist)\" 2>/dev/null; launchctl list | grep -qF code-optimization-proposals && echo 'still loaded -- stop failed' || echo 'job unloaded'",
+    "routine:run": "plist=$(ls \"$HOME\"/Library/LaunchAgents/com.opencode.job.*.code-optimization-proposals.plist 2>/dev/null | head -1); [ -n \"$plist\" ] && launchctl kickstart -p \"gui/$(id -u)/$(basename \"$plist\" .plist)\" && echo 'job triggered -- follow with: pnpm routine:logs' || echo 'no plist found'",
+    "routine:logs": "log=$(ls \"$HOME\"/.config/opencode/logs/scheduler/*/code-optimization-proposals.log 2>/dev/null | head -1); [ -n \"$log\" ] && tail -f \"$log\" || echo 'no log yet -- the job has not run'",
     "prepare": "husky"
   },
   "devDependencies": {
