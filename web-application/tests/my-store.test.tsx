@@ -2,7 +2,7 @@ import { Suspense, act, type ReactElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useSessionStore } from "@rnw/components-library"
+import { productWriteKeys, useSessionStore } from "@rnw/components-library"
 import MyStorePage from "../app/my-store/page"
 import NewProductPage from "../app/my-store/new/page"
 import StorePage from "../app/stores/[id]/page"
@@ -43,13 +43,17 @@ function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 }, mutations: { retry: false } },
   })
-  return render(
+  return { ...render(wrap(ui, queryClient)), queryClient }
+}
+
+function wrap(ui: ReactElement, queryClient: QueryClient) {
+  return (
     <QueryClientProvider client={queryClient}>
       {/* A dynamic route's `params` is a promise, so the component suspends on
           its first render and the retry only commits from inside the same act()
           batch as the initial render. */}
       <Suspense fallback={null}>{ui}</Suspense>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
 }
 
@@ -156,7 +160,13 @@ describe("NewProductPage", () => {
   it("creates a product and returns to the list", async () => {
     signIn()
     vi.mocked(createMyProduct).mockResolvedValue(product)
-    renderWithClient(<NewProductPage />)
+    const { queryClient } = renderWithClient(<NewProductPage />)
+    // Seeded so the invalidation is observable: under this harness's `staleTime: 0`
+    // a refetch cannot distinguish "invalidated" from "always stale", so the
+    // assertion has to be `isInvalidated` and not a call count.
+    for (const queryKey of productWriteKeys(user.id, product.id)) {
+      queryClient.setQueryData(queryKey, page)
+    }
 
     fireEvent.change(screen.getByTestId("product-title"), {
       target: { value: "Leather Weekender" },
@@ -175,6 +185,11 @@ describe("NewProductPage", () => {
       })
     })
     expect(replacedWith()).toContain("/my-store")
+    // The write went through the seam, so the seller's list, the catalogue and
+    // the storefront are all retired — not just the one key the old `refresh` knew.
+    for (const queryKey of productWriteKeys(user.id, product.id)) {
+      expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(true)
+    }
   })
 
   it("keeps the seller on the form when the server refuses", async () => {

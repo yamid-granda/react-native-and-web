@@ -1,14 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import type { ProductData, ProductsPage } from "../../types/Product"
 import type { ProductFormValues } from "../ProductFormScreen/ProductFormScreen"
 
 /**
- * The api surface this hook needs, injected by the app that owns the transport.
+ * The api surface a My Store screen needs, injected by the app that owns the
+ * transport.
  *
  * components-library deliberately has no api layer: each app has its own `fetch`
  * wrapper (different base-URL resolution, different navigation) and a shared one
- * would have to grow a platform switch. Passing the three functions in is what
- * keeps the *state* pattern shared without sharing the *transport*.
+ * would have to grow a platform switch. Passing the functions in is what keeps
+ * the *state* pattern shared without sharing the *transport*.
+ *
+ * The hooks below each take only the members they use — `Pick` rather than this
+ * whole type — so a caller cannot hand over a write function to a read hook and
+ * have it look wired up.
  */
 export type MyStoreApi = {
   list: () => Promise<ProductsPage>
@@ -42,17 +47,54 @@ export function productQueryKey(id: string) {
 }
 
 /**
- * The repo's first mutation, and therefore the pattern the rest will follow:
- * `useMutation` for the write, then invalidate the query that read it. Nothing
- * optimistic — the lists are small and the server is the source of truth, so an
- * optimistic row would only ever be a thing to roll back.
+ * The cache key for the whole catalogue, across every seller.
  *
- * Every write invalidates the same key, including a delete: after a delete the
- * cached page is wrong in two ways at once (the row is still there, and `total`
- * is off by one).
+ * The one key with no id in it: `/products` is the marketplace's paginated view
+ * of all products, which is exactly why a seller write has to retire it.
  */
-export function useMyStoreProducts(storeId: string, api: MyStoreApi) {
-  const queryClient = useQueryClient()
+export const PRODUCTS_KEY = ["products"] as const
+
+/** The cache key for one store's public profile. */
+export function storeKey(id: string) {
+  return ["store", id] as const
+}
+
+/** The cache key for one store's public product list. */
+export function storeProductsKey(id: string) {
+  return ["store-products", id] as const
+}
+
+/**
+ * Every cache entry a seller write to `productId` can make wrong.
+ *
+ * `["my-store", storeId]` is the seller's own list. `["products"]` and
+ * `["product", id]` are the catalogue the edit screen itself read, and the two
+ * store keys are the public storefront, which shows the same rows. All of them
+ * sit under the app's five-minute `staleTime`, so a write that retires only the
+ * first key leaves a buyer looking at a price the seller has already changed.
+ *
+ * `invalidateQueries` prefix-matches, so one entry per family is enough.
+ */
+export function productWriteKeys(storeId: string, productId: string) {
+  return [
+    myStoreKey(storeId),
+    PRODUCTS_KEY,
+    productQueryKey(productId),
+    storeKey(storeId),
+    storeProductsKey(storeId),
+  ] as const
+}
+
+/**
+ * The read half of "my store": one seller's product list.
+ *
+ * The write half is `useMyStoreMutations`, split out because the *forms* live in
+ * routes this hook is not mounted by, and a write that skips the seam is a write
+ * that invalidates nothing. Nothing optimistic: the lists are small and the server
+ * is the source of truth, so an optimistic row would only ever be a thing to roll
+ * back.
+ */
+export function useMyStoreProducts(storeId: string, api: Pick<MyStoreApi, "list">) {
   const key = myStoreKey(storeId)
 
   const products = useQuery({
@@ -65,35 +107,9 @@ export function useMyStoreProducts(storeId: string, api: MyStoreApi) {
     retry: false,
   })
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: key })
-
-  // Each `mutationFn` is wrapped rather than passed straight through: react-query
-  // calls it as `(variables, context)`, so an api function handed the reference
-  // directly would be handed a QueryClient as a second argument it never asked
-  // for.
-  const create = useMutation({
-    mutationFn: (values: ProductFormValues) => api.create(values),
-    onSuccess: refresh,
-  })
-  const update = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: Partial<ProductFormValues> }) =>
-      api.update(id, values),
-    onSuccess: refresh,
-  })
-  const remove = useMutation({
-    mutationFn: (id: string) => api.remove(id),
-    onSuccess: refresh,
-  })
-
   return {
     products: products.data?.items ?? [],
     isLoading: products.isPending,
     error: products.error,
-    refresh,
-    create,
-    update,
-    remove,
-    /** True while any write is in flight, for disabling the whole screen's buttons. */
-    isMutating: create.isPending || update.isPending || remove.isPending,
   }
 }
