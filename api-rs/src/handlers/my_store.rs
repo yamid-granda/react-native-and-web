@@ -55,18 +55,9 @@ pub async fn list(
     // Never cached — not in L1, not in L2, not at the edge. It is per-user, so
     // there is no shared key that could be correct for more than one caller, and
     // it reads from the primary, so a seller sees their own writes at once.
-    let products = state.store.list_owned_page(&auth.user.id, query.offset, PAGE_SIZE).await?;
-    let total = state.store.count_owned(&auth.user.id).await?;
-    let item_count = products.len() as f64;
-    let body = ProductsPageJson {
-        items: products.iter().cloned().map(ProductJson::from).collect(),
-        page: query.page,
-        limit: PAGE_SIZE,
-        total,
-        // Same float arithmetic the public list uses, so `hasNextPage` means the
-        // same thing in both places.
-        has_next_page: (query.skip + item_count) < total as f64,
-    };
+    let products = state.store.list_page_for_owner(&auth.user.id, query.offset, PAGE_SIZE).await?;
+    let total = state.store.count_for_owner(&auth.user.id).await?;
+    let body = ProductsPageJson::from_page(products, &query, total);
     let bytes = serde_json::to_vec(&body)?;
     Ok(json_response(StatusCode::OK, bytes, &[NO_STORE], None))
 }

@@ -100,15 +100,32 @@ pub trait ProductStore: Send + Sync + 'static {
     /// `COUNT(*)` over the whole catalog — the `total` the envelope requires.
     async fn count(&self) -> Result<i64, StoreError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError>;
-    /// The seller-scoped twin of [`Self::list_page`], for `GET
-    /// /my-store/products` and the public `GET /stores/{id}/products`.
-    async fn list_owned_page(
+    /// The seller's own rows, for `GET /my-store/products`. Always the primary:
+    /// a seller must see their own writes, so a lagged read here is a bug rather
+    /// than a trade-off.
+    async fn list_page_for_owner(
         &self,
         owner_id: &str,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Product>, StoreError>;
-    async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError>;
+    /// The public storefront page, for `GET /stores/{id}/products`. Replica-safe:
+    /// eventually consistent by choice, per `ARCHITECTURE.md`'s pool table.
+    ///
+    /// The same rows as [`Self::list_page_for_owner`], served to anyone rather
+    /// than to the seller. Split from it rather than shared with it so neither
+    /// caller inherits the other's pool by accident — the two have opposite
+    /// requirements and a single name cannot express both.
+    async fn list_public_page_by_owner(
+        &self,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError>;
+    async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError>;
+    /// The storefront's `total`, on the same pool as
+    /// [`Self::list_public_page_by_owner`].
+    async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError>;
     /// `None` for a product that does not exist *and* for one owned by someone
     /// else: a 403 would confirm the id exists on a public catalog.
     async fn find_owned_by_id(
@@ -376,7 +393,7 @@ impl SqlProductStore {
 
     /// Where public reads go. Reads are the only workload this service has, so
     /// a replica takes all of them — but only the ones that are safe to serve
-    /// eventually consistently. `list_owned_page` deliberately does not use
+    /// eventually consistently. The owner-scoped reads deliberately do not use
     /// this: a seller reading their own store must not race replica lag.
     fn reads(&self) -> &PgPool {
         self.read_pool.as_ref().unwrap_or(&self.pool)
@@ -397,6 +414,39 @@ impl SqlProductStore {
     /// would be answering a question the caller needs answered now.
     pub(crate) async fn acquire_primary(&self) -> Result<PoolConnection<Postgres>, StoreError> {
         Self::acquire(&self.pool, "primary").await
+    }
+
+    /// One owner-scoped page against whichever pool the caller's consistency
+    /// requirement allows. The four `*_owner`/`*_by_owner` methods below differ
+    /// only in which pool they hand here, which is what keeps "who may read
+    /// this eventually" a decision made once.
+    async fn owned_page(
+        &self,
+        pool: &PgPool,
+        role: &'static str,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError> {
+        let mut connection = Self::acquire(pool, role).await?;
+        let rows: Vec<ProductRow> = sqlx::query_as(LIST_OWNED_QUERY)
+            .bind(owner_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&mut *connection)
+            .await?;
+        Ok(rows.into_iter().map(Product::from).collect())
+    }
+
+    /// The owner-scoped `COUNT(*)`, against the same pool as [`Self::owned_page`].
+    async fn owned_count(
+        &self,
+        pool: &PgPool,
+        role: &'static str,
+        owner_id: &str,
+    ) -> Result<i64, StoreError> {
+        let mut connection = Self::acquire(pool, role).await?;
+        Ok(sqlx::query_scalar(COUNT_OWNED_QUERY).bind(owner_id).fetch_one(&mut *connection).await?)
     }
 
     /// Explicit acquisition so pool wait time is observable as its own metric
@@ -448,29 +498,30 @@ impl ProductStore for SqlProductStore {
         Ok(row.map(Product::from))
     }
 
-    async fn list_owned_page(
+    async fn list_page_for_owner(
         &self,
         owner_id: &str,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Product>, StoreError> {
-        let mut connection = self.acquire_primary().await?;
-        let rows: Vec<ProductRow> = sqlx::query_as(LIST_OWNED_QUERY)
-            .bind(owner_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&mut *connection)
-            .await?;
-        Ok(rows.into_iter().map(Product::from).collect())
+        self.owned_page(&self.pool, "primary", owner_id, offset, limit).await
     }
 
-    async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
-        let mut connection = self.acquire_primary().await?;
-        let total: i64 = sqlx::query_scalar(COUNT_OWNED_QUERY)
-            .bind(owner_id)
-            .fetch_one(&mut *connection)
-            .await?;
-        Ok(total)
+    async fn list_public_page_by_owner(
+        &self,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError> {
+        self.owned_page(self.reads(), self.read_role(), owner_id, offset, limit).await
+    }
+
+    async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        self.owned_count(&self.pool, "primary", owner_id).await
+    }
+
+    async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        self.owned_count(self.reads(), self.read_role(), owner_id).await
     }
 
     async fn find_owned_by_id(
