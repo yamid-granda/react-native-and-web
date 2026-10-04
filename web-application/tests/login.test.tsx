@@ -4,6 +4,10 @@ import { useSessionStore } from "@rnw/components-library"
 import LoginPage from "../app/login/page"
 import { login, register } from "../lib/api"
 
+// `lib/api` is a re-export of the shared client (`createApi` in
+// `@rnw/components-library`/api/transport), but the module path and every export
+// name are unchanged, so this automock still intercepts all the call sites. The
+// transport behind it is covered in components-library/src/api/transport.test.ts.
 vi.mock("../lib/api")
 // solito/navigation's useRouter() calls next/navigation's useRouter, which
 // throws outside a real Next.js app router (see MainNav.web.test.tsx).
