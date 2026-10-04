@@ -167,6 +167,8 @@ alone on conflict — so re-running it never duplicates data.
 | `PER_IP_CONCURRENCY_LIMIT` | `64` | In-flight requests per client IP. |
 | `RATE_LIMIT_GLOBAL_RPS` | `0` | Fleet-wide Valkey-backed requests/second; zero disables. |
 | `RATE_LIMIT_PER_IP_RPS` | `100` | Per-IP Valkey-backed requests/second; zero disables. |
+| `RATE_LIMIT_MAX_TRACKED_IPS` | `100000` | Distinct client IPs the per-IP concurrency semaphore will track. Past the cap an unseen IP is served **without** a per-IP permit — counted as `http_load_shed_total{scope="ip-untracked"}` rather than shed, because blanket 503s are worse than a weaker bound. Idle entries are swept when the cap is hit, so this is a high-water mark rather than a permanent state. |
+| `TRUSTED_PROXY_HEADERS` | `cf-connecting-ip,x-forwarded-for` | Comma-separated headers consulted, in order, for the client IP that keys every per-IP limit. Set to empty to use the socket peer only — see below. |
 | `AUTH_LOGIN_ATTEMPTS_PER_MIN` | `10` | Per-IP login/registration attempts per minute, on its own 60-second window. This one bounds a password-guess rate rather than a traffic burst; zero disables it. |
 | `SESSION_TTL_SECS` | `604800` (7 days) | How long a session token stays valid. `POST /auth/logout` revokes immediately; this is the backstop for a token nobody revoked. |
 | `EDGE_CACHE_CONTROL` | `public, max-age=0, s-maxage=30, stale-while-revalidate=60` | Cache policy for product GETs at Cloudflare. |
@@ -180,6 +182,32 @@ alone on conflict — so re-running it never duplicates data.
 `hit-l1`, or `hit-l2`). Response bodies preserve the documented JSON field order
 and serialization that the web and mobile clients parse; edge/cache headers are
 additive.
+
+## Proxy trust and client IPs
+
+Every per-IP limit — the per-IP concurrency semaphore, `RATE_LIMIT_PER_IP_RPS`,
+and the login throttle — keys on one string: the client IP. `TRUSTED_PROXY_HEADERS`
+decides which headers are believed when resolving it, and that is a security
+setting rather than a detail. Rotating a single client-supplied header resets all
+three limits at once, so the default trusts Cloudflare's `CF-Connecting-IP` and
+then the first `X-Forwarded-For` hop, which is correct only when a trusted edge
+sits in front.
+
+**Behind Cloudflare**, keep the default *and* lock origin access to Cloudflare's
+published IP ranges (security groups, or a Cloudflare Tunnel). The second half is
+the part that actually closes the hole: the header is only meaningful if the edge
+is the only thing that can reach the origin. That is an operator action on the
+network, and no setting in this service can substitute for it — with the origin
+open, `TRUSTED_PROXY_HEADERS` can only be read as trusting whoever can send a
+header.
+
+**Direct to origin** (which is what `docker-compose.yml` and local dev are), set
+`TRUSTED_PROXY_HEADERS=`. The peer address is then the only source, and the
+per-IP limits cannot be reset from the request at all.
+
+The global limits are keyed on the literal `"global"` and survive either way:
+`GLOBAL_CONCURRENCY_LIMIT` still caps the process regardless of what any client
+sends.
 
 ## Auth and seller storefronts
 

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use axum::http::HeaderName;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -45,6 +46,15 @@ pub struct Config {
     pub rate_limit_global_rps: u64,
     /// Requests per second per client IP; 0 disables the check.
     pub rate_limit_per_ip_rps: u64,
+    /// How many distinct client IPs the per-IP concurrency semaphore will track
+    /// before it starts running unseen IPs with no per-IP permit at all. That
+    /// fallback is counted (`http_load_shed_total{scope="ip-untracked"}`) rather
+    /// than shed, because blanket 503s for everyone is worse than a weaker bound.
+    pub rate_limit_max_tracked_ips: usize,
+    /// Request headers consulted, in order, for the client IP that keys every
+    /// per-IP limit. Empty means the socket peer only — the correct posture when
+    /// the origin is reachable without a trusted edge in front of it.
+    pub trusted_proxy_headers: Vec<String>,
     /// How long a session token stays valid. Long enough that a seller is not
     /// signed out mid-edit, short enough that a leaked token expires on its own
     /// even if `POST /auth/logout` is never reached.
@@ -76,6 +86,11 @@ impl Default for Config {
             per_ip_concurrency_limit: 64,
             rate_limit_global_rps: 0,
             rate_limit_per_ip_rps: 100,
+            rate_limit_max_tracked_ips: 100_000,
+            trusted_proxy_headers: vec![
+                "cf-connecting-ip".to_string(),
+                "x-forwarded-for".to_string(),
+            ],
             session_ttl_secs: 7 * 24 * 60 * 60,
             auth_login_attempts_per_min: 10,
             edge_cache_control: "public, max-age=0, s-maxage=30, stale-while-revalidate=60"
@@ -139,6 +154,16 @@ impl Config {
             config.rate_limit_per_ip_rps =
                 raw.parse().map_err(|e| ConfigError::invalid("RATE_LIMIT_PER_IP_RPS", e))?;
         }
+        if let Some(raw) = env_str("RATE_LIMIT_MAX_TRACKED_IPS") {
+            config.rate_limit_max_tracked_ips =
+                raw.parse().map_err(|e| ConfigError::invalid("RATE_LIMIT_MAX_TRACKED_IPS", e))?;
+        }
+        // `TRUSTED_PROXY_HEADERS` is read through `env_header_list` rather than
+        // `env_str`, because for this key "set but empty" is a real setting —
+        // it turns off header trust — and must not collapse into the default
+        // the way a blank value does everywhere else in this file.
+        config.trusted_proxy_headers =
+            env_header_list("TRUSTED_PROXY_HEADERS", config.trusted_proxy_headers.clone())?;
         if let Some(raw) = env_str("SESSION_TTL_SECS") {
             config.session_ttl_secs =
                 raw.parse().map_err(|e| ConfigError::invalid("SESSION_TTL_SECS", e))?;
@@ -202,6 +227,30 @@ fn env_duration_secs(key: &'static str) -> Result<Option<Duration>> {
     }
 }
 
+/// Comma-separated header names, lowercased and validated. Deliberately reads
+/// the raw variable instead of going through `env_str`: an unset key means "keep
+/// the default", while a key that is set and empty means "trust no headers", and
+/// the operator who locked down the origin must not be silently handed the
+/// permissive default back.
+fn env_header_list(key: &'static str, fallback: Vec<String>) -> Result<Vec<String>> {
+    let Ok(raw) = std::env::var(key) else { return Ok(fallback) };
+    let mut headers = Vec::new();
+    for item in raw.split(',') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        // Reject rather than skip: a name that cannot be a header will never
+        // match, and dropping it would leave the deployment trusting fewer
+        // headers than its configuration says it does.
+        HeaderName::from_bytes(item.as_bytes()).map_err(|e| {
+            ConfigError::invalid(key, format!("{item:?} is not a header name: {e}"))
+        })?;
+        headers.push(item.to_ascii_lowercase());
+    }
+    Ok(headers)
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
@@ -228,6 +277,8 @@ mod tests {
         "PER_IP_CONCURRENCY_LIMIT",
         "RATE_LIMIT_GLOBAL_RPS",
         "RATE_LIMIT_PER_IP_RPS",
+        "RATE_LIMIT_MAX_TRACKED_IPS",
+        "TRUSTED_PROXY_HEADERS",
         "SESSION_TTL_SECS",
         "AUTH_LOGIN_ATTEMPTS_PER_MIN",
         "EDGE_CACHE_CONTROL",
@@ -282,6 +333,8 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.port, 3001);
         assert_eq!(config.rate_limit_per_ip_rps, 100);
+        assert_eq!(config.rate_limit_max_tracked_ips, 100_000);
+        assert_eq!(config.trusted_proxy_headers, ["cf-connecting-ip", "x-forwarded-for"]);
         assert_eq!(config.health_ping_timeout_ms, 1000);
         // A week: long enough for a real editing session, short enough that a
         // token nobody revoked still ages out.
@@ -320,6 +373,8 @@ mod tests {
             set("PER_IP_CONCURRENCY_LIMIT", "12");
             set("RATE_LIMIT_GLOBAL_RPS", "13");
             set("RATE_LIMIT_PER_IP_RPS", "14");
+            set("RATE_LIMIT_MAX_TRACKED_IPS", "500");
+            set("TRUSTED_PROXY_HEADERS", "cf-connecting-ip, true-client-ip");
             set("SESSION_TTL_SECS", "3600");
             set("AUTH_LOGIN_ATTEMPTS_PER_MIN", "3");
             set("EDGE_CACHE_CONTROL", "public, max-age=60");
@@ -343,11 +398,40 @@ mod tests {
         assert_eq!(config.per_ip_concurrency_limit, 12);
         assert_eq!(config.rate_limit_global_rps, 13);
         assert_eq!(config.rate_limit_per_ip_rps, 14);
+        assert_eq!(config.rate_limit_max_tracked_ips, 500);
+        assert_eq!(config.trusted_proxy_headers, ["cf-connecting-ip", "true-client-ip"]);
         assert_eq!(config.session_ttl_secs, 3600);
         assert_eq!(config.auth_login_attempts_per_min, 3);
         assert_eq!(config.edge_cache_control, "public, max-age=60");
         assert_eq!(config.cors_origin, "https://example.test");
         assert_eq!(config.health_ping_timeout_ms, 1500);
+    }
+
+    #[test]
+    fn trusted_proxy_headers_are_normalised_and_explicitly_emptiable() {
+        // The whole point of the key: an operator who cannot guarantee the edge
+        // is the only thing reaching the origin must be able to turn header
+        // trust off, and must not be handed the permissive default back.
+        let empty = with_clean_env(|| {
+            set("TRUSTED_PROXY_HEADERS", "");
+            Config::from_env().expect("an empty list is a valid setting")
+        });
+        assert!(
+            empty.trusted_proxy_headers.is_empty(),
+            "an explicit empty list opts out of header trust"
+        );
+
+        let padded = with_clean_env(|| {
+            set("TRUSTED_PROXY_HEADERS", " CF-Connecting-IP , , X-Forwarded-For ");
+            Config::from_env().expect("padded and empty entries are tolerated")
+        });
+        assert_eq!(padded.trusted_proxy_headers, ["cf-connecting-ip", "x-forwarded-for"]);
+
+        let bad = with_clean_env(|| {
+            set("TRUSTED_PROXY_HEADERS", "cf-connecting-ip, not a header");
+            Config::from_env().expect_err("an unusable header name must be rejected")
+        });
+        assert!(bad.to_string().contains("not a header"), "reported {bad:?}");
     }
 
     #[test]
@@ -397,6 +481,7 @@ mod tests {
             ("PER_IP_CONCURRENCY_LIMIT", "1.5"),
             ("RATE_LIMIT_GLOBAL_RPS", "fast"),
             ("RATE_LIMIT_PER_IP_RPS", "fast"),
+            ("RATE_LIMIT_MAX_TRACKED_IPS", "many"),
             ("SESSION_TTL_SECS", "forever"),
             ("AUTH_LOGIN_ATTEMPTS_PER_MIN", "many"),
             ("HEALTH_PING_TIMEOUT_MS", "soon"),

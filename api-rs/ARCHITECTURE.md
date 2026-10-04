@@ -267,7 +267,7 @@ flowchart TD
     g1 -->|"full"| shed["503 + http_load_shed_total<br/>scope=global-concurrency"]
     g1 -->|"permit held"| ip{"per-IP semaphore<br/>64 in flight<br/>registry capped at 100k IPs"}
     ip -->|"full"| shed2["503 + http_load_shed_total<br/>scope=ip-concurrency"]
-    ip -->|"acquired, or Untracked (cap hit → fail open)"| win{"Valkey 1-second window<br/>INCR api-rs:rl:ip:unix_secs<br/>EXPIRE 2 on first hit"}
+    ip -->|"acquired, or Untracked (cap hit → fail open, counted as scope=ip-untracked)"| win{"Valkey 1-second window<br/>INCR api-rs:rl:ip:unix_secs<br/>EXPIRE 2 on first hit"}
     win -->|"count > limit"| lim["429 + http_rate_limited_total<br/>scope=ip or global"]
     win -->|"under limit, or Valkey error → fail open"| h["handler"]
     h --> met
@@ -283,13 +283,24 @@ The ordering is a design statement:
 - **Concurrency is checked before rate.** A semaphore bounds work actually in
   flight; an rps counter bounds arrival rate. Shed first protects the process,
   limit second shapes the traffic.
-- **Client IP resolution is edge-aware**: `CF-Connecting-IP` →
-  first `X-Forwarded-For` hop → socket peer → `"unknown"`. Behind Cloudflare
-  the socket peer is the edge, so the order matters.
-- **Per-IP tracking is capped** at 100 000 entries. Past the cap the verdict is
-  `Untracked` — the request still faces the global semaphore and the rps
-  windows. Registering every spoofed IP would turn a flood of distinct
-  addresses into blanket 503s for everyone.
+- **Client IP resolution is edge-aware, and which headers to believe is
+  configured**: `TRUSTED_PROXY_HEADERS` (default
+  `cf-connecting-ip,x-forwarded-for`) → socket peer → `"unknown"`, first hop of a
+  list only. Behind Cloudflare the socket peer is the edge, so the order matters.
+  Empty means the peer alone, which is the correct posture when nothing trusted
+  sits in front — see `README.md` §"Proxy trust and client IPs". One string keys
+  all three per-IP limits, so this setting decides whether a client can reset them
+  by editing a header.
+- **Per-IP tracking is capped** at `RATE_LIMIT_MAX_TRACKED_IPS` (default
+  100 000) entries. Past the cap the verdict is `Untracked` — the request still
+  faces the global semaphore and the rps windows, and is served rather than shed,
+  because registering every spoofed IP would turn a flood of distinct addresses
+  into blanket 503s for everyone. It is counted on `http_load_shed_total` as
+  `scope=ip-untracked`, so the existing panel and the existing `ApiRsLoadShed`
+  rule cover it. The cap is a **high-water mark, not a latch**: reaching it
+  sweeps entries whose semaphore has no permit held and no waiter queued, and at
+  most `GLOBAL_CONCURRENCY_LIMIT` permits can exist at once, so a full map always
+  has idle entries to give back.
 - **Semaphore permits are held until the response is produced**, so the limits
   bound real in-flight requests rather than admission bursts.
 
@@ -303,6 +314,9 @@ limiter is worth a failed request.**
 |---|---|---|---|
 | Valkey unreachable at startup | `connect_valkey` returns `None`; L2 and shared limits stay off | Normal 200s from L1 + Postgres | `api-rs listening` + a `warn` log |
 | Valkey fails mid-flight | L2 error → treated as a miss; limiter allows | Higher p95, `error rate 0` | `ApiRsValkeyUnavailable` |
+| Rate-limit window `INCR` fails | Window skipped, request allowed; the error is counted per `op` | Normal 200s | `ApiRsValkeyUnavailable` |
+| Rate-limit window `EXPIRE` fails | Verdict unchanged, but the key has no TTL — one permanent key per request | Normal 200s; Valkey grows | `ApiRsRateLimitWindowTtlFailing` |
+| Per-IP registry full | `Untracked`: served with no per-IP permit, still bounded globally | Normal 200s | `ApiRsLoadShed` (`scope=ip-untracked`) |
 | Postgres down | Reads 500 with the contract body; `/health` reports `down` | 500 / 503 | `ApiRsHighErrorRate` |
 | Postgres slow at startup | `connect_primary_pool` probes with its own 4 s deadline, up to 5 attempts; still exits if it never connects | Startup delayed, then serving | a `warn` per failed attempt |
 | Pool saturated | Acquire timeout after 2 s → 500, wait visible as a metric | 500 | `ApiRsPoolAcquireLatency` |
@@ -372,7 +386,7 @@ Verification layers, cheapest first:
 
 | Layer | Command | What it proves |
 |---|---|---|
-| Unit | `cargo test --lib` | Pagination math, JS coercion, ETag logic, error key order, limiter verdicts |
+| Unit | `cargo test --lib` | Pagination math, JS coercion, ETag logic, error key order, limiter verdicts, window bucketing/TTL/boundary, both limiter fail-open arms, the tracking cap and proxy-header trust |
 | Contract | `cargo test --test parity` | Six responses byte-identical to committed goldens (`responseTime` normalized) |
 | E2E | `cargo test --test e2e_products` | Real HTTP against throwaway Postgres 17 + Valkey 8: page boundaries, 429s, cache hits, degraded `/health` with the DB down, fail-open with Valkey absent, read-replica routing |
 | E2E | `cargo test --test e2e_auth` | Real HTTP for the credential endpoints: concurrent registration resolves to one seller, only the token hash is stored, logout revokes immediately, the login throttle is scoped and fail-open |

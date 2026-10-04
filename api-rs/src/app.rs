@@ -18,7 +18,7 @@ use crate::cache::{CacheTier, L1Cache, L2Cache};
 use crate::config::Config;
 use crate::error::{json_response, ErrorBody};
 use crate::handlers::{auth, health, my_store, products, stores};
-use crate::middleware::rate_limit::{self, RateLimiter};
+use crate::middleware::rate_limit::{self, CounterStore, RateLimiter};
 use crate::store::MarketplaceStore;
 
 #[derive(Clone)]
@@ -47,7 +47,12 @@ impl AppState {
             L1Cache::new(config.l1_list_ttl, config.l1_detail_ttl),
             valkey.clone().map(|conn| L2Cache::new(conn, config.l2_ttl)),
         );
-        let limiter = RateLimiter::new(&config, valkey);
+        let limiter = RateLimiter::new(
+            &config,
+            // The limiter needs the window commands, not the whole connection
+            // manager, so the seam it runs against is narrower than `L2Cache`'s.
+            valkey.map(|conn| Arc::new(conn) as Arc<dyn CounterStore>),
+        );
         Self { config: Arc::new(config), store, cache, limiter, metrics }
     }
 }
