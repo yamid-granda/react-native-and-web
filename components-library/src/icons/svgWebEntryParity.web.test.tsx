@@ -94,8 +94,7 @@ const load = async (subpath: string): Promise<Record<string, unknown>> =>
  *  `[^;]*?` clause happily runs from `import … from "react"` in one statement to
  *  `from "react-native-svg"` three statements later and reports React's bindings
  *  as svg's. */
-const SVG_IMPORT =
-  /import\s+(?!type\s)((?:(?!import\b)[\s\S])*?)from\s+["']react-native-svg["']/g
+const SVG_IMPORT = /import\s+(?!type\s)((?:(?!import\b)[\s\S])*?)from\s+["']react-native-svg["']/g
 const SVG_NAMED_BINDING = /\{([^}]*)\}/
 
 /** The stub's own doc comment explains the resolution it works around and names
@@ -125,7 +124,11 @@ function importedSvgBindings(): string[] {
       for (const specifier of named.split(",")) {
         // `import { Svg as Alias }` and `import { type Foo }` both reduce to the
         // name as exported, which is what the stub has to provide.
-        const name = specifier.replace(/\btype\b/, "").trim().split(/\s+as\s+/)[0]?.trim()
+        const name = specifier
+          .replace(/\btype\b/, "")
+          .trim()
+          .split(/\s+as\s+/)[0]
+          ?.trim()
         if (name) bindings.push(`${relativePath}: ${name}`)
       }
     }
