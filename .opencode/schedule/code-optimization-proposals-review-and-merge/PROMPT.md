@@ -152,20 +152,42 @@ deleted test, or a lowered coverage threshold to make the suite pass.
 no `TODO` stubs left behind, no debugging `console.log`/`dbg!` in production
 paths, no stray `.env`, no generated build output committed.
 
-**F. The proposal file move — a hard gate.** The pull request **must** move its
-proposal document from `in-progress/` to `implemented/`:
+**F. The proposal file move — a hard gate.** Merging this pull request **must**
+carry its proposal document from `in-progress/` on `main` to `implemented/`. If it
+does not, the proposal is never archived and the lifecycle stays broken forever.
 
-```text
-git mv code-optimization-improve-proposals/in-progress/<proposal>.md \
-       code-optimization-improve-proposals/implemented/<proposal>.md
+Check the two **states**, not the diff's `rename from` label:
+
+```bash
+git ls-tree -r --name-only origin/main \
+  -- code-optimization-improve-proposals | grep "/<proposal-slug>\.md$"
+git ls-tree -r --name-only HEAD \
+  -- code-optimization-improve-proposals | grep "/<proposal-slug>\.md$"
 ```
 
-`main` is expected to have the document in `in-progress/` (that is the implementer's
-claim commit). If the pull request leaves it in `in-progress/`, or puts it
-somewhere else, or moves it while `in-progress/` never held it, the lifecycle is
-broken — the proposal will never be archived when this pull request lands. Make the
-correct move yourself and treat it as a required change. A pure rename is the one
-defect this routine fixes on its own without hesitating.
+The gate passes when `origin/main` has it under `in-progress/` and the branch has it
+under `implemented/`. Merging then performs exactly the required move.
+
+> **Do not trust `gh pr diff` for this.** GitHub renders a pull request against its
+> **merge base**, not against current `main`. When the implementer branched before a
+> later commit relocated the document, the diff legitimately reads
+> `rename from code-optimization-improve-proposals/<file>.md` — from the folder root,
+> not `in-progress/`. That is an artefact of a stale merge base, **not** a defect.
+> The two `ls-tree` commands above are the only authority. Rejecting a correct pull
+> request over the diff's label is a bug in your review.
+
+Fix it yourself and treat it as a required change when any of these hold:
+
+| What you find | The fix |
+|---|---|
+| Branch still has it at `in-progress/` | `git mv in-progress/<file>.md implemented/<file>.md` |
+| Branch put it in `todo/`, `rejected/`, or the folder root | `git mv <wherever-it-is> implemented/<file>.md` |
+| Branch deleted it | `git checkout origin/main -- code-optimization-improve-proposals/in-progress/<file>.md` then `git mv` it into `implemented/` |
+| `origin/main` does not have it at `in-progress/` at all | **Do not fix this.** `main` is not yours to change here. Report it as a blocking finding and let the implementer's preflight or a human resolve it. |
+
+A pure rename is the one defect this routine fixes on its own without hesitating.
+Because you changed the branch, follow **5a** — push it and leave the pull request
+open for the next run's fresh pass.
 
 **G. Pull-request metadata.** The title is **exactly** the branch name,
 `code-optimization-improve-proposals/<proposal-filename-without-.md>`. The body is
