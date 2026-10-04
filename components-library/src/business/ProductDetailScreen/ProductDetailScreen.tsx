@@ -1,15 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react"
-import {
-  Image,
-  Pressable,
-  Text,
-  View,
-  type ImageProps,
-  type PressableProps,
-  type TextProps,
-  type ViewProps,
-} from "react-native"
-import { cn } from "../../utils/cn"
+import { Image, Text, View, type ImageProps, type TextProps, type ViewProps } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 import { useCartStore } from "../CartScreen/useCartStore"
@@ -31,7 +21,6 @@ function stockLabel(stock: number) {
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 const ClassNameImage = Image as ComponentType<ImageProps & { className?: string }>
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
 export type ProductDetailScreenProps = {
   product?: ProductData | null
@@ -87,32 +76,27 @@ export function ProductDetailScreen({
           </ClassNameText>
           <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
           <ClassNameView className="flex-row items-center gap-3">
-            <ClassNamePressable
-              accessibilityRole="button"
+            <Button
+              label={product.stock === 0 ? "Out of stock" : "Add to Cart"}
               disabled={product.stock === 0}
               onPress={() => {
                 addItem(product)
                 setIsCartDrawerOpen(true)
               }}
-              className={cn(
-                "items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark",
-                product.stock === 0 && "opacity-50",
-              )}
-            >
-              <ClassNameText className="text-base font-semibold text-white">
-                {product.stock === 0 ? "Out of stock" : "Add to Cart"}
-              </ClassNameText>
-            </ClassNamePressable>
-            <ClassNamePressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                wishlisted ? `Remove ${product.title} from wishlist` : `Add ${product.title} to wishlist`
+            />
+            <Button
+              label={
+                wishlisted
+                  ? `Remove ${product.title} from wishlist`
+                  : `Add ${product.title} to wishlist`
               }
+              size="icon"
+              variant="secondary"
+              testID={`wishlist-toggle-${product.id}`}
               onPress={() => toggleWishlistItem(product)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-surface active:bg-surface-muted"
             >
               <HeartIcon filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
-            </ClassNamePressable>
+            </Button>
           </ClassNameView>
         </>
       ) : null}

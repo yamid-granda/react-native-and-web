@@ -47,7 +47,9 @@ export function Input({ prependIcon: PrependIcon, className, ...rest }: InputPro
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        "flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3 py-2",
+        // h-control is the shared control height (tailwind-preset.cjs) — the
+        // same token Button uses, so inputs and buttons line up in every form.
+        "h-control flex-row items-center gap-2 rounded-lg border border-surface-muted bg-surface px-3",
         className,
       )}
     >

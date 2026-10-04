@@ -284,6 +284,30 @@ the contract port 3001 that both clients default to; Grafana (from
   nav bar's Theme button toggles a `.dark`/`.light` class rather than
   relying on the OS alone. One-off colors that don't change with the
   scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
+- **Every button is `components-library`'s `Button`, and every button and
+  input is one height.** `Button` is the only place a button look is written
+  down: its five variants (`primary`, `secondary`, `outline`, `ghost`,
+  `chip`) and three sizes (`sm`, `md`, `icon`) are exported alongside the
+  component, and its Storybook story renders the full variant × size matrix so
+  a new one can't be added without appearing there. Height isn't a Button
+  decision at all — `tailwind-preset.cjs` defines a `h-control` token
+  (2.75rem/44px, plus a matching `w-control` so icon buttons stay circular),
+  which `Button` and `Input` both apply, and which no component may restate as
+  a literal `h-*`/`py-*`. The token lives in the shared preset rather than a
+  CSS custom property because native can't read one (same reason the semantic
+  colors above are `rgb(var(--x))` utilities rather than raw CSS). A few
+  `accessibilityRole="button"` surfaces are deliberately *not* Buttons and are
+  listed, with reasons, in `Button.centralization.test.ts`'s allowlist: the
+  `MainNav` nav items, the `Product` card (navigating, and its nested wishlist
+  toggle must stay a sibling `<button>`, not a child one), the `Drawer`
+  overlay click-catcher, and the dev-only `IconsGallery` preview card. A test
+  fails if anything else sets `accessibilityRole`, so a hand-rolled button
+  can't come back. `Button`'s `testID` defaults to `toButtonTestId(label)` —
+  lowercase, spaces dashed, other punctuation collapsed (`"Add to Cart"` →
+  `add-to-cart`, `"Price: Low to High"` → `price-low-to-high`) — so e2e
+  selectors are predictable from the visible text; icon buttons, which have no
+  text to derive from, and buttons repeated per list row (which need to stay
+  unique for Playwright's strict mode) pass an explicit `testID`.
 - **`web-application`'s Theme toggle can't just call NativeWind's
   `setColorScheme` and trust its `colorScheme` state.** On web that state
   is hardcoded to `"light"` on mount regardless of the real OS preference

@@ -1,15 +1,14 @@
 import type { ComponentType } from "react"
 import {
-  Pressable,
   ScrollView,
   Text,
   View,
-  type PressableProps,
   type ScrollViewProps,
   type TextProps,
   type ViewProps,
 } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
+import { Button } from "../../common/Button/Button"
 import { useCartStore } from "../CartScreen/useCartStore"
 import { useWishlistStore } from "./useWishlistStore"
 
@@ -17,7 +16,6 @@ import { useWishlistStore } from "./useWishlistStore"
 const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
 export function WishlistScreen() {
   const items = useWishlistStore((state) => state.items)
@@ -47,22 +45,20 @@ export function WishlistScreen() {
                     {formatPrice(product.price, product.currency)}
                   </ClassNameText>
                 </ClassNameView>
-                <ClassNamePressable
-                  accessibilityRole="button"
+                <Button
+                  label="Add to Cart"
+                  size="sm"
+                  testID={`add-to-cart-${product.id}`}
                   onPress={() => addItem(product)}
-                  className="items-center justify-center rounded-lg bg-brand px-3 py-2 active:bg-brand-dark"
-                >
-                  <ClassNameText className="text-sm font-semibold text-white">
-                    Add to Cart
-                  </ClassNameText>
-                </ClassNamePressable>
-                <ClassNamePressable
-                  accessibilityRole="button"
+                />
+                <Button
+                  label="Remove"
+                  variant="ghost"
+                  size="sm"
                   accessibilityLabel={`Remove ${product.title} from wishlist`}
+                  testID={`remove-${product.id}`}
                   onPress={() => removeItem(product.id)}
-                >
-                  <ClassNameText className="text-sm text-muted">Remove</ClassNameText>
-                </ClassNamePressable>
+                />
               </ClassNameView>
             ))}
           </ClassNameView>

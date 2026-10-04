@@ -1,22 +1,20 @@
 import type { ComponentType } from "react"
 import {
-  Pressable,
   ScrollView,
   Text,
   View,
-  type PressableProps,
   type ScrollViewProps,
   type TextProps,
   type ViewProps,
 } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
+import { Button } from "../../common/Button/Button"
 import { getCartTotalPrice, useCartStore } from "./useCartStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
 export type CartScreenProps = {
   onCheckout?: () => void
@@ -53,46 +51,43 @@ export function CartScreen({ onCheckout }: CartScreenProps) {
                     </ClassNameText>
                   </ClassNameView>
                   <ClassNameView className="flex-row items-center gap-2">
-                    <ClassNamePressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Decrease ${product.title} quantity`}
+                    <Button
+                      label={`Decrease ${product.title} quantity`}
+                      size="icon"
+                      variant="secondary"
                       onPress={() => decrementQuantity(product.id)}
-                      className="h-8 w-8 items-center justify-center rounded-full bg-surface-muted"
                     >
                       <ClassNameText className="text-foreground">-</ClassNameText>
-                    </ClassNamePressable>
+                    </Button>
                     <ClassNameText className="text-sm text-foreground">{quantity}</ClassNameText>
-                    <ClassNamePressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Increase ${product.title} quantity`}
+                    <Button
+                      label={`Increase ${product.title} quantity`}
+                      size="icon"
+                      variant="secondary"
                       onPress={() => incrementQuantity(product.id)}
-                      className="h-8 w-8 items-center justify-center rounded-full bg-surface-muted"
                     >
                       <ClassNameText className="text-foreground">+</ClassNameText>
-                    </ClassNamePressable>
+                    </Button>
                   </ClassNameView>
-                  <ClassNamePressable
-                    accessibilityRole="button"
+                  <Button
+                    label="Remove"
+                    variant="ghost"
+                    size="sm"
                     accessibilityLabel={`Remove ${product.title} from cart`}
+                    testID={`remove-${product.id}`}
                     onPress={() => removeItem(product.id)}
-                  >
-                    <ClassNameText className="text-sm text-muted">Remove</ClassNameText>
-                  </ClassNamePressable>
+                  />
                 </ClassNameView>
               ))}
             </ClassNameView>
             <ClassNameText className="text-lg font-bold text-brand">
               Total: {formatPrice(getCartTotalPrice(items))}
             </ClassNameText>
-            <ClassNamePressable
-              accessibilityRole="button"
+            <Button
+              label="Proceed to Checkout"
+              className="self-start"
               onPress={() => onCheckout?.()}
-              className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
-            >
-              <ClassNameText className="text-base font-semibold text-white">
-                Proceed to Checkout
-              </ClassNameText>
-            </ClassNamePressable>
+            />
           </>
         )}
       </ClassNameView>

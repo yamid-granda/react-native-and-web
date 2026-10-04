@@ -1,18 +1,10 @@
 import type { ComponentType } from "react"
-import {
-  Pressable,
-  Text,
-  View,
-  type PressableProps,
-  type TextProps,
-  type ViewProps,
-} from "react-native"
-import { cn } from "../../utils/cn"
+import { Text, View, type TextProps, type ViewProps } from "react-native"
+import { Button } from "../Button/Button"
 import { Input } from "../Input/Input"
 import type { PriceRange, SortOption } from "../../business/ProductListScreen/useProductSearch"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 
@@ -47,23 +39,17 @@ export function ProductFilterControls({
         {SORT_OPTIONS.map((option) => {
           const selected = sortBy === option.value
           return (
-            <ClassNamePressable
+            <Button
               key={option.value}
-              accessibilityRole="button"
-              aria-selected={selected}
+              label={option.label}
+              variant="chip"
+              size="sm"
+              selected={selected}
+              // The visible chip text ("Relevance") is a poor standalone name
+              // for a screen reader, which announces the control's purpose.
               accessibilityLabel={`Sort by ${option.label}`}
               onPress={() => onSortByChange(option.value)}
-              className={cn(
-                "rounded-full border px-3 py-1.5",
-                selected ? "border-brand bg-brand/10" : "border-surface-muted bg-surface",
-              )}
-            >
-              <ClassNameText
-                className={cn("text-xs font-medium", selected ? "text-brand" : "text-muted")}
-              >
-                {option.label}
-              </ClassNameText>
-            </ClassNamePressable>
+            />
           )
         })}
       </ClassNameView>
