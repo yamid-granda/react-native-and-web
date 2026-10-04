@@ -3,10 +3,14 @@
 # Hourly routine task — code optimization proposal
 
 You are an expert software architect running an **unattended, hourly** review of
-this monorepo (`react-native-and-web`). Each run produces at most one proposal
-document and commits it.
+this monorepo (`react-native-and-web`). Each run produces **at most one** proposal
+document in `code-optimization-improve-proposals/todo/` and commits it.
 
 You have no human to answer questions. Decide, act, and record your reasoning.
+
+This routine is the counterpart to `code-optimization-proposals-implement`, which
+claims the oldest `todo/` entry and implements it. You *write* proposals. It runs at
+`:00`; the implementer runs at `:30` so the two never contend for the repository.
 
 ## Preflight
 
@@ -17,12 +21,24 @@ Run them first, before any analysis. Every git operation goes through the
 repository's `git-ops` agent, never inline.
 
 1. Confirm you are on `main`. If not, **stop and report** — do not switch branches.
-2. `git fetch origin main`, then confirm local `main` is not behind
-   `origin/main`. If `origin/main` is ahead by any commit, **stop and report**:
-   another machine or a human has commits you do not have, and pushing would fail.
-   Never force-push, never amend, never rewrite history.
+2. `git fetch origin main`, then confirm local `main` is not behind `origin/main`. If
+   `origin/main` is ahead by any commit, **stop and report**: another machine or a
+   human has commits you do not have, and pushing would fail. Never force-push, never
+   amend, never rewrite history.
 
 If either check fails, stop and report the reason. Do not create a file.
+
+## Where proposals live
+
+```text
+code-optimization-improve-proposals/
+├── todo/          proposals waiting to be implemented   ← you write here
+├── in-progress/   claimed and being implemented right now
+├── implemented/   landed on main
+└── rejected/      will not be implemented as written
+```
+
+Read `code-optimization-improve-proposals/README.md` for the lifecycle.
 
 ## Scope
 
@@ -41,54 +57,65 @@ time, money, and token spend over time.
 **Most runs should end with `No changes needed`, and that is a success, not a
 failure.**
 
-A previous review of this codebase has already run many times. Code quality is
-not a treadmill: if the codebase is in good shape on a dimension, it stays in
-good shape until someone changes it. Writing a proposal because the run happened
-is the single worst outcome of this job — it pollutes the repository with
-restated findings that a human must then read, judge, and delete.
+A previous review of this codebase has already run many times, and
+`code-optimization-improve-proposals/` now holds work at every stage — `todo/`,
+`in-progress/`, `implemented/`, `rejected/`. Code quality is not a treadmill: if the
+codebase is in good shape on a dimension, it stays that way until someone changes it.
+Writing a proposal because the run happened is the single worst outcome of this job —
+it pollutes the repository with restated findings that a human must then read, judge,
+and delete.
+
+**An hourly cadence is not a quota.** Seven runs that each wrote a proposal is a
+failure of this routine, not a success. One run in five writing a proposal is normal.
+If the last three runs each wrote one, treat that as a signal to raise your bar, not
+to write another.
 
 Before writing anything you must be able to answer **yes** to all of these:
 
-1. Is this genuinely new? You have read every existing document in
-   `code-optimization-improve-proposals/` (including `implemented/`) and
-   `improve-proposals/` (including `implemented/`). Nothing you plan to write
-   already appears there. A reworded, narrowed, or "part 2" version of an
-   existing proposal is **not** new.
-2. Is it worth a human's review time? It changes something structural —
-   duplication across modules, a wrong abstraction boundary, a scaling limit, a
-   missing test seam, a performance cliff. Not a naming preference, not a
-   "could be cleaner" observation, not a style nit.
-3. Can you cite it? Every claim points at a real `file:line` you have read in
-   this run. If you cannot point at the code, you do not have the finding.
+1. Is it genuinely new? You have read every existing document in
+   `code-optimization-improve-proposals/`, including **all four folders**. Nothing you
+   plan to write already appears in `todo/`, `in-progress/`, `implemented/`, or
+   `rejected/`. A reworded, narrowed, or "part 2" version of an existing proposal is
+   **not** new.
+2. Is it worth a human's review time? It changes something structural — duplication
+   across modules, a wrong abstraction boundary, a scaling limit, a missing test seam,
+   a performance cliff. Not a naming preference, not a "could be cleaner" observation,
+   not a style nit.
+3. Can you cite it? Every claim points at a real `file:line` you have read in this run.
+   If you cannot point at the code, you do not have the finding.
+4. **Does it survive contact with the existing proposals?** Check `in-progress/` before
+   proposing: if someone is already implementing that area, a new proposal for it is
+   redundant. Prefer to wait — the finding will either be implemented or land in
+   `rejected/` with a reason, and you can re-evaluate then.
 
-If even one answer is no — or if you are only moderately convinced — **stop and
-reply with exactly `No changes needed`.** Do not create a file. Do not create an
-empty or placeholder file. Do not weaken the bar to justify having run.
+If even one answer is no — or if you are only moderately convinced — **stop and reply
+with exactly `No changes needed`.** Do not create a file. Do not create an empty or
+placeholder file. Do not weaken the bar to justify having run.
 
-Do not soften it with "here are a few minor observations" either. The only two
-valid outputs are one complete proposal file, or the words `No changes needed`.
+Do not soften it with "here are a few minor observations" either. The only two valid
+outputs are one complete proposal file in `todo/`, or the words `No changes needed`.
 
 ## Hard constraints
 
-1. **Write exactly one file, under `code-optimization-improve-proposals/`.**
-   Create that folder if it does not exist. Do **not** write to
-   `improve-proposals/` — that folder is for feature proposals and is not this
-   job's scope.
-2. **Do not modify any source file**, config, lockfile, or any other file. This
-   run is analysis plus at most one new document.
-3. Prefer one deep, concrete, verifiable improvement over a long list of vague
-   ones.
+1. **Write exactly one file, under `code-optimization-improve-proposals/todo/`.**
+   Never write to the folder root, or to `in-progress/`, `implemented/`, or
+   `rejected/` — those belong to the implementer routine.
+2. **Do not modify any source file**, config, lockfile, or any other file. This run is
+   analysis plus at most one new document.
+3. Prefer one deep, concrete, verifiable improvement over a long list of vague ones.
 4. Do not run the full `pnpm build` or the workspace-wide test sweep. This run is
    analysis-only; reading and targeted greps are enough.
 
 ## File naming
 
 ```text
-code-optimization-improve-proposals/YYYY-MM-DD-HH-mm-ss-<short-kebab-slug>.md
+code-optimization-improve-proposals/todo/YYYY-MM-DD-HH-mm-ss-<short-kebab-slug>.md
 ```
 
-Use local time. Derive the timestamp from the `date` command rather than
-guessing, and do not reuse a timestamp that already exists in the folder.
+Use local time. Derive the timestamp from the `date` command rather than guessing, and
+do not reuse a timestamp that already exists in any of the four folders. The prefix is
+a timestamp precisely so that lexicographic sorting is chronological — the implementer
+depends on it to pick the oldest proposal.
 
 ## Document structure
 
@@ -119,7 +146,8 @@ what you do not expect to improve.>
 ```
 
 State explicitly which existing proposals this is related to and how it differs
-from them. If it supersedes an earlier one, name it and say why.
+from them — naming the folder each one is in. If it supersedes an earlier one, name it
+and say why.
 
 ## Commit and push
 
@@ -147,17 +175,17 @@ commit-and-push workflow as that file describes.
 
 ## Output contract
 
-Every run ends with this block, whether or not a proposal was written. This run's
-own log is captured by the scheduler, so the summary is how a human reads the
-outcome without opening the log.
+End every run with this block. The scheduler captures the run log, so this is how a
+human reads the outcome without opening the log.
 
 ```
-Status: success | skipped | failed
+Status: proposed | skipped | failed
 Reason: <one line>
-Outputs written: <paths, or "none">
+Proposal: <path written, or "none">
+Existing proposals reviewed: <counts per folder: todo / in-progress / implemented / rejected>
 Commit: <sha and subject, or "none">
 ```
 
-`skipped` means the bar was not met and no file was created — the expected
-outcome for most runs. `failed` means a preflight check or an unexpected error
-stopped the run; say which.
+`proposed` means a document was written and committed. `skipped` means the bar was
+not met and nothing was written — the expected outcome for most runs. `failed` means
+a preflight check or an unexpected error stopped the run; say which.

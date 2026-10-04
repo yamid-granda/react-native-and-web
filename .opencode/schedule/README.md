@@ -85,23 +85,43 @@ directly — see the plugin README for the storage layout.
 
 | Slug | Schedule | What it does | Lands on |
 |------|----------|--------------|----------|
-| `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one new proposal | commits straight to `main` |
-| `code-optimization-proposals-implement` | `30 * * * *` | Applies the oldest unimplemented proposal | branch + pull request |
+| `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one proposal to `code-optimization-improve-proposals/todo/` | commits straight to `main` |
+| `code-optimization-proposals-implement` | `30 * * * *` | Claims the oldest actionable `todo/` entry and implements it | claim to `main`, then branch + pull request |
 
 The half-hour offset is deliberate. Both routines touch the same repository, and
 the plugin's lock only stops a routine from overlapping *itself* — not two
 different routines. Staggering them keeps them out of each other's way, and also
 keeps a routine from committing to `main` while the other holds the git index.
 
-**They are not mutually exclusive.** The proposer may add a proposal while the
-implementer is mid-run; that is harmless, because the implementer re-reads
-`origin/main` before choosing its target. But the implementer must not run while
-`main` is dirty, or while the proposer is committing — hence the offset.
+## Proposal lifecycle
 
-Applied proposals are archived to
-`code-optimization-improve-proposals/implemented/`. That is how the implementer
-knows what is left; without the archive it would re-apply the same proposal every
-hour. The archive happens in the same pull request as the implementation.
+The two routines are coupled through the folder structure of
+`code-optimization-improve-proposals/`, not through conversation:
+
+```text
+todo/ ──claim on main──▶ in-progress/ ──PR merges──▶ implemented/
+   │                          │
+   └────▶ rejected/ ◀─────────┘
+```
+
+- The proposer writes to `todo/` only, and refuses to write anything that already
+  exists in any of the four folders.
+- The implementer **claims** a proposal by moving it `todo/` → `in-progress/` and
+  committing that to `main` **before writing any code**. The claim is what makes
+  progress durable.
+- The implementation pull request then carries the second move,
+  `in-progress/` → `implemented/`.
+
+**Why the claim is committed to `main` first.** If the archive to `implemented/`
+only happened on merge, `main` would keep listing the proposal under `todo/` until
+a human merged, and the routine would reselect the same file every hour and stall
+on it — which is exactly what happened before this structure existed. Claiming up
+front makes the next run's view of the queue accurate regardless of merge state.
+
+An `in-progress/` entry with no open pull request and no pushed branch is an
+orphaned claim from a run that died; the implementer's preflight reclaims those
+back to `todo/`. Neither routine may stop because a candidate is unavailable — they
+skip it and take the next one. See each routine's `PROMPT.md` for the full rules.
 
 Runs are supervised: a lock file prevents a routine from overlapping itself, and
 `timeoutSeconds` hard-stops a stuck run with SIGTERM then SIGKILL. Note that
