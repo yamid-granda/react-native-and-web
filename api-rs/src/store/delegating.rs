@@ -45,17 +45,30 @@ impl ProductStore for DelegatingStore {
         self.0.find_by_id(id).await
     }
 
-    async fn list_owned_page(
+    async fn list_page_for_owner(
         &self,
         owner_id: &str,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Product>, StoreError> {
-        self.0.list_owned_page(owner_id, offset, limit).await
+        self.0.list_page_for_owner(owner_id, offset, limit).await
     }
 
-    async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
-        self.0.count_owned(owner_id).await
+    async fn list_public_page_by_owner(
+        &self,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError> {
+        self.0.list_public_page_by_owner(owner_id, offset, limit).await
+    }
+
+    async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        self.0.count_for_owner(owner_id).await
+    }
+
+    async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        self.0.count_public_by_owner(owner_id).await
     }
 
     async fn find_owned_by_id(

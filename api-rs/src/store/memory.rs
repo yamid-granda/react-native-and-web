@@ -15,8 +15,9 @@ use super::users::UserRecord;
 /// wrapping a whole store needs one switch instead of sixteen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StoreOp {
-    /// `list_page`, `list_owned_page`, `count_owned`, `find_owned_by_id`,
-    /// `create`, `update_owned` and `delete_owned`.
+    /// `list_page`, `list_page_for_owner`, `list_public_page_by_owner`,
+    /// `count_for_owner`, `count_public_by_owner`, `find_owned_by_id`, `create`,
+    /// `update_owned` and `delete_owned`.
     Products,
     /// `count`.
     Count,
@@ -240,7 +241,7 @@ impl ProductStore for InMemoryStore {
         }))
     }
 
-    async fn list_owned_page(
+    async fn list_page_for_owner(
         &self,
         owner_id: &str,
         offset: i64,
@@ -250,7 +251,22 @@ impl ProductStore for InMemoryStore {
         Self::slice(&self.rows(Some(owner_id)), offset, limit)
     }
 
-    async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
+    async fn list_public_page_by_owner(
+        &self,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError> {
+        self.gate(StoreOp::Products).await?;
+        Self::slice(&self.rows(Some(owner_id)), offset, limit)
+    }
+
+    async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        self.gate(StoreOp::Products).await?;
+        Ok(self.rows(Some(owner_id)).len() as i64)
+    }
+
+    async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
         self.gate(StoreOp::Products).await?;
         Ok(self.rows(Some(owner_id)).len() as i64)
     }
@@ -439,11 +455,17 @@ mod tests {
     #[tokio::test]
     async fn owned_pages_only_contain_that_owners_rows() {
         let store = store().await;
-        let page = store.list_owned_page("usr-1", 0, 20).await.unwrap();
+        let page = store.list_page_for_owner("usr-1", 0, 20).await.unwrap();
         assert_eq!(page.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["prod-a"]);
         assert_eq!(page[0].store_name.as_deref(), Some("First Shop"));
-        assert_eq!(store.count_owned("usr-1").await.unwrap(), 1);
-        assert_eq!(store.count_owned("usr-nobody").await.unwrap(), 0);
+        assert_eq!(store.count_for_owner("usr-1").await.unwrap(), 1);
+        assert_eq!(store.count_for_owner("usr-nobody").await.unwrap(), 0);
+        // The storefront reads the same rows: only the pool differs, and this
+        // store has one pool to offer.
+        let storefront = store.list_public_page_by_owner("usr-1", 0, 20).await.unwrap();
+        assert_eq!(storefront.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["prod-a"]);
+        assert_eq!(store.count_public_by_owner("usr-1").await.unwrap(), 1);
+        assert_eq!(store.count_public_by_owner("usr-nobody").await.unwrap(), 0);
         // The ownerless seed row stays visible on the public list.
         assert_eq!(store.count().await.unwrap(), 3);
         let public = store.list_page(0, 20).await.unwrap();
@@ -501,7 +523,7 @@ mod tests {
         assert_eq!(created.owner_id.as_deref(), Some("usr-1"));
         assert_eq!(created.store_name.as_deref(), Some("First Shop"), "joined from the owner");
         assert_eq!(created.currency, "USD", "the write path pins the currency");
-        let page = store.list_owned_page("usr-1", 0, 20).await.unwrap();
+        let page = store.list_page_for_owner("usr-1", 0, 20).await.unwrap();
         assert_eq!(page.last().unwrap().id, created.id);
     }
 
@@ -545,7 +567,7 @@ mod tests {
 
         store.fail_always(StoreOp::Products);
         assert!(store.list_page(0, 20).await.is_err());
-        assert!(store.count_owned("usr-1").await.is_err(), "the surface, not the method");
+        assert!(store.count_for_owner("usr-1").await.is_err(), "the surface, not the method");
         assert_eq!(store.count().await.unwrap(), 1, "another surface is untouched");
 
         store.clear_failures(StoreOp::Products);

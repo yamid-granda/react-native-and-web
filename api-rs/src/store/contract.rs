@@ -95,7 +95,7 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
     );
     assert!(
         store
-            .list_owned_page(OWNER_ID, 0, PAGE_SIZE)
+            .list_page_for_owner(OWNER_ID, 0, PAGE_SIZE)
             .await
             .expect("an owner with no rows")
             .is_empty(),
@@ -104,7 +104,7 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
 
     assert!(store.list_page(0, 0).await.expect("limit 0").is_empty(), "limit 0 is an empty page");
     assert_eq!(
-        store.count_owned(OWNER_ID).await.expect("count a seller with nothing"),
+        store.count_for_owner(OWNER_ID).await.expect("count a seller with nothing"),
         0,
         "a registered seller with no products counts zero"
     );
@@ -148,11 +148,11 @@ async fn a_cross_owner_row_is_invisible_not_forbidden<S: MarketplaceStore + ?Siz
         "another owner cannot delete it"
     );
     assert_eq!(
-        store.count_owned(OTHER_OWNER_ID).await.expect("count"),
+        store.count_for_owner(OTHER_OWNER_ID).await.expect("count"),
         1,
         "they still have theirs"
     );
-    assert_eq!(store.count_owned(OWNER_ID).await.expect("count"), 1);
+    assert_eq!(store.count_for_owner(OWNER_ID).await.expect("count"), 1);
     assert!(store.find_by_id(&theirs.id).await.expect("public read").is_some());
 }
 
@@ -181,7 +181,7 @@ where
     );
     assert_eq!(
         store
-            .list_owned_page(OWNER_ID, 0, PAGE_SIZE)
+            .list_page_for_owner(OWNER_ID, 0, PAGE_SIZE)
             .await
             .expect("owned page")
             .iter()

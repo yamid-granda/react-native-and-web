@@ -51,31 +51,44 @@ goes through the repository's `git-ops` agent, never inline.
    report — do not attempt to authenticate interactively.
 2. **`git fetch origin --prune`.** Read the repository state and pull-request
    state from the remote, not from a possibly stale local tree.
-3. **`main` is checked out, local `main` is not behind `origin/main`, and the
-   working tree is clean.**
+3. **Record the shared checkout's state, then leave it alone:**
 
-## The checkout is shared — never fight another routine
+   ```bash
+   git rev-parse --show-toplevel
+   git branch --show-current
+   git status --porcelain | head
+   git worktree list
+   ```
+
+   Keep that output. At the end of the run you must prove those lines are unchanged.
+   You do **not** need `main` checked out, and you must not insist on it.
+
+## Work in your own worktree — never in the shared checkout
 
 All three routines share **one** working directory, and the scheduler's lock only
-stops a routine from overlapping *itself*. A `:30` implementer run can still be
-mid-flight at `:45`, holding a branch and a dirty working tree. That is normal, and
-it is **not** yours to fix.
+stops a routine from overlapping *itself*. A `:30` implementer run is regularly
+still mid-flight at `:45`, holding a branch and a dirty tree. The remedy is **not** to
+wait for it and **not** to report `blocked` — it is to work somewhere else entirely.
 
-If `git branch --show-current` is anything other than `main`, or
-`git status --porcelain` prints anything, **another routine owns this checkout**:
+**The shared checkout is read-only for this routine.** Never in it:
 
-- Do **not** switch branches. Do **not** `git checkout main`. Do **not** stash,
-  reset, clean, or stage anything. A `checkout` under a running routine rewrites its
-  index out from under it and can destroy work that was never pushed.
-- Do **not** run `pnpm install` either — it can rewrite `node_modules` mid-run.
-- Report `blocked` with the reason `repository busy: <branch> is checked out with a
-  dirty tree` and stop. This is a healthy outcome, not a failure: your slot was
-  simply too early, and the next hourly run will find the checkout idle.
+- switch branches, `git checkout`, `git stash`, `git reset`, `git clean`, or stage
+  anything. A `checkout` under a running routine rewrites its index out from under it
+  and can destroy work that was never pushed.
+- run `pnpm install` — it can rewrite `node_modules` mid-run.
 
-Once `main` is checked out and the tree is clean, **you own the checkout** and the
-cleanup section at the end becomes your responsibility.
+Instead, put the pull request's branch in a **dedicated git worktree** under the
+system temp directory. Two rules make this safe:
 
-`pnpm install` if `node_modules` is missing or stale. Without it no check can run.
+- **Always push with an explicit refspec naming the pull request's branch.** A bare
+  `git push` from a worktree whose branch was created by `-b … origin/main` pushes
+  straight into `main`. Never risk it.
+- **Never reuse or reset a branch that already holds unpushed work.** If a local
+  branch of that name exists and is not identical to `origin/<branch>`, stop and
+  report.
+
+Step 2 does this concretely. Because you own your own worktree, a concurrent routine
+can never block you and you can never block one.
 
 ## Select the pull request
 
@@ -128,18 +141,39 @@ Record the pull request's **head SHA** at selection time. You will need it for
    (`web-application/`, `mobile-application/`, `api-rs/README.md`), plus
    `.agents/rules/component-reuse.md`.
 
-## Step 2 — check out the branch
+## Step 2 — create a worktree for the branch
 
-```text
-gh pr checkout <number> --repo yamid-granda/react-native-and-web
+Give the pull request's branch a worktree of its own, under the system temp directory:
+
+```bash
+BRANCH='<the pull request headRefName you selected>'
+REVIEW_WT="$(mktemp -d)/pr-<number>-review"
+
+git fetch origin "$BRANCH"
+git worktree add --track -B "$BRANCH" "$REVIEW_WT" "origin/$BRANCH"
 ```
 
-This creates (or resets to) a local branch tracking the pull request's head, which
-is what lets you push corrections to it.
+- `--track` points the new branch at `origin/$BRANCH`, so it cannot be confused with
+  `main`. If a worktree already has that branch checked out, reuse it **only** if it is
+  clean; otherwise stop and report.
+- If a local branch of that name already exists and is **not** identical to
+  `origin/$BRANCH`, it holds unpushed work. **Stop and report** — do not reset it, and
+  never force-push over it.
+- A fresh worktree has no `node_modules`. Run `pnpm install` **in `$REVIEW_WT`**, which
+  also restores the husky hooks the commit rules depend on. Do it before Step 4.
+- From here on, run every git command with `git -C "$REVIEW_WT" …` and every check
+  with that directory as the working directory. Confirm once with
+  `git -C "$REVIEW_WT" rev-parse --show-toplevel` that it prints `$REVIEW_WT`; if it
+  does not, fix that before editing anything.
+- **Every push names the branch explicitly.** Never a bare `git push`:
 
-- If a local branch of that name already exists and diverges from the remote, **stop
-  and report** — do not reset it, and never force-push.
-- `node_modules` may need reinstalling after the checkout. Do it before the checks.
+  ```bash
+  git -C "$REVIEW_WT" push origin "HEAD:refs/heads/$BRANCH"
+  ```
+
+- You may also use `gh` against the worktree — `gh pr checks`, `gh pr view` — it is
+  repository-wide. But `gh pr checkout` would try to switch the **shared** checkout, so
+  do not run it.
 
 ## Step 3 — review
 
@@ -346,13 +380,23 @@ decide. You still do not close it, and you do not move its proposal document.
 
 ## Clean up
 
-- **`main` checked out, clean tree, up to date with `origin/main` when you finish —
-  including when you stopped early.** Both sibling routines require it.
-- No leftover local review branch, unless it still carries work that failed to push.
-- No dev server, test watcher, or background process running.
-- After a merge, the proposal document lives in `code-optimization-improve-proposals/implemented/`
-  on `main`. Confirm that, and confirm `in-progress/` no longer lists it. That is
-  the whole point of the run.
+- **Remove your worktree and leave no branch behind** — unless it still carries work
+  that failed to push, in which case keep it and say so loudly:
+
+  ```bash
+  git -C "$REVIEW_WT" status --porcelain      # must be empty first
+  git worktree remove "$REVIEW_WT"
+  git worktree list                           # your worktree is gone
+  ```
+
+- **The shared checkout must be byte-identical to how you found it.** Re-run the four
+  preflight commands and compare against what you recorded. You never switched branches
+  there and never installed into it, so this must match exactly. If it does not, say so
+  in your report — that is a bug in your run, not a nuisance.
+- No dev server, test watcher, or background process running. Kill anything you started.
+- After a merge, the proposal document lives in
+  `code-optimization-improve-proposals/implemented/` on `main`. Confirm that, and
+  confirm `in-progress/` no longer lists it. That is the whole point of the run.
 
 ## Hard constraints
 
@@ -365,11 +409,14 @@ decide. You still do not close it, and you do not move its proposal document.
 5. **Never claim, implement, or write a proposal.** Those belong to the other two
    routines.
 6. **Never merge with `--admin`** to bypass a protection or a failing requirement.
-7. **Never change the checked-out branch, the index, or `node_modules` while another
-   routine owns the checkout.** Report `blocked` instead.
-8. **Never merge without re-running Step 4 on the exact head SHA you are merging.**
+7. **Never change the shared checkout** — no branch switch, no staging, no
+   `pnpm install`. Review in your own worktree, and prove at the end that the shared
+   checkout is unchanged.
+8. **Never push without an explicit refspec naming the pull request's branch**, and
+   never push from the shared checkout.
+9. **Never merge without re-running Step 4 on the exact head SHA you are merging.**
    Approving your own fix is allowed; approving it without re-checking is not.
-9. **Every git operation runs in the repository's `git-ops` agent**, never inline.
+10. **Every git operation runs in the repository's `git-ops` agent**, never inline.
    Read `.agents/agents/git-ops.md` first.
 
 ## Output contract
@@ -393,8 +440,9 @@ Verified: <typecheck / lint / web build — or what was skipped and why>
 - `merged` — the pull request landed, whether you reviewed it as submitted or fixed
   it first. This is the objective, and the only fully successful outcome.
 - `blocked` — you could not merge, but nothing is wrong with your reasoning: a
-  required check is pending, the checkout is busy with another routine's run, or the
-  pull request needs a human decision. Say which, and what you already pushed.
+  required check is pending, the pull request cannot be fixed on its branch, or it needs
+  a human decision. Say which, and what you already pushed. A busy shared checkout is
+  **not** a valid reason — that is what your own worktree is for.
 - `skipped` — no open pull request carried the optimisation prefix. Expected and
   healthy.
 - `failed` — a genuine error stopped the run. Say which, and state exactly what you

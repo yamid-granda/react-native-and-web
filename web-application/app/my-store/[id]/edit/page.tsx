@@ -3,12 +3,10 @@
 import { use, useCallback, useState } from "react"
 import { useRouter } from "solito/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Text } from "react-native"
 import {
-  ProductFormScreen,
-  useRequireSession,
-  type ProductData,
-  type ProductFormValues,
+  ProductEditorScreen,
+  SessionGate,
+  productQueryKey,
 } from "@rnw/components-library"
 import { fetchProduct, updateMyProduct } from "../../../../lib/api"
 
@@ -22,28 +20,35 @@ import { fetchProduct, updateMyProduct } from "../../../../lib/api"
  *
  * Shape follows `app/marketplace/[id]/page.tsx` exactly — `params` is a promise,
  * so `use(params)` suspends on the first render.
+ *
+ * The read sits in a child component because of the rule of hooks: it only runs
+ * once `SessionGate` has let a signed-in seller past, which is also why it needs
+ * no `enabled` gate of its own.
  */
 export default function EditProductPage({ params }: PageProps<"/my-store/[id]/edit">) {
   const { id } = use(params)
   const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
   const signIn = useCallback(() => router.replace("/login"), [router])
-  const session = useRequireSession({ onSignIn: signIn })
-
-  const { data: product, isLoading, error: loadError } = useQuery({
-    queryKey: ["product", id],
-    queryFn: () => fetchProduct(id),
-    enabled: session.status === "authenticated",
-  })
-
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
 
   return (
-    <Editor
+    <SessionGate onSignIn={signIn}>
+      <EditProductForm id={id} />
+    </SessionGate>
+  )
+}
+
+function EditProductForm({ id }: { id: string }) {
+  const router = useRouter()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const { data: product, isLoading, error: loadError } = useQuery({
+    queryKey: productQueryKey(id),
+    queryFn: () => fetchProduct(id),
+  })
+
+  return (
+    <ProductEditorScreen
       product={product}
       isLoading={isLoading}
       // A product that is not the caller's comes back as a 404, not a 403 — so
@@ -52,53 +57,9 @@ export default function EditProductPage({ params }: PageProps<"/my-store/[id]/ed
       isSubmitting={isSubmitting}
       setSubmitting={setIsSubmitting}
       setError={setError}
+      update={updateMyProduct}
       onDone={() => router.replace("/my-store")}
       onCancel={() => router.back()}
-    />
-  )
-}
-
-function Editor({
-  product,
-  isLoading,
-  error,
-  isSubmitting,
-  setSubmitting,
-  setError,
-  onDone,
-  onCancel,
-}: {
-  product?: ProductData
-  isLoading: boolean
-  error: Error | null
-  isSubmitting: boolean
-  setSubmitting: (value: boolean) => void
-  setError: (value: Error | null) => void
-  onDone: () => void
-  onCancel: () => void
-}) {
-  if (isLoading) return <Text className="p-6 text-muted">Loading product…</Text>
-  if (!product) return <Text className="p-6 text-muted">Product not found.</Text>
-
-  const save = async (values: ProductFormValues) => {
-    setError(null)
-    setSubmitting(true)
-    try {
-      await updateMyProduct(product.id, values)
-      onDone()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause : new Error("Could not save the product"))
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <ProductFormScreen
-      product={product}
-      isSubmitting={isSubmitting}
-      error={error}
-      onCancel={onCancel}
-      onSubmit={save}
     />
   )
 }

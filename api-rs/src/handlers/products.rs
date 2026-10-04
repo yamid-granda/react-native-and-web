@@ -6,7 +6,7 @@ use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::app::AppState;
-use crate::cache::{HitSource, Kind};
+use crate::cache::{self, HitSource, Kind};
 use crate::error::{json_response, AppError};
 use crate::serde_js::{js_number, js_number_or_nan, prisma_datetime};
 use crate::store::{Product, PAGE_SIZE};
@@ -63,6 +63,27 @@ pub struct ProductsPageJson {
     pub total: i64,
     #[serde(rename = "hasNextPage")]
     pub has_next_page: bool,
+}
+
+impl ProductsPageJson {
+    /// The one place a list page's envelope is built, for every route that
+    /// returns one.
+    ///
+    /// Taking `Vec<Product>` rather than a slice is what keeps the conversion
+    /// from growing a second spelling: there is no `iter()` here to reach for
+    /// when the caller still owns the page.
+    pub fn from_page(items: Vec<Product>, query: &PageQuery, total: i64) -> Self {
+        let item_count = items.len() as f64;
+        Self {
+            items: items.into_iter().map(ProductJson::from).collect(),
+            page: query.page,
+            limit: PAGE_SIZE,
+            total,
+            // `skip + items.length < total` in float arithmetic, on the unwrapped
+            // skip, exactly as `ProductsService.findAll` evaluates it.
+            has_next_page: (query.skip + item_count) < total as f64,
+        }
+    }
 }
 
 pub struct PageQuery {
@@ -138,7 +159,7 @@ fn round_to_significant_digits(value: f64, digits: i32) -> f64 {
 pub async fn list(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
     let query = parse_page(parts.uri.query())?;
-    let key = list_key(&state, query.page);
+    let key = cache::list_key(state.cache.generation(), query.page);
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
@@ -156,16 +177,7 @@ pub async fn list(State(state): State<AppState>, request: Request) -> Result<Res
 
     let products = state.store.list_page(query.offset, PAGE_SIZE).await?;
     let total = catalog_total(&state).await?;
-    let item_count = products.len() as f64;
-    let body = ProductsPageJson {
-        items: products.into_iter().map(ProductJson::from).collect(),
-        page: query.page,
-        limit: PAGE_SIZE,
-        total,
-        // `skip + items.length < total` in float arithmetic, on the unwrapped
-        // skip, exactly as `ProductsService.findAll` evaluates it.
-        has_next_page: (query.skip + item_count) < total as f64,
-    };
+    let body = ProductsPageJson::from_page(products, &query, total);
     let bytes = serde_json::to_vec(&body)?;
     state.cache.set(Kind::List, &key, Bytes::copy_from_slice(&bytes)).await;
 
@@ -178,7 +190,7 @@ pub async fn detail(
     request: Request,
 ) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
-    let key = format!("products:detail:{id}");
+    let key = cache::detail_key(&id);
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::Detail, &key, conditional).await {
@@ -205,7 +217,11 @@ pub async fn detail(
 
 /// A cached response, or `None` on a miss. The `X-Cache` header reports where
 /// it came from, so a follower served here honestly reads as a hit.
-async fn cached(
+///
+/// Shared rather than reimplemented: `GET /stores/{id}/products` runs the same
+/// two-phase check through this helper, which is also what gives it the tested
+/// stampede ordering instead of an uncommented copy of it.
+pub(crate) async fn cached(
     state: &AppState,
     kind: Kind,
     key: &str,
@@ -218,18 +234,6 @@ async fn cached(
         &product_headers(state, Some(source)),
         conditional,
     ))
-}
-
-/// The catalog list key: namespace generation, then the page's float bits.
-///
-/// The generation is what makes a write path possible at all. Page keys cannot
-/// be enumerated — `products:list:<bits>` over every page a shopper has ever
-/// asked for is not a list anyone can walk — so a price change would otherwise
-/// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
-/// that a write bumps retires all of them at once, with one `INCR` and no
-/// `SCAN` (see `ARCHITECTURE.md` §12).
-pub fn list_key(state: &AppState, page: f64) -> String {
-    format!("products:list:{}:{}", state.cache.generation(), page.to_bits())
 }
 
 /// Cache key for the catalog-wide `total`. Its own entry rather than a field of
@@ -272,7 +276,13 @@ async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
 
 /// `Cache-Control` for the Cloudflare edge tier plus an operational `X-Cache`
 /// marker. Additive headers only — bodies stay byte-identical.
-fn product_headers(state: &AppState, source: Option<HitSource>) -> Vec<(HeaderName, HeaderValue)> {
+///
+/// Shared with `GET /stores/{id}/products`, which sent a byte-identical copy
+/// under a name claiming a `no-store` difference it did not have.
+pub(crate) fn product_headers(
+    state: &AppState,
+    source: Option<HitSource>,
+) -> Vec<(HeaderName, HeaderValue)> {
     let cache_control = HeaderValue::from_str(&state.config.edge_cache_control)
         .unwrap_or_else(|_| HeaderValue::from_static("public"));
     let x_cache = HeaderValue::from_static(source.map_or("miss", HitSource::header_value));
@@ -403,15 +413,39 @@ mod tests {
     /// become unreachable under the next.
     #[tokio::test]
     async fn a_bump_changes_the_list_key() {
-        let state =
-            counting_state(CountingStore::new(InMemoryStore::new(vec![product("prod-1", 1.0)])));
-        let before = list_key(&state, 1.0);
+        let (store, _inner) = counting_store(1);
+        let state = counting_state(store);
+        let before = cache::list_key(state.cache.generation(), 1.0);
         state.cache.bump_list_generation().await;
-        let after = list_key(&state, 1.0);
+        let after = cache::list_key(state.cache.generation(), 1.0);
         assert_ne!(before, after);
         assert!(before.starts_with("products:list:0:"), "{before}");
         assert!(after.starts_with("products:list:1:"), "{after}");
         assert_ne!(count_key(&state), format!("{COUNT_KEY_PREFIX}:0"));
+    }
+
+    /// The write path and the detail handler must address one key. If they
+    /// drifted, `invalidate_after_write` would keep bumping the generation and
+    /// keep answering 200 while `GET /products/{id}` served a pre-write body
+    /// until the detail TTL ran out — and no assertion here would fail.
+    #[tokio::test]
+    async fn invalidating_a_detail_retires_the_entry_the_handler_wrote() {
+        let (store, _inner) = counting_store(200);
+        let find_calls = Arc::clone(&store.find_calls);
+        let state = counting_state(store);
+        let app = router(state.clone());
+
+        for _ in 0..2 {
+            let response = app.clone().oneshot(get("/products/prod-7")).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        assert_eq!(find_calls.load(Ordering::SeqCst), 1, "the second read is a cache hit");
+
+        state.cache.invalidate_detail("prod-7").await;
+
+        let response = app.oneshot(get("/products/prod-7")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(find_calls.load(Ordering::SeqCst), 2, "the retired key has to be refilled");
     }
 
     /// Wraps [`InMemoryStore`] to count the queries that actually reach the
@@ -481,17 +515,30 @@ mod tests {
         // `handlers/my_store.rs` is where a mutation is asserted. Rust has no
         // partial trait impl, so these stay and the compiler keeps naming the
         // site.
-        async fn list_owned_page(
+        async fn list_page_for_owner(
             &self,
             owner_id: &str,
             offset: i64,
             limit: i64,
         ) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_owned_page(owner_id, offset, limit).await
+            self.inner.list_page_for_owner(owner_id, offset, limit).await
         }
 
-        async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.inner.count_owned(owner_id).await
+        async fn list_public_page_by_owner(
+            &self,
+            owner_id: &str,
+            offset: i64,
+            limit: i64,
+        ) -> Result<Vec<Product>, StoreError> {
+            self.inner.list_public_page_by_owner(owner_id, offset, limit).await
+        }
+
+        async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+            self.inner.count_for_owner(owner_id).await
+        }
+
+        async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+            self.inner.count_public_by_owner(owner_id).await
         }
 
         async fn find_owned_by_id(
