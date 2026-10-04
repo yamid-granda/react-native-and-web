@@ -13,12 +13,12 @@ import type { ProductData } from "../../types/Product"
 export type ProductsByIds = { items: ProductData[]; missing: string[] }
 
 /**
- * The api surface this hook needs, injected by the app that owns the transport.
+ * The api surface this hook needs, injected by the app that owns the session.
  *
- * components-library has no api layer — each app has its own `fetch` wrapper
- * (different base-URL resolution, different navigation) and a shared one would
- * have to grow a platform switch. Same rule as `MyStoreApi` and
- * `useInfiniteProducts`: the *state* pattern is shared, the *transport* is not.
+ * Still injected rather than imported, but no longer because the transport is
+ * per-app: components-library owns it once (`api/transport.ts`) and each app
+ * supplies only what is genuinely its own — a `baseUrl` and `getSessionToken` —
+ * to `createApi`. Same rule as `MyStoreApi` and `useInfiniteProducts`.
  */
 export type FetchProductsByIds = (ids: string[], signal?: AbortSignal) => Promise<ProductsByIds>
 
