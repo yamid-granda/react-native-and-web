@@ -515,6 +515,21 @@ A reading order that follows the request path:
   projection, widening the write cost for a read-only catalog whose pages are
   already cached. `Product_ownerId_createdAt_id_idx` inherits the same caveat,
   and the store `LEFT JOIN` adds a lookup per row on top of it.
+- **The session table is bounded by age, not by count.** A login deletes that
+  seller's rows already past `SESSION_TTL_SECS`, so `"Session"` no longer grows
+  without limit — it did for as long as only logout and the unreachable
+  account-deletion route removed a row. It needs no scheduler and no new config
+  key, because the login that adds a row is also the moment the seller's dead
+  rows are worth reclaiming. Two things follow that are deliberate. The residual
+  is real: a seller who logs in many times inside one TTL window holds one live
+  row per login until it expires, because capping *live* sessions would revoke a
+  device the seller is still using and that is not a change to make silently.
+  And `Session_expiresAt_idx` is now read by no query at all — the per-user
+  delete filters on `"userId"`, which is why `Session_userId_idx` was added —
+  so it is kept on the expectation that a *global* sweep is the right thing to
+  add eventually, at the cost of a write per login on an append-only table. The
+  cleanup is fail-open: a sweep that errors is warned and counted, never
+  propagated, because the credential being minted is unaffected by it.
 - **`api-rs-db` ships separately from the server binary.** The release image
   contains only `--bin api-rs`, so applying migrations means running the tool
   from a checkout. The alternative — migrating on startup — would give every

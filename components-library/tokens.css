@@ -1,0 +1,86 @@
+/*
+ * The owner of the design tokens' values.
+ *
+ * `tailwind-preset.cjs` maps five semantic color names to
+ * `rgb(var(--color-x) / <alpha-value>)`, but the values those variables resolve
+ * to are declared here and nowhere else. Every consumer's stylesheet imports
+ * this file instead of restating the palette, so "where do I change the brand's
+ * dark background?" has one answer, and `tokens.parity.test.ts` fails if one of
+ * them stops importing it.
+ *
+ * ## Why the OS block is a bare `:root`
+ *
+ * Web's stylesheet used to guard this block with `:root:not(.light)`, and that
+ * guard is why it could not be shared. React Native CSS Interop builds its
+ * light/dark root variables from a `@media (prefers-color-scheme: dark)` block
+ * whose selector is exactly `:root`; given `:root:not(.light)` it drops the
+ * block instead of failing, and the compiled `rootVariables` come out with a
+ * `light` value and no `dark` one at all — native would render the light palette
+ * in dark mode with nothing failing to report it. A bare `:root` is the one
+ * selector shape all three hosts understand, so the light override moved to the
+ * class blocks below, which native simply never matches.
+ *
+ * ## Why each scheme appears twice
+ *
+ * CSS has no way to say "apply this block only when the OS is dark, unless a
+ * class says otherwise" without `:not()`, so the explicit-light override is its
+ * own block. `:root.light` and `:root.dark` are both (0,2,0), so they outrank
+ * the (0,1,0) `:root` inside the media query, and `:root.dark` comes last so an
+ * explicit dark pick wins when both classes are somehow set. That reproduces the
+ * three states web already had — OS default, explicit light, explicit dark.
+ *
+ * ## What each host actually does with this
+ *
+ * - Web evaluates all four blocks; `use-theme-toggle.ts` toggles `.light` and
+ *   `.dark` on the document element.
+ * - Native has no DOM for a class to live on, so only the first two blocks
+ *   apply and dark mode follows `Appearance`, which `colorScheme.set` drives.
+ * - Storybook's backgrounds toolbar sets `.light`/`.dark` itself, so Storybook
+ *   keeps following the toolbar rather than the OS.
+ *
+ * Metro resolves this file across a package boundary, not just webpack. That is
+ * a build edge `tailwind-preset.cjs` does not have: a config `require`-ing a
+ * `.cjs` file is inert, but native has to resolve this import through its CSS
+ * pipeline or the palette silently disappears and every `bg-surface` renders
+ * transparent. No test can catch that, so after editing this file a native
+ * bundle has to be built and its compiled root variables read, not just
+ * typechecked.
+ */
+:root {
+  --color-background: 250 250 250; /* zinc-50 */
+  --color-foreground: 24 24 27; /* zinc-900 */
+  --color-muted: 113 113 122; /* zinc-500 */
+  --color-surface: 255 255 255; /* white */
+  --color-surface-muted: 244 244 245; /* zinc-100 */
+}
+
+/* OS-driven default. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: 9 9 11; /* zinc-950 */
+    --color-foreground: 250 250 250; /* zinc-50 */
+    --color-muted: 161 161 170; /* zinc-400 */
+    --color-surface: 24 24 27; /* zinc-900 */
+    --color-surface-muted: 39 39 42; /* zinc-800 */
+  }
+}
+
+/* An explicit "light" pick (web's Theme button, Storybook's toolbar). Outranks
+   the OS block above on specificity, so it wins even when the OS prefers dark. */
+:root.light {
+  --color-background: 250 250 250; /* zinc-50 */
+  --color-foreground: 24 24 27; /* zinc-900 */
+  --color-muted: 113 113 122; /* zinc-500 */
+  --color-surface: 255 255 255; /* white */
+  --color-surface-muted: 244 244 245; /* zinc-100 */
+}
+
+/* An explicit "dark" pick. Declared last so it wins over `.light` if both are
+   ever set, and outranks the OS block so the Theme button works on a light OS. */
+:root.dark {
+  --color-background: 9 9 11; /* zinc-950 */
+  --color-foreground: 250 250 250; /* zinc-50 */
+  --color-muted: 161 161 170; /* zinc-400 */
+  --color-surface: 24 24 27; /* zinc-900 */
+  --color-surface-muted: 39 39 42; /* zinc-800 */
+}

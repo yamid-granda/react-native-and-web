@@ -310,6 +310,14 @@ mod tests {
         async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
             self.inner.delete_session(token_hash).await
         }
+
+        async fn delete_expired_for_user(&self, user_id: &str) -> Result<u64, StoreError> {
+            self.inner.delete_expired_for_user(user_id).await
+        }
+
+        async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StoreError> {
+            self.inner.list_sessions(user_id).await
+        }
     }
 
     /// The concurrency limiter is a confounder here: these tests assert how many

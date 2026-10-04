@@ -1,37 +1,11 @@
+@import "../../components-library/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* See README "Architecture boundaries" for the dark-mode convention. */
-:root {
-  --color-background: 250 250 250; /* zinc-50 */
-  --color-foreground: 24 24 27; /* zinc-900 */
-  --color-muted: 113 113 122; /* zinc-500 */
-  --color-surface: 255 255 255; /* white */
-  --color-surface-muted: 244 244 245; /* zinc-100 */
-}
-
-/* OS-driven default — :not(.light) lets an explicit "light" pick (below)
-   override it even when the OS prefers dark. */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --color-background: 9 9 11; /* zinc-950 */
-    --color-foreground: 250 250 250; /* zinc-50 */
-    --color-muted: 161 161 170; /* zinc-400 */
-    --color-surface: 24 24 27; /* zinc-900 */
-    --color-surface-muted: 39 39 42; /* zinc-800 */
-  }
-}
-
-/* Explicit "dark" pick (Theme button) — wins over the OS regardless of
-   preference, since a class selector outranks the plain :root above. */
-:root.dark {
-  --color-background: 9 9 11; /* zinc-950 */
-  --color-foreground: 250 250 250; /* zinc-50 */
-  --color-muted: 161 161 170; /* zinc-400 */
-  --color-surface: 24 24 27; /* zinc-900 */
-  --color-surface-muted: 39 39 42; /* zinc-800 */
-}
+/* Semantic colors come from components-library/tokens.css, which owns the
+   palette and the dark-mode selectors. See README "Architecture boundaries". */
 
 body {
   @apply bg-background text-foreground;

@@ -2,7 +2,7 @@
 
 import { useRouter } from "solito/navigation"
 import { ProductListScreen, useInfiniteProducts } from "@rnw/components-library"
-import { fetchProducts } from "../../lib/api"
+import { fetchProducts, fetchProductsByIds } from "../../lib/api"
 
 export default function MarketplacePage() {
   const router = useRouter()
@@ -18,6 +18,7 @@ export default function MarketplacePage() {
       isFetchingNextPage={isFetchingNextPage}
       onEndReached={() => fetchNextPage()}
       onSelectProduct={(id) => router.push(`/marketplace/${id}`)}
+      fetchProductsByIds={fetchProductsByIds}
     />
   )
 }

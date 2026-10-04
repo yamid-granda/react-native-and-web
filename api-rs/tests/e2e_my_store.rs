@@ -495,3 +495,57 @@ async fn deleting_a_seller_leaves_their_products_listed() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+/// The `missing` half of `GET /products/by-ids`, against a real deletion.
+///
+/// This is the property the route exists for: a product a shopper remembered has
+/// to be *reportable* as gone once its seller deletes it, or a persisted cart or
+/// wishlist has no way to drop the line. It also pins the cache half — the first
+/// lookup fills the detail entry the batch reads through, so the second lookup
+/// answering `missing` at all is proof that the delete retired that entry rather
+/// than the batch answering from its own copy.
+#[tokio::test]
+async fn a_deleted_product_comes_back_as_missing_from_a_batch_lookup() {
+    let stack = common::TestStack::start(true, |_| {}).await;
+    let (token, _store_id) = sign_up(&stack, "by-ids-missing").await;
+    let created = create_product(&stack.base_url, &token, "Deleted Lantern").await;
+    let id = created["id"].as_str().expect("id").to_string();
+
+    let lookup = || async {
+        Client::new()
+            .get(format!("{}/products/by-ids?ids={id},prod-1", stack.base_url))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    };
+
+    let before = lookup().await;
+    assert_eq!(before["missing"].as_array().map(Vec::len), Some(0));
+    // Requested order, so a client can zip `items` back onto the list it holds.
+    assert_eq!(before["items"].as_array().map(Vec::len), Some(2));
+    assert_eq!(before["items"][0]["id"], id);
+    assert_eq!(before["items"][1]["id"], "prod-1");
+
+    assert_eq!(
+        authed(
+            reqwest::Method::DELETE,
+            &format!("{}/my-store/products/{id}", stack.base_url),
+            &token
+        )
+        .send()
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::NO_CONTENT
+    );
+
+    // A 404 could only ever answer one id at a time, which is the whole reason
+    // this is a 200 carrying both halves.
+    let after = lookup().await;
+    assert_eq!(after["items"].as_array().map(Vec::len), Some(1));
+    assert_eq!(after["items"][0]["id"], "prod-1");
+    assert_eq!(after["missing"], json!([id]));
+}

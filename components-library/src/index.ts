@@ -48,10 +48,15 @@ export { ProductDetailScreen } from "./business/ProductDetailScreen/ProductDetai
 export type { ProductDetailScreenProps } from "./business/ProductDetailScreen/ProductDetailScreen"
 export { CartScreen } from "./business/CartScreen/CartScreen"
 export type { CartScreenProps } from "./business/CartScreen/CartScreen"
-export { useCartStore, getCartTotalCount } from "./business/CartScreen/useCartStore"
-export type { CartItem } from "./business/CartScreen/useCartStore"
+export { useCartStore, getCartTotalCount, getCartTotalPrice } from "./business/CartScreen/useCartStore"
+export type { CartItem, ResolvedCartLine } from "./business/CartScreen/useCartStore"
 export { CheckoutScreen } from "./business/CheckoutScreen/CheckoutScreen"
 export type { CheckoutScreenProps } from "./business/CheckoutScreen/CheckoutScreen"
+export { useProductLookup, productLookupKey } from "./business/ProductLookup/useProductLookup"
+export type {
+  FetchProductsByIds,
+  ProductsByIds,
+} from "./business/ProductLookup/useProductLookup"
 export { WishlistScreen } from "./business/WishlistScreen/WishlistScreen"
 export {
   useWishlistStore,
