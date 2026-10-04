@@ -140,6 +140,28 @@ async fn valkey_backed_rate_limit_returns_429() {
 }
 
 #[tokio::test]
+async fn unmatched_paths_are_rate_limited_too() {
+    // The 404 path is the one an unauthenticated scanner generates by default,
+    // and it used to be the one path with no rate limit on it at all: the
+    // limiter was a `route_layer`, and an unmatched path matched nothing.
+    let stack = common::TestStack::start(true, |config: &mut Config| {
+        config.rate_limit_per_ip_rps = 2;
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let url = format!("{}/wp-admin/setup.php", stack.base_url);
+
+    assert_eq!(client.get(&url).send().await.unwrap().status(), StatusCode::NOT_FOUND);
+    assert_eq!(client.get(&url).send().await.unwrap().status(), StatusCode::NOT_FOUND);
+    let response = client.get(&url).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        response.text().await.unwrap(),
+        r#"{"message":"Too Many Requests","error":"Too Many Requests","statusCode":429}"#
+    );
+}
+
+#[tokio::test]
 async fn cache_fail_open_without_valkey() {
     let stack = common::TestStack::start(false, |_| {}).await;
     let response = reqwest::get(format!("{}/products", stack.base_url)).await.unwrap();

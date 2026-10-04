@@ -271,7 +271,9 @@ pub async fn enforce(State(state): State<AppState>, request: Request, next: Next
 }
 
 /// The credential-endpoint throttle. Scoped with `route_layer` to
-/// `/auth/login` and `/auth/register`, so it never sees the marketplace.
+/// `/auth/login` and `/auth/register`, so it never sees the marketplace and
+/// never sees the unmatched-path fallback. Unlike [`enforce`], which is
+/// process-wide, this one deliberately is not.
 pub async fn enforce_auth(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
     let ip = client_ip(request.headers(), peer.as_ref());
