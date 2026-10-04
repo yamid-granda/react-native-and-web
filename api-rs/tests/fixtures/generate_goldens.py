@@ -80,6 +80,19 @@ write(
     "product-prod-owned-1.json",
     js_product(next(p for p in products if p["id"] == "prod-owned-1")),
 )
+# The storefront page: the same envelope over one seller's rows. Its own golden
+# because `/stores/{id}/products` builds that envelope on a route of its own.
+store_products = [p for p in ordered if p.get("ownerId") == STORE_ID]
+write(
+    "store-products-fixture.json",
+    {
+        "items": [js_product(p) for p in store_products],
+        "page": 1,
+        "limit": 20,
+        "total": len(store_products),
+        "hasNextPage": len(store_products) > 20,
+    },
+)
 write("store-fixture.json", {"id": STORE_ID, "storeName": STORE_NAME, "createdAt": "2026-01-01T00:00:00.000Z"})
 write(
     "product-404.json",

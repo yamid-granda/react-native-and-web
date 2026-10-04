@@ -88,7 +88,7 @@ impl ProductStore for InMemoryStore {
         Ok(products.iter().find(|product| product.id == id).cloned())
     }
 
-    async fn list_owned_page(
+    async fn list_page_for_owner(
         &self,
         owner_id: &str,
         offset: i64,
@@ -97,7 +97,20 @@ impl ProductStore for InMemoryStore {
         Ok(Self::slice(&self.rows(Some(owner_id)), offset, limit))
     }
 
-    async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
+    async fn list_public_page_by_owner(
+        &self,
+        owner_id: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<Product>, StoreError> {
+        Ok(Self::slice(&self.rows(Some(owner_id)), offset, limit))
+    }
+
+    async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+        Ok(self.rows(Some(owner_id)).len() as i64)
+    }
+
+    async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
         Ok(self.rows(Some(owner_id)).len() as i64)
     }
 
@@ -244,11 +257,17 @@ mod tests {
     #[tokio::test]
     async fn owned_pages_only_contain_that_owners_rows() {
         let store = store();
-        let page = store.list_owned_page("usr-1", 0, 20).await.unwrap();
+        let page = store.list_page_for_owner("usr-1", 0, 20).await.unwrap();
         assert_eq!(page.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["prod-a"]);
         assert_eq!(page[0].store_name.as_deref(), Some("First Shop"));
-        assert_eq!(store.count_owned("usr-1").await.unwrap(), 1);
-        assert_eq!(store.count_owned("usr-nobody").await.unwrap(), 0);
+        assert_eq!(store.count_for_owner("usr-1").await.unwrap(), 1);
+        assert_eq!(store.count_for_owner("usr-nobody").await.unwrap(), 0);
+        // The storefront reads the same rows: only the pool differs, and this
+        // store has one pool to offer.
+        let storefront = store.list_public_page_by_owner("usr-1", 0, 20).await.unwrap();
+        assert_eq!(storefront.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["prod-a"]);
+        assert_eq!(store.count_public_by_owner("usr-1").await.unwrap(), 1);
+        assert_eq!(store.count_public_by_owner("usr-nobody").await.unwrap(), 0);
         // The ownerless seed row stays visible on the public list.
         assert_eq!(store.count().await.unwrap(), 3);
         let public = store.list_page(0, 20).await.unwrap();
@@ -307,7 +326,7 @@ mod tests {
         // No "User" row exists in this fixture, so the join has nothing to add.
         assert_eq!(created.store_name, None);
         assert_eq!(created.currency, "USD", "the write path pins the currency");
-        let page = store.list_owned_page("usr-1", 0, 20).await.unwrap();
+        let page = store.list_page_for_owner("usr-1", 0, 20).await.unwrap();
         assert_eq!(page.last().unwrap().id, created.id);
     }
 

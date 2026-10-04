@@ -71,6 +71,16 @@ async fn responses_match_committed_golden_fixtures() {
         include_str!("fixtures/store-fixture.json"),
     )
     .await;
+    // The storefront page, next to the store itself: same envelope, one seller's
+    // rows. Its own golden because the route builds the body on its own.
+    assert_golden(
+        &client,
+        &stack.base_url,
+        &format!("/stores/{}/products", common::FIXTURE_STORE_ID),
+        StatusCode::OK,
+        include_str!("fixtures/store-products-fixture.json"),
+    )
+    .await;
     assert_golden(
         &client,
         &stack.base_url,
