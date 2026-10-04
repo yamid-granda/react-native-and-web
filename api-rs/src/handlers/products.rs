@@ -6,7 +6,7 @@ use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::app::AppState;
-use crate::cache::{HitSource, Kind};
+use crate::cache::{self, HitSource, Kind};
 use crate::error::{json_response, AppError};
 use crate::serde_js::{js_number, js_number_or_nan, prisma_datetime};
 use crate::store::{Product, PAGE_SIZE};
@@ -63,6 +63,27 @@ pub struct ProductsPageJson {
     pub total: i64,
     #[serde(rename = "hasNextPage")]
     pub has_next_page: bool,
+}
+
+impl ProductsPageJson {
+    /// The one place a list page's envelope is built, for every route that
+    /// returns one.
+    ///
+    /// Taking `Vec<Product>` rather than a slice is what keeps the conversion
+    /// from growing a second spelling: there is no `iter()` here to reach for
+    /// when the caller still owns the page.
+    pub fn from_page(items: Vec<Product>, query: &PageQuery, total: i64) -> Self {
+        let item_count = items.len() as f64;
+        Self {
+            items: items.into_iter().map(ProductJson::from).collect(),
+            page: query.page,
+            limit: PAGE_SIZE,
+            total,
+            // `skip + items.length < total` in float arithmetic, on the unwrapped
+            // skip, exactly as `ProductsService.findAll` evaluates it.
+            has_next_page: (query.skip + item_count) < total as f64,
+        }
+    }
 }
 
 pub struct PageQuery {
@@ -138,7 +159,7 @@ fn round_to_significant_digits(value: f64, digits: i32) -> f64 {
 pub async fn list(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
     let query = parse_page(parts.uri.query())?;
-    let key = list_key(&state, query.page);
+    let key = cache::list_key(state.cache.generation(), query.page);
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
@@ -156,16 +177,7 @@ pub async fn list(State(state): State<AppState>, request: Request) -> Result<Res
 
     let products = state.store.list_page(query.offset, PAGE_SIZE).await?;
     let total = catalog_total(&state).await?;
-    let item_count = products.len() as f64;
-    let body = ProductsPageJson {
-        items: products.into_iter().map(ProductJson::from).collect(),
-        page: query.page,
-        limit: PAGE_SIZE,
-        total,
-        // `skip + items.length < total` in float arithmetic, on the unwrapped
-        // skip, exactly as `ProductsService.findAll` evaluates it.
-        has_next_page: (query.skip + item_count) < total as f64,
-    };
+    let body = ProductsPageJson::from_page(products, &query, total);
     let bytes = serde_json::to_vec(&body)?;
     state.cache.set(Kind::List, &key, Bytes::copy_from_slice(&bytes)).await;
 
@@ -178,7 +190,7 @@ pub async fn detail(
     request: Request,
 ) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
-    let key = format!("products:detail:{id}");
+    let key = cache::detail_key(&id);
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::Detail, &key, conditional).await {
@@ -205,7 +217,11 @@ pub async fn detail(
 
 /// A cached response, or `None` on a miss. The `X-Cache` header reports where
 /// it came from, so a follower served here honestly reads as a hit.
-async fn cached(
+///
+/// Shared rather than reimplemented: `GET /stores/{id}/products` runs the same
+/// two-phase check through this helper, which is also what gives it the tested
+/// stampede ordering instead of an uncommented copy of it.
+pub(crate) async fn cached(
     state: &AppState,
     kind: Kind,
     key: &str,
@@ -218,18 +234,6 @@ async fn cached(
         &product_headers(state, Some(source)),
         conditional,
     ))
-}
-
-/// The catalog list key: namespace generation, then the page's float bits.
-///
-/// The generation is what makes a write path possible at all. Page keys cannot
-/// be enumerated — `products:list:<bits>` over every page a shopper has ever
-/// asked for is not a list anyone can walk — so a price change would otherwise
-/// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
-/// that a write bumps retires all of them at once, with one `INCR` and no
-/// `SCAN` (see `ARCHITECTURE.md` §12).
-pub fn list_key(state: &AppState, page: f64) -> String {
-    format!("products:list:{}:{}", state.cache.generation(), page.to_bits())
 }
 
 /// Cache key for the catalog-wide `total`. Its own entry rather than a field of
@@ -272,7 +276,13 @@ async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
 
 /// `Cache-Control` for the Cloudflare edge tier plus an operational `X-Cache`
 /// marker. Additive headers only — bodies stay byte-identical.
-fn product_headers(state: &AppState, source: Option<HitSource>) -> Vec<(HeaderName, HeaderValue)> {
+///
+/// Shared with `GET /stores/{id}/products`, which sent a byte-identical copy
+/// under a name claiming a `no-store` difference it did not have.
+pub(crate) fn product_headers(
+    state: &AppState,
+    source: Option<HitSource>,
+) -> Vec<(HeaderName, HeaderValue)> {
     let cache_control = HeaderValue::from_str(&state.config.edge_cache_control)
         .unwrap_or_else(|_| HeaderValue::from_static("public"));
     let x_cache = HeaderValue::from_static(source.map_or("miss", HitSource::header_value));
@@ -281,7 +291,7 @@ fn product_headers(state: &AppState, source: Option<HitSource>) -> Vec<(HeaderNa
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -293,7 +303,9 @@ mod tests {
 
     use crate::app::router;
     use crate::config::Config;
-    use crate::store::{InMemoryStore, Product, ProductStore, StoreError};
+    use crate::store::{
+        DelegatingStore, InMemoryStore, Product, ProductStore, StoreError, StoreOp,
+    };
 
     use super::*;
 
@@ -401,44 +413,78 @@ mod tests {
     /// become unreachable under the next.
     #[tokio::test]
     async fn a_bump_changes_the_list_key() {
-        let state = counting_state(CountingStore::new(1));
-        let before = list_key(&state, 1.0);
+        let (store, _inner) = counting_store(1);
+        let state = counting_state(store);
+        let before = cache::list_key(state.cache.generation(), 1.0);
         state.cache.bump_list_generation().await;
-        let after = list_key(&state, 1.0);
+        let after = cache::list_key(state.cache.generation(), 1.0);
         assert_ne!(before, after);
         assert!(before.starts_with("products:list:0:"), "{before}");
         assert!(after.starts_with("products:list:1:"), "{after}");
         assert_ne!(count_key(&state), format!("{COUNT_KEY_PREFIX}:0"));
     }
 
+    /// The write path and the detail handler must address one key. If they
+    /// drifted, `invalidate_after_write` would keep bumping the generation and
+    /// keep answering 200 while `GET /products/{id}` served a pre-write body
+    /// until the detail TTL ran out — and no assertion here would fail.
+    #[tokio::test]
+    async fn invalidating_a_detail_retires_the_entry_the_handler_wrote() {
+        let (store, _inner) = counting_store(200);
+        let find_calls = Arc::clone(&store.find_calls);
+        let state = counting_state(store);
+        let app = router(state.clone());
+
+        for _ in 0..2 {
+            let response = app.clone().oneshot(get("/products/prod-7")).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        assert_eq!(find_calls.load(Ordering::SeqCst), 1, "the second read is a cache hit");
+
+        state.cache.invalidate_detail("prod-7").await;
+
+        let response = app.oneshot(get("/products/prod-7")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(find_calls.load(Ordering::SeqCst), 2, "the retired key has to be refilled");
+    }
+
     /// Wraps [`InMemoryStore`] to count the queries that actually reach the
     /// database, and to make each one slow enough that concurrent requests
     /// genuinely collide on a single fill instead of racing past it.
+    ///
+    /// Only the three read methods are instrumented; everything else is
+    /// [`DelegatingStore`]'s forwarding, so a new trait method costs no edits
+    /// here. The failure switches moved to the store itself, which is what
+    /// `/health` needs and what keeps the mechanism in one place.
     #[derive(Clone)]
     struct CountingStore {
-        inner: InMemoryStore,
+        inner: DelegatingStore,
         list_calls: Arc<AtomicUsize>,
         count_calls: Arc<AtomicUsize>,
         find_calls: Arc<AtomicUsize>,
         delay: Duration,
-        fail_list: Arc<AtomicBool>,
-        fail_count: Arc<AtomicBool>,
     }
 
     impl CountingStore {
-        fn new(products: usize) -> Self {
+        fn new(inner: InMemoryStore) -> Self {
             Self {
-                inner: InMemoryStore::new(
-                    (0..products).map(|index| product(&format!("prod-{index}"), 10.0)).collect(),
-                ),
+                inner: DelegatingStore::new(Arc::new(inner)),
                 list_calls: Arc::new(AtomicUsize::new(0)),
                 count_calls: Arc::new(AtomicUsize::new(0)),
                 find_calls: Arc::new(AtomicUsize::new(0)),
                 delay: Duration::from_millis(30),
-                fail_list: Arc::new(AtomicBool::new(false)),
-                fail_count: Arc::new(AtomicBool::new(false)),
             }
         }
+    }
+
+    /// The spy plus a handle on the store behind it, so a test can make a
+    /// surface fail. Cloning an `InMemoryStore` shares its state, so the switch
+    /// the test sets is the one the spy reads through.
+    fn counting_store(products: usize) -> (CountingStore, InMemoryStore) {
+        let inner = InMemoryStore::new(
+            (0..products).map(|index| product(&format!("prod-{index}"), 10.0)).collect(),
+        );
+        (CountingStore::new(inner.clone()), inner)
     }
 
     #[async_trait::async_trait]
@@ -446,18 +492,11 @@ mod tests {
         async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
             self.list_calls.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(self.delay).await;
-            // Consumed on use, so only the first attempt fails.
-            if self.fail_list.swap(false, Ordering::SeqCst) {
-                return Err(StoreError::Database("injected list failure".to_string()));
-            }
             self.inner.list_page(offset, limit).await
         }
 
         async fn count(&self) -> Result<i64, StoreError> {
             self.count_calls.fetch_add(1, Ordering::SeqCst);
-            if self.fail_count.load(Ordering::SeqCst) {
-                return Err(StoreError::Database("injected count failure".to_string()));
-            }
             self.inner.count().await
         }
 
@@ -473,18 +512,33 @@ mod tests {
 
         // The owner-scoped and write paths are pass-throughs too: the tests in
         // this module are about the read path's cache behaviour, and
-        // `handlers/my_store.rs` is where a mutation is asserted.
-        async fn list_owned_page(
+        // `handlers/my_store.rs` is where a mutation is asserted. Rust has no
+        // partial trait impl, so these stay and the compiler keeps naming the
+        // site.
+        async fn list_page_for_owner(
             &self,
             owner_id: &str,
             offset: i64,
             limit: i64,
         ) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_owned_page(owner_id, offset, limit).await
+            self.inner.list_page_for_owner(owner_id, offset, limit).await
         }
 
-        async fn count_owned(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.inner.count_owned(owner_id).await
+        async fn list_public_page_by_owner(
+            &self,
+            owner_id: &str,
+            offset: i64,
+            limit: i64,
+        ) -> Result<Vec<Product>, StoreError> {
+            self.inner.list_public_page_by_owner(owner_id, offset, limit).await
+        }
+
+        async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+            self.inner.count_for_owner(owner_id).await
+        }
+
+        async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
+            self.inner.count_public_by_owner(owner_id).await
         }
 
         async fn find_owned_by_id(
@@ -517,10 +571,10 @@ mod tests {
         }
     }
 
-    /// The read-path tests above never touch identity, so these two are plain
-    /// pass-throughs to the in-memory store's own maps. They exist only because
-    /// `AppState` holds one `Arc<dyn MarketplaceStore>` rather than three
-    /// handles.
+    // `AppState` holds one `Arc<dyn MarketplaceStore>` rather than three handles,
+    // so `CountingStore` still has to be a `UserStore` and a `SessionStore` —
+    // but it forwards them instead of writing them, which is the 39 lines that
+    // used to live here.
     #[async_trait::async_trait]
     impl crate::store::UserStore for CountingStore {
         async fn find_user_by_email(
@@ -616,7 +670,7 @@ mod tests {
     /// 64 identical page queries plus 64 identical `COUNT(*)`.
     #[tokio::test]
     async fn concurrent_cold_page_requests_fill_once() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let list_calls = Arc::clone(&store.list_calls);
         let count_calls = Arc::clone(&store.count_calls);
         let app = router(counting_state(store));
@@ -630,7 +684,7 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_cold_detail_requests_fill_once() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let find_calls = Arc::clone(&store.find_calls);
         let app = router(counting_state(store));
 
@@ -644,7 +698,7 @@ mod tests {
     /// keys into one queue.
     #[tokio::test]
     async fn distinct_pages_are_not_serialised() {
-        let store = CountingStore::new(200 * PAGE_SIZE as usize);
+        let (store, _inner) = counting_store(200 * PAGE_SIZE as usize);
         let list_calls = Arc::clone(&store.list_calls);
         let app = router(counting_state(store));
 
@@ -659,8 +713,9 @@ mod tests {
     /// failure, no stuck key, no need for a dead-letter path.
     #[tokio::test]
     async fn a_failed_fill_is_retried_rather_than_replayed() {
-        let store = CountingStore::new(5);
-        store.fail_list.store(true, Ordering::SeqCst);
+        let (store, inner) = counting_store(5);
+        // One-shot, so the retry below reaches the store and succeeds.
+        inner.fail_once(StoreOp::Products);
         let list_calls = Arc::clone(&store.list_calls);
         let app = router(counting_state(store));
 
@@ -676,7 +731,7 @@ mod tests {
     /// The guard goes with it, so the key must not stay locked.
     #[tokio::test]
     async fn a_cancelled_request_does_not_wedge_the_key() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let app = router(counting_state(store));
 
         let in_flight = tokio::spawn({
@@ -696,7 +751,7 @@ mod tests {
     /// recomputed per request.
     #[tokio::test]
     async fn the_catalog_total_is_counted_once_per_ttl_window() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let count_calls = Arc::clone(&store.count_calls);
         let app = router(counting_state(store));
 
@@ -711,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_expired_total_is_recomputed_not_served_stale() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let count_calls = Arc::clone(&store.count_calls);
         // A zero list TTL means the count entry can never be read back, which
         // is the "expired between check and use" case.
@@ -737,7 +792,7 @@ mod tests {
     /// failed page.
     #[tokio::test]
     async fn an_unreadable_cached_total_degrades_to_the_store() {
-        let store = CountingStore::new(200);
+        let (store, _inner) = counting_store(200);
         let count_calls = Arc::clone(&store.count_calls);
         let state = counting_state(store);
         state.cache.set(Kind::List, &count_key(&state), Bytes::from_static(b"not-a-number")).await;
@@ -752,8 +807,10 @@ mod tests {
     /// surfaces as the contract 500 rather than a page with a wrong `total`.
     #[tokio::test]
     async fn a_store_count_failure_still_fails_the_page() {
-        let store = CountingStore::new(200);
-        store.fail_count.store(true, Ordering::SeqCst);
+        let (store, inner) = counting_store(200);
+        // Sticky: nothing retries this one, and a page with a wrong `total`
+        // would be worse than a failure.
+        inner.fail_always(StoreOp::Count);
         let app = router(counting_state(store));
 
         let response = app.oneshot(get("/products")).await.unwrap();

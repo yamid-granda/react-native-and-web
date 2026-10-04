@@ -144,18 +144,28 @@ fn classify_insert(error: sqlx::Error) -> StoreError {
 #[async_trait]
 impl UserStore for InMemoryStore {
     async fn find_user_by_email(&self, email: &str) -> Result<Option<UserRecord>, StoreError> {
+        self.gate(super::memory::StoreOp::Users).await?;
         let users = self.users().lock().expect("in-memory users");
         Ok(users.values().find(|record| record.user.email == email).cloned())
     }
 
     async fn find_user_by_id(&self, id: &str) -> Result<Option<StoreUser>, StoreError> {
+        self.gate(super::memory::StoreOp::Users).await?;
         let users = self.users().lock().expect("in-memory users");
         Ok(users.get(id).map(|record| record.user.clone()))
     }
 
     async fn create_user(&self, new_user: NewUser) -> Result<StoreUser, StoreError> {
+        self.gate(super::memory::StoreOp::Users).await?;
         let mut users = self.users().lock().expect("in-memory users");
-        if users.values().any(|record| record.user.email == new_user.email) {
+        // Production rejects a repeat of *either* unique column, because
+        // `classify_insert` maps any 23505 to `EmailTaken`. Inserting over an
+        // existing id instead would answer 201 and quietly destroy that
+        // seller's store name and password hash — the one way a refused
+        // registration could still change the row it collided with.
+        if users.values().any(|record| record.user.email == new_user.email)
+            || users.contains_key(&new_user.id)
+        {
             return Err(StoreError::EmailTaken);
         }
         let user = StoreUser {

@@ -21,6 +21,39 @@ pub use singleflight::Singleflight;
 /// instances, spelled out on [`CacheTier::generation`].
 const GENERATION_KEY: &str = "products:list:gen";
 
+// The key scheme itself, in one place.
+//
+// These three builders are the only place a cache key is spelled out. The byte
+// format is load-bearing — they are live Valkey keys across a fleet, and the
+// format is what lets one `INCR` retire every cached page — so this moves
+// *where* the string is built, never what it is.
+
+/// `handlers::products::detail` writes this entry and
+/// [`CacheTier::invalidate_detail`] retires it. Two spellings of this string
+/// would make every write keep answering 201/200 while serving a pre-write body
+/// until the detail TTL expired, with nothing failing.
+pub fn detail_key(id: &str) -> String {
+    format!("products:detail:{id}")
+}
+
+/// The catalog list key: namespace generation, then the page's float bits.
+///
+/// The generation is what makes a write path possible at all. Page keys cannot
+/// be enumerated — `products:list:<bits>` over every page a shopper has ever
+/// asked for is not a list anyone can walk — so a price change would otherwise
+/// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
+/// that a write bumps retires all of them at once, with one `INCR` and no
+/// `SCAN` (see `ARCHITECTURE.md` §12).
+pub fn list_key(generation: i64, page: f64) -> String {
+    format!("products:list:{generation}:{}", page.to_bits())
+}
+
+/// A public storefront's list key: the same scheme under a per-store namespace,
+/// so one write retires a seller's page along with the marketplace's.
+pub fn store_list_key(generation: i64, store_id: &str, page: f64) -> String {
+    format!("stores:{store_id}:products:list:{generation}:{}", page.to_bits())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HitSource {
     L1,
@@ -155,7 +188,7 @@ impl CacheTier {
     }
 
     pub async fn invalidate_detail(&self, id: &str) {
-        let key = format!("products:detail:{id}");
+        let key = detail_key(id);
         self.l1.remove(Kind::Detail, &key).await;
         if let Some(l2) = &self.l2 {
             l2.remove(&key).await;
@@ -201,7 +234,9 @@ mod tests {
     async fn a_bump_makes_previously_cached_list_pages_unreachable() {
         let cache =
             CacheTier::new(L1Cache::new(Duration::from_secs(60), Duration::from_secs(60)), None);
-        let key = |generation: i64| format!("products:list:{generation}:{}", 1.0f64.to_bits());
+        // The builder under test, not a literal copy of its format: a literal
+        // here would keep passing if the scheme changed underneath it.
+        let key = |generation: i64| list_key(generation, 1.0);
         cache.set(Kind::List, &key(cache.generation()), Bytes::from_static(b"before")).await;
         assert!(cache.get(Kind::List, &key(cache.generation())).await.is_some());
 
@@ -209,6 +244,23 @@ mod tests {
 
         assert_eq!(cache.generation(), 1);
         assert!(cache.get(Kind::List, &key(cache.generation())).await.is_none());
+    }
+
+    /// The key scheme is the correctness mechanism for write-driven
+    /// invalidation, so its byte format is pinned here rather than left to a
+    /// reader of the handlers.
+    #[test]
+    fn the_key_scheme_keeps_its_format() {
+        assert_eq!(detail_key("prod-1"), "products:detail:prod-1");
+        assert_eq!(list_key(7, 1.0), format!("products:list:7:{}", 1.0f64.to_bits()));
+        assert_eq!(
+            store_list_key(7, "usr-1", 1.0),
+            format!("stores:usr-1:products:list:7:{}", 1.0f64.to_bits())
+        );
+        // Distinct pages and distinct stores are distinct keys — the property
+        // singleflight and retirement both rest on.
+        assert_ne!(list_key(7, 1.0), list_key(7, 2.0));
+        assert_ne!(store_list_key(7, "usr-1", 1.0), store_list_key(7, "usr-2", 1.0));
     }
 
     #[tokio::test]
@@ -237,14 +289,14 @@ mod tests {
     async fn invalidate_detail_only_touches_the_detail_key() {
         let cache =
             CacheTier::new(L1Cache::new(Duration::from_secs(60), Duration::from_secs(60)), None);
-        cache.set(Kind::List, "products:list:0:1", Bytes::from_static(b"list")).await;
-        cache.set(Kind::Detail, "products:detail:prod-1", Bytes::from_static(b"detail")).await;
+        cache.set(Kind::List, &list_key(0, 1.0), Bytes::from_static(b"list")).await;
+        cache.set(Kind::Detail, &detail_key("prod-1"), Bytes::from_static(b"detail")).await;
 
         cache.invalidate_detail("prod-1").await;
 
-        assert!(cache.get(Kind::Detail, "products:detail:prod-1").await.is_none());
+        assert!(cache.get(Kind::Detail, &detail_key("prod-1")).await.is_none());
         assert!(
-            cache.get(Kind::List, "products:list:0:1").await.is_some(),
+            cache.get(Kind::List, &list_key(0, 1.0)).await.is_some(),
             "list pages are retired by the generation, not per key"
         );
     }

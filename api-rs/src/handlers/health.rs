@@ -93,7 +93,28 @@ fn down_body(message: String, response_time: u64) -> (StatusCode, HealthBody) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use axum::body::Body;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use crate::app::router;
+    use crate::config::Config;
+    use crate::store::{InMemoryStore, StoreOp};
+
     use super::*;
+
+    async fn get_health(config: Config, store: InMemoryStore) -> (StatusCode, serde_json::Value) {
+        let state = AppState::new(config, Arc::new(store), None, None);
+        let response = router(state)
+            .oneshot(axum::http::Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
 
     #[test]
     fn up_body_has_contract_key_order() {
@@ -117,5 +138,61 @@ mod tests {
             serde_json::to_string(&body).unwrap(),
             r#"{"status":"error","info":{},"error":{"database":{"message":"db went away","responseTime":7,"status":"down"}},"details":{"database":{"message":"db went away","responseTime":7,"status":"down"}}}"#
         );
+    }
+
+    /// The arm a store error takes. It used to be reachable only from
+    /// `tests/e2e_products.rs` against a database that had been taken away,
+    /// because every router-level test ran against a store that could not fail.
+    #[tokio::test]
+    async fn down_when_the_store_errors() {
+        let store = InMemoryStore::default();
+        store.fail_always(StoreOp::Ping);
+
+        let (status, body) = get_health(Config::default(), store).await;
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["status"], "error");
+        assert_eq!(body["error"]["database"]["status"], "down");
+        assert_eq!(body["details"]["database"]["status"], "down");
+        assert!(body["info"]["database"].is_null(), "a down check has no up answer");
+        assert!(
+            body["error"]["database"]["message"].as_str().is_some_and(|m| !m.is_empty()),
+            "the error's own text is what a human reads"
+        );
+    }
+
+    /// The arm a slow store takes. The store's future never resolves, so
+    /// `tokio::time::timeout` is what ends it — which is the whole point. A
+    /// sleep longer than the timeout would prove only that a sleep elapsed.
+    #[tokio::test]
+    async fn down_when_the_store_outlives_the_ping_timeout() {
+        let store = InMemoryStore::default();
+        store.hang_always(StoreOp::Ping);
+
+        let (status, body) =
+            get_health(Config { health_ping_timeout_ms: 25, ..Config::default() }, store).await;
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["status"], "error");
+        assert_eq!(body["error"]["database"]["status"], "down");
+        assert_eq!(body["error"]["database"]["message"], "timeout of 25ms exceeded");
+    }
+
+    /// One-shot is one-shot: the next probe after a failed one is a normal
+    /// up. A load balancer retries, so a store that kept failing after a single
+    /// blip would take a healthy service out of rotation.
+    #[tokio::test]
+    async fn one_failed_probe_does_not_poison_the_next() {
+        let store = InMemoryStore::default();
+        store.fail_once(StoreOp::Ping);
+
+        let (first_status, _) = get_health(Config::default(), store.clone()).await;
+        let (second_status, body) = get_health(Config::default(), store).await;
+
+        assert_eq!(first_status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(second_status, StatusCode::OK);
+        assert_eq!(body["status"], "ok");
+        assert_eq!(body["details"]["database"]["status"], "up");
+        assert!(body["error"]["database"].is_null());
     }
 }

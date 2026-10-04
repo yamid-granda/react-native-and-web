@@ -1,12 +1,10 @@
 import { useCallback, useState } from "react"
 import { router, useLocalSearchParams } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { Text } from "react-native"
 import {
-  ProductFormScreen,
-  useRequireSession,
-  type ProductData,
-  type ProductFormValues,
+  ProductEditorScreen,
+  SessionGate,
+  productQueryKey,
 } from "@rnw/components-library"
 import { fetchProduct, updateMyProduct } from "../../../api/client"
 
@@ -17,28 +15,33 @@ import { fetchProduct, updateMyProduct } from "../../../api/client"
  * `GET /my-store/products/{id}` route, because a seller editing their own product
  * can already read it publicly, and a second route would only exist to hide a row
  * the marketplace shows anyway.
+ *
+ * The read sits in a child component because of the rule of hooks: it only runs
+ * once `SessionGate` has let a signed-in seller past, which is also why it needs
+ * no `enabled` gate of its own.
  */
 export default function EditProductRoute() {
+  const signIn = useCallback(() => router.replace("/login"), [])
+
+  return (
+    <SessionGate onSignIn={signIn}>
+      <EditProductForm />
+    </SessionGate>
+  )
+}
+
+function EditProductForm() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const session = useRequireSession({
-    onSignIn: useCallback(() => router.replace("/login"), []),
-  })
 
   const { data: product, isLoading, error: loadError } = useQuery({
-    queryKey: ["product", id],
+    queryKey: productQueryKey(id),
     queryFn: () => fetchProduct(id),
-    enabled: session.status === "authenticated",
   })
 
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
-
   return (
-    <Editor
+    <ProductEditorScreen
       product={product}
       isLoading={isLoading}
       // A product that is not the caller's comes back as a 404, not a 403 — so
@@ -47,53 +50,9 @@ export default function EditProductRoute() {
       isSubmitting={isSubmitting}
       setSubmitting={setIsSubmitting}
       setError={setError}
+      update={updateMyProduct}
       onDone={() => router.replace("/my-store")}
       onCancel={() => router.back()}
-    />
-  )
-}
-
-function Editor({
-  product,
-  isLoading,
-  error,
-  isSubmitting,
-  setSubmitting,
-  setError,
-  onDone,
-  onCancel,
-}: {
-  product?: ProductData
-  isLoading: boolean
-  error: Error | null
-  isSubmitting: boolean
-  setSubmitting: (value: boolean) => void
-  setError: (value: Error | null) => void
-  onDone: () => void
-  onCancel: () => void
-}) {
-  if (isLoading) return <Text className="p-6 text-muted">Loading product…</Text>
-  if (!product) return <Text className="p-6 text-muted">Product not found.</Text>
-
-  const save = async (values: ProductFormValues) => {
-    setError(null)
-    setSubmitting(true)
-    try {
-      await updateMyProduct(product.id, values)
-      onDone()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause : new Error("Could not save the product"))
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <ProductFormScreen
-      product={product}
-      isSubmitting={isSubmitting}
-      error={error}
-      onCancel={onCancel}
-      onSubmit={save}
     />
   )
 }
