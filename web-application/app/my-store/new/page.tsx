@@ -2,21 +2,28 @@
 
 import { useCallback, useState } from "react"
 import { useRouter } from "solito/navigation"
-import { Text } from "react-native"
-import { ProductFormScreen, useRequireSession } from "@rnw/components-library"
+import { ProductFormScreen, SessionGate } from "@rnw/components-library"
 import { createMyProduct } from "../../../lib/api"
 
 export default function NewProductPage() {
   const router = useRouter()
+  const signIn = useCallback(() => router.replace("/login"), [router])
+
+  return (
+    <SessionGate onSignIn={signIn}>
+      <NewProductForm />
+    </SessionGate>
+  )
+}
+
+/**
+ * Split out of the route so the submit state belongs to a component that only
+ * exists once there is a session; `SessionGate` renders nothing before then.
+ */
+function NewProductForm() {
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const signIn = useCallback(() => router.replace("/login"), [router])
-  const session = useRequireSession({ onSignIn: signIn })
-
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
 
   return (
     <ProductFormScreen

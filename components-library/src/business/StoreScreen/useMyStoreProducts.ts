@@ -29,6 +29,18 @@ export function myStoreKey(storeId: string) {
 }
 
 /**
+ * The cache key for one product.
+ *
+ * Shared by the public detail screen and the seller's edit screen: they read the
+ * same row through the same endpoint, so one helper for the key is what stops a
+ * change to either one from quietly becoming a second, separately-cached copy of
+ * the same product.
+ */
+export function productQueryKey(id: string) {
+  return ["product", id] as const
+}
+
+/**
  * The repo's first mutation, and therefore the pattern the rest will follow:
  * `useMutation` for the write, then invalidate the query that read it. Nothing
  * optimistic — the lists are small and the server is the source of truth, so an

@@ -1,20 +1,25 @@
 import { useCallback, useState } from "react"
 import { router } from "expo-router"
-import { Text } from "react-native"
-import { ProductFormScreen, useRequireSession } from "@rnw/components-library"
+import { ProductFormScreen, SessionGate } from "@rnw/components-library"
 import { createMyProduct } from "../../api/client"
 
 export default function NewProductRoute() {
+  const signIn = useCallback(() => router.replace("/login"), [])
+
+  return (
+    <SessionGate onSignIn={signIn}>
+      <NewProductForm />
+    </SessionGate>
+  )
+}
+
+/**
+ * Split out of the route so the submit state belongs to a component that only
+ * exists once there is a session; `SessionGate` renders nothing before then.
+ */
+function NewProductForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const session = useRequireSession({
-    onSignIn: useCallback(() => router.replace("/login"), []),
-  })
-
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
 
   return (
     <ProductFormScreen

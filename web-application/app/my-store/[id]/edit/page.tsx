@@ -1,14 +1,12 @@
 "use client"
 
-import { use, useCallback, useState } from "react"
+import { use, useCallback } from "react"
 import { useRouter } from "solito/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Text } from "react-native"
 import {
-  ProductFormScreen,
-  useRequireSession,
-  type ProductData,
-  type ProductFormValues,
+  ProductEditorScreen,
+  SessionGate,
+  productQueryKey,
 } from "@rnw/components-library"
 import { fetchProduct, updateMyProduct } from "../../../../lib/api"
 
@@ -20,85 +18,57 @@ import { fetchProduct, updateMyProduct } from "../../../../lib/api"
  * can already read it publicly, and a second route would only exist to hide a row
  * the marketplace shows anyway.
  *
+ * The read stays here because `fetchProduct` is this app's transport; the save and
+ * the session guard do not touch the transport, so they are shared.
+ *
  * Shape follows `app/marketplace/[id]/page.tsx` exactly — `params` is a promise,
  * so `use(params)` suspends on the first render.
  */
 export default function EditProductPage({ params }: PageProps<"/my-store/[id]/edit">) {
   const { id } = use(params)
   const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
   const signIn = useCallback(() => router.replace("/login"), [router])
-  const session = useRequireSession({ onSignIn: signIn })
-
-  const { data: product, isLoading, error: loadError } = useQuery({
-    queryKey: ["product", id],
-    queryFn: () => fetchProduct(id),
-    enabled: session.status === "authenticated",
-  })
-
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
 
   return (
-    <Editor
+    <SessionGate onSignIn={signIn}>
+      <EditProductForm
+        id={id}
+        onDone={() => router.replace("/my-store")}
+        onCancel={() => router.back()}
+      />
+    </SessionGate>
+  )
+}
+
+/**
+ * Behind the gate, so the query needs no `enabled` of its own: `SessionGate`
+ * renders nothing until there is a session, and by then this is only mounted for
+ * a signed-in seller.
+ */
+function EditProductForm({
+  id,
+  onDone,
+  onCancel,
+}: {
+  id: string
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const { data: product, isLoading, error } = useQuery({
+    queryKey: productQueryKey(id),
+    queryFn: () => fetchProduct(id),
+  })
+
+  return (
+    <ProductEditorScreen
       product={product}
       isLoading={isLoading}
       // A product that is not the caller's comes back as a 404, not a 403 — so
       // "not found" and "not yours" render the same screen, which is deliberate.
-      error={loadError ?? error}
-      isSubmitting={isSubmitting}
-      setSubmitting={setIsSubmitting}
-      setError={setError}
-      onDone={() => router.replace("/my-store")}
-      onCancel={() => router.back()}
-    />
-  )
-}
-
-function Editor({
-  product,
-  isLoading,
-  error,
-  isSubmitting,
-  setSubmitting,
-  setError,
-  onDone,
-  onCancel,
-}: {
-  product?: ProductData
-  isLoading: boolean
-  error: Error | null
-  isSubmitting: boolean
-  setSubmitting: (value: boolean) => void
-  setError: (value: Error | null) => void
-  onDone: () => void
-  onCancel: () => void
-}) {
-  if (isLoading) return <Text className="p-6 text-muted">Loading product…</Text>
-  if (!product) return <Text className="p-6 text-muted">Product not found.</Text>
-
-  const save = async (values: ProductFormValues) => {
-    setError(null)
-    setSubmitting(true)
-    try {
-      await updateMyProduct(product.id, values)
-      onDone()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause : new Error("Could not save the product"))
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <ProductFormScreen
-      product={product}
-      isSubmitting={isSubmitting}
       error={error}
+      update={updateMyProduct}
+      onDone={onDone}
       onCancel={onCancel}
-      onSubmit={save}
     />
   )
 }

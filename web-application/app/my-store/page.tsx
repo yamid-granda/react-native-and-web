@@ -2,13 +2,7 @@
 
 import { useCallback, useMemo } from "react"
 import { useRouter } from "solito/navigation"
-import { Text } from "react-native"
-import {
-  StoreScreen,
-  useMyStoreProducts,
-  useRequireSession,
-  useSessionStore,
-} from "@rnw/components-library"
+import { SessionGate, StoreScreen, useMyStoreRoute } from "@rnw/components-library"
 import {
   createMyProduct,
   deleteMyProduct,
@@ -19,30 +13,23 @@ import {
 /**
  * My Store: the seller's own product list.
  *
- * Split in two because of the rule of hooks: the session guard can resolve to
- * "anonymous", and `useMyStoreProducts` must not run in that case. The guard is
- * UX only — the API's 401 is the boundary.
+ * Routing and this app's api adapter, and nothing else. `SessionGate` owns the
+ * session guard and `useMyStoreRoute` the query wiring, so the parts that were
+ * copy-pasted into the mobile twin live in components-library instead.
  */
 export default function MyStorePage() {
   const router = useRouter()
   const signIn = useCallback(() => router.replace("/login"), [router])
-  const session = useRequireSession({ onSignIn: signIn })
 
-  if (session.status === "loading") {
-    return <Text className="p-6 text-muted">Checking your session…</Text>
-  }
-  if (session.status === "anonymous") return null
-
-  return <SignedInStore />
+  return (
+    <SessionGate onSignIn={signIn}>
+      <SignedInStore />
+    </SessionGate>
+  )
 }
 
 function SignedInStore() {
   const router = useRouter()
-  const user = useSessionStore((state) => state.user)
-  // Keyed on the id rather than the object: a re-render that produces a new but
-  // equal user must not re-key the query cache.
-  const storeId = user?.id ?? ""
-
   const api = useMemo(
     () => ({
       list: fetchMyProducts,
@@ -53,18 +40,12 @@ function SignedInStore() {
     }),
     [],
   )
-  const store = useMyStoreProducts(storeId, api)
 
-  return (
-    <StoreScreen
-      storeName={user?.storeName ?? "My Store"}
-      products={store.products}
-      isLoading={store.isLoading}
-      error={store.error}
-      isMutating={store.isMutating}
-      onCreate={() => router.push("/my-store/new")}
-      onEdit={(id) => router.push(`/my-store/${id}/edit`)}
-      onDelete={(id) => store.remove.mutate(id)}
-    />
+  const props = useMyStoreRoute(
+    api,
+    () => router.push("/my-store/new"),
+    (id) => router.push(`/my-store/${id}/edit`),
   )
+
+  return <StoreScreen {...props} />
 }
