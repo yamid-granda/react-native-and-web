@@ -168,7 +168,9 @@ the contract port 3001 that both clients default to; Grafana (from
   never imports Solito at all and stays exactly as it was, onPress-driven;
   only `MainNav.web.tsx` (a separate file, Metro/Vite platform resolution)
   uses `solito/navigation`'s `useLink()`, where the web implementation is a
-  safe, plain wrapper over `next/navigation`.
+  safe, plain wrapper over `next/navigation`. Neither adapter imports the
+  other's `MainNavItem`, and the item body neither imports has no idea which
+  platform resolved its press behaviour.
 - **`expo-router/ui`'s `<TabList>` only discovers `<TabTrigger>`s among its
   own direct, unwrapped children.** Verified from source
   (`expo-router/build/ui/Tabs.js`'s `parseTriggersFromChildren`): it walks
@@ -248,6 +250,15 @@ the contract port 3001 that both clients default to; Grafana (from
   `nativewind_jsx-dev-runtime`, and the served CSS contains the real
   compiled `bg-brand` utility) and the web-application Playwright suite
   (real Next.js/Turbopack build, same "full bundle" behavior).
+  Because `vitest.config.web.ts` lists `.web.tsx` **first** in
+  `resolve.extensions` and only globs `src/**/*.web.test.tsx`, the *native*
+  half of a platform-split component was structurally unreachable from
+  `pnpm test` — only `tsc` and Detox ever loaded it. That is the other
+  reason `Product` and `MainNav` keep a shared, unsuffixed body
+  (`ProductCard.tsx`, `MainNavItem.tsx`): it is testable by the one project
+  that exists. The adapters themselves are still not rendered by any Vitest
+  project — the props each one computes are verified by `tsc`, and on native
+  by Detox.
 - **`Button.tsx` casts `Pressable`/`Text` locally** instead of relying on
   NativeWind's ambient `className` type augmentation
   (`react-native-css-interop/types`). That augmentation doesn't cover
@@ -336,13 +347,32 @@ the contract port 3001 that both clients default to; Grafana (from
 - **`MainNav` is platform-split (`MainNav.tsx` native, `MainNav.web.tsx`
   web)**, not one file with internal branching — see the Solito bullet
   above for why (native must never import `solito/navigation` at all).
-  Both cast `Pressable` locally, same reasoning as the `Button.tsx` cast
-  above: react-native-web's `View` (which `Pressable` wraps) recognizes an
-  `href` prop and renders an `<a>` instead of a `<div>`, but RN's own
-  `PressableProps`/`ViewProps` types don't know about this
-  react-native-web-only behavior. Both are also wrapped in `forwardRef` —
-  `expo-router/ui`'s `TabTrigger asChild` needs to forward a `ref` to
-  whatever it clones, which a plain function component can't receive.
+  The split is *two thin adapters over one body*, not two components: both
+  adapters do nothing but resolve how a press becomes navigation
+  (`accessibilityRole`/`onPress` vs. `solito`'s `useLink()` `href`) and hand
+  it to `MainNavItem.tsx`, which holds the icon, badge and title once.
+  `MainNavItem.tsx` is where `Pressable` is cast locally, same reasoning as
+  the `Button.tsx` cast above: react-native-web's `View` (which `Pressable`
+  wraps) recognizes an `href` prop and renders an `<a>` instead of a
+  `<div>`, but RN's own `PressableProps`/`ViewProps` types don't know about
+  this react-native-web-only behavior. Both *adapters* are also wrapped in
+  `forwardRef` — `expo-router/ui`'s `TabTrigger asChild` needs to forward a
+  `ref` to whatever it clones, which a plain function component can't
+  receive — and each passes it down to the item.
+  `Product` follows the same shape (`ProductCard.tsx` is the body; the two
+  adapters only supply the image element, since `expo-image` and
+  react-native-web's `Image` take different props).
+  The rule of thumb: **split the file, not the component** — extract a shared
+  body when the difference is an import or a platform prop, but leave a pair
+  alone when the difference is a rendering strategy (`ProductListScreen`'s
+  `FlatList` vs. a CSS grid, which stays split).
+- **`MainNav.web.tsx` adds `shrink overflow-hidden` to the item's own
+  classes**, and `MainNavItem.tsx` does not. This is deliberate: both are
+  meaningful to Yoga, so hoisting them into the shared body would be a
+  native layout change. They are passed through `MainNavItem`'s `className`
+  prop instead, and can move once `mobile-application`'s
+  `e2e/tab-bar-position.e2e.ts` plus a visual check of a 5-item bar at a
+  narrow width can confirm native is unaffected.
 - **react-native-web's `Text` hardcodes `color: 'black'`** instead of
   inheriting it (`exports/Text/index.js`). `MainNav` used to work around
   this by giving its label `text-current` (`color: currentColor`) so it
