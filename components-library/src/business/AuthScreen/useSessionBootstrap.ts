@@ -4,7 +4,8 @@ import type { StoreUser } from "../../types/Store"
 
 export type SessionBootstrapOptions = {
   /**
-   * `GET /auth/me`. Injected because components-library has no api layer.
+   * `GET /auth/me`. Injected — the app passes its client's `validateSession`
+   * from `createApi`, so this hook names an argument rather than a transport.
    *
    * Rejecting is the normal path for an expired or revoked token, and it means
    * "anonymous" — not an error the user needs to see.

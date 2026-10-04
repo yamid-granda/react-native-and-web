@@ -8,6 +8,8 @@ const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock("solito/navigation", () => ({ useRouter: () => ({ push }) }))
 // The page hands the screen a fetcher from `lib/api`; only the resolution this
 // test cares about is stubbed, so the cart prices what the "server" returns.
+// The spread keeps the real re-export of the shared client
+// (`createApi`), so `importOriginal` below is loading that, not a per-app copy.
 vi.mock("../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/api")>()),
   fetchProductsByIds: vi.fn(async (ids: string[]) => ({

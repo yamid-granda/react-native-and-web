@@ -4,12 +4,13 @@ import type { ProductFormValues } from "../ProductFormScreen/ProductFormScreen"
 
 /**
  * The api surface a My Store screen needs, injected by the app that owns the
- * transport.
+ * session.
  *
- * components-library deliberately has no api layer: each app has its own `fetch`
- * wrapper (different base-URL resolution, different navigation) and a shared one
- * would have to grow a platform switch. Passing the functions in is what keeps
- * the *state* pattern shared without sharing the *transport*.
+ * Still injected rather than imported, but no longer because the transport is
+ * per-app: components-library owns it once (`api/transport.ts`) and each app
+ * supplies only what is genuinely its own — a `baseUrl` and `getSessionToken` —
+ * to `createApi`. See `web-application/lib/api.ts` for the whole of one app's
+ * client.
  *
  * The hooks below each take only the members they use — `Pick` rather than this
  * whole type — so a caller cannot hand over a write function to a read hook and

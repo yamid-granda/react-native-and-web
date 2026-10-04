@@ -48,7 +48,11 @@ export { ProductDetailScreen } from "./business/ProductDetailScreen/ProductDetai
 export type { ProductDetailScreenProps } from "./business/ProductDetailScreen/ProductDetailScreen"
 export { CartScreen } from "./business/CartScreen/CartScreen"
 export type { CartScreenProps } from "./business/CartScreen/CartScreen"
-export { useCartStore, getCartTotalCount, getCartTotalPrice } from "./business/CartScreen/useCartStore"
+export {
+  useCartStore,
+  getCartTotalCount,
+  getCartTotalPrice,
+} from "./business/CartScreen/useCartStore"
 export type { CartItem, ResolvedCartLine } from "./business/CartScreen/useCartStore"
 export { CheckoutScreen } from "./business/CheckoutScreen/CheckoutScreen"
 export type { CheckoutScreenProps } from "./business/CheckoutScreen/CheckoutScreen"
@@ -106,3 +110,5 @@ export type { PublicStoreScreenProps } from "./business/PublicStoreScreen/Public
 export { createPersistStorage } from "./utils/persistStorage"
 export type { AuthSession, StoreProfile, StoreUser } from "./types/Store"
 export { cn } from "./utils/cn"
+export { createApi, ApiError } from "./api/transport"
+export type { Api, ApiConfig } from "./api/transport"

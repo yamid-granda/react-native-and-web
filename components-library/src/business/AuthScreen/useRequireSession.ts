@@ -11,9 +11,8 @@ export type UseRequireSessionOptions = {
  *
  * **UX, not security.** The API's 401 is the boundary; this only stops an
  * anonymous visitor from being shown an empty list that is about to fail. That is
- * also why it takes `onSignIn` rather than owning a route: components-library has
- * no api layer and no router, and adding either here would be the first of its
- * kind in the package.
+ * also why it takes `onSignIn` rather than owning a route: there is no router in
+ * this package, and a caller supplies its own.
  *
  * Returns a discriminated result rather than rendering, so the caller decides what
  * "loading" and "signed out" look like on its own platform.
