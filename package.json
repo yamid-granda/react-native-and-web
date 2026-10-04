@@ -16,6 +16,11 @@
     "typecheck": "turbo run typecheck",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "routine:status": "launchctl list | grep -F ai.opencode.routine || echo 'not loaded -- run: pnpm routine:start'",
+    "routine:start": "launchctl bootstrap gui/$(id -u) \"$HOME/Library/LaunchAgents/ai.opencode.routine.plist\" 2>/dev/null; launchctl list | grep -qF ai.opencode.routine && echo 'routine loaded -- runs hourly' || echo 'failed to load -- check ~/Library/LaunchAgents/ai.opencode.routine.plist'",
+    "routine:stop": "launchctl bootout gui/$(id -u)/ai.opencode.routine 2>/dev/null; launchctl list | grep -qF ai.opencode.routine && echo 'still loaded -- stop failed' || echo 'routine unloaded'",
+    "routine:run": "launchctl kickstart -p gui/$(id -u)/ai.opencode.routine && echo 'routine triggered -- follow with: pnpm routine:logs'",
+    "routine:logs": "tail -f \"$HOME/.local/state/opencode-routine/runs.log\"",
     "prepare": "husky"
   },
   "devDependencies": {
