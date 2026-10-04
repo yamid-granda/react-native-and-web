@@ -62,7 +62,10 @@ fn bench_handlers(criterion: &mut Criterion) {
     });
 
     let mut group = criterion.benchmark_group("handlers");
-    group.bench_function("list-page-cache-miss-50k", |bench| {
+    // Exercises the in-memory double's `rows()` over the whole catalogue — a clone
+    // and a re-sort — and no query, no cache key and no singleflight. It does not
+    // measure `sqlx_pool_acquire_seconds`, which is what the architecture gates on.
+    group.bench_function("list-page-in-memory-store-cache-miss", |bench| {
         bench.to_async(&runtime).iter(|| async {
             let response = app_uncached.clone().oneshot(request("/products?page=2")).await.unwrap();
             std::hint::black_box(response.status());

@@ -399,9 +399,9 @@ flowchart LR
 
 The last step is no longer aspirational: `DATABASE_READ_URL` plus
 `DB_READ_MAX_CONNECTIONS` build a second pool, `list_page`/`count`/`find_by_id`
-use it, and `ping` stays on the primary so `/health` still detects a dead
-primary. An unreachable replica degrades to primary reads rather than a dead
-service.
+and `list_public_page_by_owner`/`count_public_by_owner` use it, and `ping` stays
+on the primary so `/health` still detects a dead primary. An unreachable replica
+degrades to primary reads rather than a dead service.
 
 > **Replica lag is a choice now, not a latent bug.** A just-created product can
 > briefly be absent from the public reads, so `GET /products` and
@@ -410,6 +410,11 @@ service.
 > The remaining exposure is a stale-but-working replica hiding a new product from
 > the marketplace until it catches up; unsetting `DATABASE_READ_URL` removes it by
 > putting every read on the primary. §5 has the full table.
+
+The seller and the storefront read the *same rows* through *different methods* —
+`list_page_for_owner` on the primary, `list_public_page_by_owner` on the read
+pool — because they have opposite freshness requirements and one method name
+cannot carry both. Neither caller can drift onto the other's pool by accident.
 
 The constraints that make this work, restated as rules:
 
