@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { PublicStoreScreen } from "@rnw/components-library"
+import { PublicStoreScreen, storeKey, storeProductsKey } from "@rnw/components-library"
 import { fetchStore, fetchStoreProducts } from "../../api/client"
 
 /**
@@ -12,9 +12,9 @@ import { fetchStore, fetchStoreProducts } from "../../api/client"
 export default function StoreRoute() {
   const { id } = useLocalSearchParams<{ id: string }>()
 
-  const store = useQuery({ queryKey: ["store", id], queryFn: () => fetchStore(id) })
+  const store = useQuery({ queryKey: storeKey(id), queryFn: () => fetchStore(id) })
   const products = useQuery({
-    queryKey: ["store-products", id],
+    queryKey: storeProductsKey(id),
     queryFn: () => fetchStoreProducts(id),
   })
 
