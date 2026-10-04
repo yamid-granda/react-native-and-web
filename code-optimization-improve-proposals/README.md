@@ -36,10 +36,12 @@ chronological order — which is how the implementer picks the oldest `todo/` en
 the proposal document, and re-runs the tests, typecheck, lint, and web build
 itself rather than trusting the pull request body.
 
-- If the review finds defects, it pushes the corrections to that same branch and
-  leaves the pull request open. The next run re-reviews and merges it.
-- If the review finds nothing wrong, it squash-merges with a Conventional Commits
-  message of its own.
+- If the review finds defects, it fixes them on that same branch, re-runs the whole
+  gate on what it pushed, and merges — in the same run. Merging is the objective.
+- If the review finds nothing wrong, it merges straight away.
+
+Either way it squash-merges with a Conventional Commits message of its own, and
+declares any correction it made in the merge commit body.
 
 A pull request that does not move its proposal document from `in-progress/` to
 `implemented/` is a blocking defect: the document would never be archived when the
