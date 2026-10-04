@@ -1,10 +1,8 @@
 import type { ComponentType } from "react"
 import {
-  Pressable,
   ScrollView,
   Text,
   View,
-  type PressableProps,
   type ScrollViewProps,
   type TextProps,
   type ViewProps,
@@ -17,7 +15,6 @@ import type { ProductData } from "../../types/Product"
 const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
 export type StoreScreenProps = {
   storeName: string
@@ -82,23 +79,23 @@ export function StoreScreen({
                     {product.stock === 0 ? " · out of stock" : ` · ${product.stock} in stock`}
                   </ClassNameText>
                 </ClassNameView>
-                <ClassNamePressable
-                  accessibilityRole="button"
+                <Button
+                  label="Edit"
+                  variant="ghost"
+                  size="sm"
                   accessibilityLabel={`Edit ${product.title}`}
+                  testID={`store-edit-${product.id}`}
                   onPress={() => onEdit(product.id)}
-                  className="px-2 py-1"
-                >
-                  <ClassNameText className="text-sm text-muted">Edit</ClassNameText>
-                </ClassNamePressable>
-                <ClassNamePressable
-                  accessibilityRole="button"
+                />
+                <Button
+                  label="Delete"
+                  variant="ghost"
+                  size="sm"
                   accessibilityLabel={`Delete ${product.title}`}
+                  testID={`store-delete-${product.id}`}
                   disabled={isMutating}
                   onPress={() => onDelete(product.id)}
-                  className={isMutating ? "px-2 py-1 opacity-50" : "px-2 py-1"}
-                >
-                  <ClassNameText className="text-sm text-muted">Delete</ClassNameText>
-                </ClassNamePressable>
+                />
               </ClassNameView>
             ))}
           </ClassNameView>

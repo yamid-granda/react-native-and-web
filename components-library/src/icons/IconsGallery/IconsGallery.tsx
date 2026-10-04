@@ -2,21 +2,19 @@ import { useState, type ComponentType } from "react"
 import {
   Pressable,
   Text,
-  TextInput,
   View,
   type PressableProps,
-  type TextInputProps,
   type TextProps,
   type ViewProps,
 } from "react-native"
 import { cn } from "../../utils/cn"
 import { iconRegistry } from "../registry"
+import { Input } from "../../common/Input/Input"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNameTextInput = TextInput as ComponentType<TextInputProps & { className?: string }>
 
 const COPIED_LABEL_TIMEOUT_MS = 1200
 
@@ -50,12 +48,11 @@ export function IconsGallery() {
 
   return (
     <ClassNameView className="w-full gap-4 p-4">
-      <ClassNameTextInput
+      <Input
         value={query}
         onChangeText={setQuery}
         placeholder="Search icons by name or keyword..."
         accessibilityLabel="Search icons"
-        className="rounded-lg border border-surface-muted bg-surface px-3 py-2 text-sm text-foreground"
       />
       <ClassNameText className="text-xs text-muted">
         {results.length} of {iconRegistry.length} icons

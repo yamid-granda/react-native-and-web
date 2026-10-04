@@ -62,10 +62,13 @@ export function Input({
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        "rounded-lg border border-surface-muted bg-surface px-3 py-2",
-        // A one-line input centres its content; a tall one has to start at the
-        // top or the first line floats in the middle of the box.
-        multiline ? "items-start" : "flex-row items-center",
+        "gap-2 rounded-lg border border-surface-muted bg-surface px-3",
+        // A one-line input is the shared control height (h-control,
+        // tailwind-preset.cjs — the same token Button uses) so inputs and
+        // buttons line up. A multiline one has to grow, so it gets padding
+        // instead of a fixed height, and starts at the top or the first line
+        // would float in the middle of the box.
+        multiline ? "items-start py-2" : "h-control flex-row items-center",
         className,
       )}
     >

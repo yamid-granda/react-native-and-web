@@ -7,6 +7,18 @@
 module.exports = {
   theme: {
     extend: {
+      // Single source of truth for the size of every button and input in the
+      // repo. `h-control` is applied by components-library's Button/Input and
+      // nothing anywhere else may hardcode a control height, so web and native
+      // stay on one value without either app restating it. 2.75rem == 44px,
+      // the smallest touch target iOS HIG and WCAG both consider comfortable.
+      // `w-control` keeps square (icon) buttons circular at the same size.
+      height: {
+        control: "2.75rem",
+      },
+      width: {
+        control: "2.75rem",
+      },
       colors: {
         brand: {
           DEFAULT: "#2563eb",

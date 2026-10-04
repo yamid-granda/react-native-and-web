@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react"
 import { Modal, Pressable, type PressableProps } from "react-native"
 import { CloseIcon } from "../../icons/CloseIcon/CloseIcon"
+import { Button } from "../Button/Button"
 
 // see Button.tsx / README "Architecture boundaries" for why this is cast locally
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
@@ -33,14 +34,15 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
           onPress={(e) => e.stopPropagation()}
           className="relative max-h-[50%] gap-4 rounded-t-2xl bg-surface p-6"
         >
-          <ClassNamePressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
+          <Button
+            label="Close"
+            size="icon"
+            variant="ghost"
             onPress={onClose}
-            className="absolute right-4 top-4 h-8 w-8 items-center justify-center rounded-full active:bg-surface-muted"
+            className="absolute right-4 top-4"
           >
             <CloseIcon size={20} className="text-muted" />
-          </ClassNamePressable>
+          </Button>
           {children}
         </ClassNamePressable>
       </ClassNamePressable>

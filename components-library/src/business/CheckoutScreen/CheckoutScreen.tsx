@@ -1,22 +1,20 @@
 import { useState, type ComponentType } from "react"
 import {
-  Pressable,
   ScrollView,
   Text,
   View,
-  type PressableProps,
   type ScrollViewProps,
   type TextProps,
   type ViewProps,
 } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
+import { Button } from "../../common/Button/Button"
 import { getCartTotalPrice, useCartStore } from "../CartScreen/useCartStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
-const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
 
 export type CheckoutScreenProps = {
   onGoToCart?: () => void
@@ -48,22 +46,22 @@ export function CheckoutScreen({ onGoToCart, onContinueShopping }: CheckoutScree
             <ClassNameText className="text-lg font-bold text-brand">
               {formatPrice(placedTotal)}
             </ClassNameText>
-            <ClassNamePressable
-              accessibilityRole="button"
+            <Button
+              label="Continue Shopping"
+              className="self-start"
               onPress={() => onContinueShopping?.()}
-              className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
-            >
-              <ClassNameText className="text-base font-semibold text-white">
-                Continue Shopping
-              </ClassNameText>
-            </ClassNamePressable>
+            />
           </>
         ) : lineItems.length === 0 ? (
           <>
             <ClassNameText className="text-muted">Your cart is empty.</ClassNameText>
-            <ClassNamePressable accessibilityRole="button" onPress={() => onGoToCart?.()}>
-              <ClassNameText className="text-sm text-brand">Go to Cart</ClassNameText>
-            </ClassNamePressable>
+            <Button
+              label="Go to Cart"
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onPress={() => onGoToCart?.()}
+            />
           </>
         ) : (
           <>
@@ -90,15 +88,7 @@ export function CheckoutScreen({ onGoToCart, onContinueShopping }: CheckoutScree
             <ClassNameText className="text-lg font-bold text-brand">
               Total: {formatPrice(getCartTotalPrice(items))}
             </ClassNameText>
-            <ClassNamePressable
-              accessibilityRole="button"
-              onPress={placeOrder}
-              className="items-center justify-center self-start rounded-lg bg-brand px-4 py-3 active:bg-brand-dark"
-            >
-              <ClassNameText className="text-base font-semibold text-white">
-                Place Order
-              </ClassNameText>
-            </ClassNamePressable>
+            <Button label="Place Order" className="self-start" onPress={placeOrder} />
           </>
         )}
       </ClassNameView>

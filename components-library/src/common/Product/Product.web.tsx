@@ -4,6 +4,7 @@ import { cn } from "../../utils/cn"
 import { formatPrice } from "../../utils/formatPrice"
 import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
 import { isWishlisted, useWishlistStore } from "../../business/WishlistScreen/useWishlistStore"
+import { Button } from "../Button/Button"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -29,10 +30,11 @@ export const Product = memo(function Product({
   const toggleItem = useWishlistStore((state) => state.toggleItem)
 
   return (
-    // A plain View, not a second Pressable, wraps the card content and the
-    // wishlist toggle as siblings: accessibilityRole="button" renders a
-    // real <button> on web (propsToAccessibilityComponent), and nesting
-    // one <button> inside another is invalid HTML that breaks hydration.
+    // A plain View, not a second button, wraps the card content and the
+    // wishlist toggle as siblings: both render a real <button> on web
+    // (accessibilityRole="button" via propsToAccessibilityComponent), and
+    // nesting one <button> inside another is invalid HTML that breaks
+    // hydration.
     <ClassNameView className={cn("relative w-full", className)}>
       <ClassNamePressable
         testID={`product-card-${id}`}
@@ -73,15 +75,16 @@ export const Product = memo(function Product({
         ) : null}
         <Text className="text-base font-bold text-brand">{formatPrice(price, currency)}</Text>
       </ClassNamePressable>
-      <ClassNamePressable
+      <Button
+        label={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
+        size="icon"
+        variant="secondary"
         testID={`wishlist-toggle-${id}`}
-        accessibilityRole="button"
-        accessibilityLabel={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
         onPress={() => toggleItem({ id, title, description, price, currency, imageUrl, stock })}
-        className="absolute right-2 top-2 h-8 w-8 items-center justify-center rounded-full bg-surface/80"
+        className="absolute right-2 top-2"
       >
         <HeartIcon size={18} filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
-      </ClassNamePressable>
+      </Button>
     </ClassNameView>
   )
 })
