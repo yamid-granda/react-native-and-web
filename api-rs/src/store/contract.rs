@@ -29,6 +29,12 @@ const OTHER_OWNER_ID: &str = "usr_store_contract_other";
 const OTHER_OWNER_EMAIL: &str = "store-contract-other@rnw.test";
 const OTHER_STORE_NAME: &str = "Other Contract Shop";
 const RENAMED_STORE_NAME: &str = "Contract Shop Renamed";
+/// Its own seller, so the session-lifecycle counts below are exact rather than
+/// inherited from whichever assertion happened to run before. Registered by the
+/// assertion itself: the database is per-test, and the double starts empty.
+const LIFECYCLE_OWNER_ID: &str = "usr_store_contract_lifecycle";
+const LIFECYCLE_OWNER_EMAIL: &str = "store-contract-lifecycle@rnw.test";
+const LIFECYCLE_OWNER_STORE_NAME: &str = "Lifecycle Contract Shop";
 
 /// Run every store-layer assertion against `store`.
 ///
@@ -59,6 +65,7 @@ where
     a_store_name_is_the_sellers_current_one(store, rename_seller).await;
     a_refused_registration_changes_nothing(store).await;
     expiry_is_folded_into_the_session_lookup(store).await;
+    expired_sessions_leave_the_table_and_live_ones_are_enumerable(store).await;
 }
 
 async fn register_the_contract_sellers<S: MarketplaceStore + ?Sized>(store: &S) {
@@ -256,6 +263,75 @@ async fn expiry_is_folded_into_the_session_lookup<S: MarketplaceStore + ?Sized>(
     assert!(
         !store.delete_session(live).await.expect("delete twice"),
         "logging out twice is not an error"
+    );
+}
+
+/// The lifecycle half the lookup half made unnecessary to think about: a seller's
+/// dead rows can leave the table, and their live ones can be seen.
+///
+/// Several sessions per seller is intended behaviour and stays — the point is
+/// that nothing could enumerate them or reclaim the dead ones, so `"Session"` was
+/// an append-only log of login events. A `retain` that forgets the per-user scope,
+/// or a delete that takes a live row with it, passes every assertion above and
+/// fails this one.
+async fn expired_sessions_leave_the_table_and_live_ones_are_enumerable<
+    S: MarketplaceStore + ?Sized,
+>(
+    store: &S,
+) {
+    store
+        .create_user(new_user(
+            LIFECYCLE_OWNER_ID,
+            LIFECYCLE_OWNER_EMAIL,
+            LIFECYCLE_OWNER_STORE_NAME,
+        ))
+        .await
+        .expect("register the lifecycle seller");
+
+    let now = chrono::Utc::now().naive_utc();
+    let dead = "contract-lifecycle-dead";
+    let older = "contract-lifecycle-older";
+    let newer = "contract-lifecycle-newer";
+    // Expired, but somebody else's: the proof that the sweep is scoped to one
+    // seller rather than being a global reaper in disguise.
+    let not_mine = "contract-lifecycle-not-mine";
+
+    for (token, user_id, expires_at) in [
+        (dead, LIFECYCLE_OWNER_ID, now - chrono::Duration::hours(2)),
+        (older, LIFECYCLE_OWNER_ID, now + chrono::Duration::minutes(10)),
+        (newer, LIFECYCLE_OWNER_ID, now + chrono::Duration::hours(10)),
+        (not_mine, OTHER_OWNER_ID, now - chrono::Duration::hours(2)),
+    ] {
+        store.create_session(token, user_id, expires_at).await.expect("create a session");
+    }
+
+    assert_eq!(
+        store.delete_expired_for_user(LIFECYCLE_OWNER_ID).await.expect("sweep"),
+        1,
+        "exactly one of this seller's rows is past its expiry"
+    );
+
+    let live = store.list_sessions(LIFECYCLE_OWNER_ID).await.expect("list");
+    assert_eq!(live.len(), 2, "the two rows still inside their expiry: {live:?}");
+    assert!(
+        live.windows(2).all(|pair| pair[0].expires_at >= pair[1].expires_at),
+        "newest first, so a devices list reads top-down: {live:?}"
+    );
+    assert!(
+        live.iter().all(|session| session.user_id == LIFECYCLE_OWNER_ID),
+        "one seller's sessions, never another's: {live:?}"
+    );
+
+    // Nothing left to reclaim says so rather than claiming work it did not do.
+    assert_eq!(store.delete_expired_for_user(LIFECYCLE_OWNER_ID).await.expect("sweep again"), 0);
+
+    // The proof that `not_mine` was left alone rather than swept by proxy: it is
+    // still in the table, for its own owner to reclaim. A `find_valid` check could
+    // not tell the two cases apart — an expired row is `None` either way.
+    assert_eq!(
+        store.delete_expired_for_user(OTHER_OWNER_ID).await.expect("the other seller's sweep"),
+        1,
+        "another seller's expired row survives a sweep that was not theirs"
     );
 }
 

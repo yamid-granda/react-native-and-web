@@ -1,0 +1,17 @@
+-- "Session" was keyed by "tokenHash", so the only query that ever filtered a
+-- session was a primary-key point read and "userId" had no index at all.
+-- delete_expired_for_user filters on "userId", so without this it was a
+-- sequential scan of the whole table on every login — and every login is
+-- exactly when it runs.
+--
+-- "Session_expiresAt_idx" stays, and this is the migration that has to say so
+-- rather than leaving the comment above it describing a reaper that did not
+-- exist. It is kept, not dropped, because a *global* expiry sweep is the shape
+-- it was built for and that is still the right thing to add eventually; what
+-- changed is that it is now read by no query in this repository, because the
+-- per-user delete filters on "userId" and find_valid_session uses the primary
+-- key. ARCHITECTURE.md §11 records that.
+--
+-- The already-applied 20261003120000 migration is checksummed by sqlx, so its
+-- comment is deliberately left alone rather than corrected in place.
+CREATE INDEX "Session_userId_idx" ON "Session"("userId");

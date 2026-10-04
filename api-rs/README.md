@@ -168,7 +168,7 @@ alone on conflict — so re-running it never duplicates data.
 | `RATE_LIMIT_GLOBAL_RPS` | `0` | Fleet-wide Valkey-backed requests/second; zero disables. |
 | `RATE_LIMIT_PER_IP_RPS` | `100` | Per-IP Valkey-backed requests/second; zero disables. |
 | `AUTH_LOGIN_ATTEMPTS_PER_MIN` | `10` | Per-IP login/registration attempts per minute, on its own 60-second window. This one bounds a password-guess rate rather than a traffic burst; zero disables it. |
-| `SESSION_TTL_SECS` | `604800` (7 days) | How long a session token stays valid. `POST /auth/logout` revokes immediately; this is the backstop for a token nobody revoked. |
+| `SESSION_TTL_SECS` | `604800` (7 days) | How long a session token stays valid. `POST /auth/logout` revokes immediately; this is the backstop for a token nobody revoked. A login also deletes that seller's rows already past this TTL, so the table does not grow without bound — see "Session rows" below for what is and is not bounded. |
 | `EDGE_CACHE_CONTROL` | `public, max-age=0, s-maxage=30, stale-while-revalidate=60` | Cache policy for product GETs at Cloudflare. |
 | `CORS_ORIGIN` | `http://localhost:3000` | Browser origin allowed by CORS. |
 | `HEALTH_PING_TIMEOUT_MS` | `1000` | Database readiness probe timeout. |
@@ -180,6 +180,30 @@ alone on conflict — so re-running it never duplicates data.
 `hit-l1`, or `hit-l2`). Response bodies preserve the documented JSON field order
 and serialization that the web and mobile clients parse; edge/cache headers are
 additive.
+
+### Session rows
+
+Every successful login and registration inserts a `"Session"` row, and several
+rows per seller is intended behaviour — logging out of one device is not logging
+out of the account. What keeps the table bounded is age, not count: a login
+deletes that seller's rows whose `expiresAt` is already past, so nothing is left
+behind once it can no longer authenticate.
+
+That bound is **by age only**, and the choice is deliberate rather than
+overlooked:
+
+- **Bounded:** rows stop accumulating once they are older than
+  `SESSION_TTL_SECS`, without any scheduler, cron entry or background task.
+- **Not bounded:** a seller who logs in many times inside one TTL window holds
+  one live row per login for the length of that window. There is deliberately no
+  per-seller cap on *live* sessions, because enforcing one would revoke a device
+  the seller is still using — a real behaviour change, and not one this service
+  makes silently. If that is ever wanted it is a stated cap plus a documented
+  policy question, not a default.
+
+`ARCHITECTURE.md` §11 records the same trade-off, and the migration that adds
+`Session_userId_idx` records why `Session_expiresAt_idx` is kept even though no
+query reads it yet.
 
 ## Auth and seller storefronts
 
