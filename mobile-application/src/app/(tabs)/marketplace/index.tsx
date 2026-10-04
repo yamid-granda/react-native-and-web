@@ -1,6 +1,6 @@
 import { router } from "expo-router"
 import { ProductListScreen, useInfiniteProducts } from "@rnw/components-library"
-import { fetchProducts } from "../../../api/client"
+import { fetchProducts, fetchProductsByIds } from "../../../api/client"
 
 export default function MarketplaceScreen() {
   const { products, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -17,6 +17,7 @@ export default function MarketplaceScreen() {
       onSelectProduct={(productId) =>
         router.push({ pathname: "/marketplace/[id]", params: { id: productId } })
       }
+      fetchProductsByIds={fetchProductsByIds}
     />
   )
 }

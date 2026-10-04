@@ -167,8 +167,9 @@ async fn concurrent_registrations_of_one_address_produce_exactly_one_seller() {
     assert_eq!(sellers, 1);
 }
 
-/// `find_valid` checks the expiry as part of the lookup, so a row nobody swept
-/// still cannot authenticate.
+/// `find_valid` checks the expiry as part of the lookup, so a dead session is
+/// rejected whether or not anything has swept it. Reclaiming those rows is a
+/// separate concern, with its own test below.
 #[tokio::test]
 async fn an_expired_session_row_is_rejected() {
     let stack = common::TestStack::start(true, |_| {}).await;
@@ -191,6 +192,66 @@ async fn an_expired_session_row_is_rejected() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Rows for one seller, live or not. The count a sweep is supposed to move: the
+/// store layer cannot see an expired row through `list_sessions`, so this is the
+/// only place the claim "the row left the table" is checkable.
+async fn session_rows(stack: &common::TestStack, user_id: &str) -> i64 {
+    sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Session" WHERE "userId" = $1"#)
+        .bind(user_id)
+        .fetch_one(&stack.pool)
+        .await
+        .unwrap()
+}
+
+/// The finding in one assertion: logging in again reclaims the rows that have
+/// expired instead of only ever adding to them, so the table stops tracking the
+/// number of logins.
+#[tokio::test]
+async fn logging_in_again_reclaims_the_sessions_that_have_expired() {
+    let stack = common::TestStack::start(true, |_| {}).await;
+    let client = reqwest::Client::new();
+    let email = unique_email("reap");
+
+    let registered: Value = register(&client, &stack.base_url, &email).await.json().await.unwrap();
+    let user_id = registered["user"]["id"].as_str().expect("id").to_string();
+
+    // Three more logins. Several sessions per seller is intended and stays.
+    for _ in 0..3 {
+        let status = client
+            .post(format!("{}/auth/login", stack.base_url))
+            .json(&json!({ "email": email.to_uppercase(), "password": PASSWORD }))
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert_eq!(status, StatusCode::OK);
+    }
+    assert_eq!(session_rows(&stack, &user_id).await, 4, "one row per successful login");
+
+    // Age every row out of band — the only way to do this without waiting a week,
+    // and the technique `an_expired_session_row_is_rejected` already uses.
+    sqlx::query(r#"UPDATE "Session" SET "expiresAt" = $1"#)
+        .bind(chrono::Utc::now().naive_utc() - chrono::Duration::days(1))
+        .execute(&stack.pool)
+        .await
+        .unwrap();
+
+    let status = client
+        .post(format!("{}/auth/login", stack.base_url))
+        .json(&json!({ "email": email.to_uppercase(), "password": PASSWORD }))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::OK);
+
+    assert_eq!(
+        session_rows(&stack, &user_id).await,
+        1,
+        "the four dead rows are gone and only the new one remains, not five rows"
+    );
 }
 
 /// Login is the one unauthenticated route that costs a hash, so it carries its

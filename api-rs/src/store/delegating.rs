@@ -134,4 +134,12 @@ impl SessionStore for DelegatingStore {
     async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
         self.0.delete_session(token_hash).await
     }
+
+    async fn delete_expired_for_user(&self, user_id: &str) -> Result<u64, StoreError> {
+        self.0.delete_expired_for_user(user_id).await
+    }
+
+    async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StoreError> {
+        self.0.list_sessions(user_id).await
+    }
 }
