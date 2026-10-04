@@ -161,3 +161,22 @@ Verified: <typecheck / lint / web build — or what was skipped and why>
 
 `skipped` means there was no proposal left to apply. `failed` means a preflight check
 or an unexpected error stopped the run; say which.
+
+---
+
+fix the following elements associated to the following routines
+
+- code-optimization-proposals
+- code-optimization-proposals-implement
+
+1. Create a folders structure `todo,` `in-progress`, `implemented`, `rejected` into the `@code-optimization-improve-proposals` folder
+
+`todo` folder will contain the proposals that are waiting to be implemented by the `code-optimization-proposals` routine.
+
+`in-progress` folder will contain the proposals that are being implemented by the `code-optimization-proposals-implement` routine, the first step of this routine is to move the proposal from `todo` to `in-progress` folder in the `main` branch using commit and push workflow. After moving the proposal to `in-progress` folder, the routine will implement the proposal and open a pull request in a different branch following the current standards of the routine. Finally the open PR should include the moved proposal file from `in-progress` to `implemented` folder.
+
+`implemented` folder will contain the proposals that have been successfully implemented
+
+Check if this way structure could fix your point 1
+
+1. Review and fix the reason about the routines stopping, the routines should not stop and should continue working all the time
