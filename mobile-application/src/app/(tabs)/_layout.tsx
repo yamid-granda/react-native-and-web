@@ -47,7 +47,7 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets()
   const { colorScheme, toggleColorScheme } = useColorScheme()
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
-  const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.items))
+  const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
   return (
     <Tabs>

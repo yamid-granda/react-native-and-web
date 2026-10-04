@@ -37,13 +37,12 @@ export const ProductCard = memo(function ProductCard({
   description,
   price,
   currency = "USD",
-  imageUrl,
   stock,
   onPress,
   className,
 }: ProductCardProps) {
   const outOfStock = stock === 0
-  const wishlisted = useWishlistStore((state) => isWishlisted(state.items, id))
+  const wishlisted = useWishlistStore((state) => isWishlisted(state.ids, id))
   const toggleItem = useWishlistStore((state) => state.toggleItem)
 
   return (
@@ -92,7 +91,12 @@ export const ProductCard = memo(function ProductCard({
         size="icon"
         variant="secondary"
         testID={`wishlist-toggle-${id}`}
-        onPress={() => toggleItem({ id, title, description, price, currency, imageUrl, stock })}
+        // The id, not a snapshot of this card. This line used to hand the
+        // wishlist a hand-built `ProductData` that silently dropped `storeId` /
+        // `storeName`, so wishlisting from a card and wishlisting from the detail
+        // page persisted two different things. A callee that needs one field
+        // cannot be handed a wrong one.
+        onPress={() => toggleItem(id)}
         className="absolute right-2 top-2"
       >
         <HeartIcon size={18} filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />

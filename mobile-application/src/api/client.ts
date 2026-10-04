@@ -2,6 +2,7 @@ import Constants from "expo-constants"
 import type {
   AuthSession,
   ProductData,
+  ProductsByIds,
   ProductsPage,
   StoreProfile,
   StoreUser,
@@ -104,6 +105,19 @@ export function fetchProduct(id: string) {
   return request<ProductData>(`/products/${encodeURIComponent(id)}`)
 }
 
+/**
+ * Resolve remembered product ids to live products, one request for the lot.
+ *
+ * The comma is left unescaped on purpose — it is a legal separator inside a
+ * query value, and the ids themselves are escaped. `missing` is what lets the
+ * cart, the wishlist and the recently-viewed rail drop a product a seller has
+ * since deleted; see `useProductLookup`.
+ */
+export function fetchProductsByIds(ids: string[], signal?: AbortSignal) {
+  const query = ids.map((id) => encodeURIComponent(id)).join(",")
+  return request<ProductsByIds>(`/products/by-ids?ids=${query}`, { signal })
+}
+
 export function fetchStore(id: string) {
   return request<StoreProfile>(`/stores/${encodeURIComponent(id)}`)
 }
@@ -173,4 +187,19 @@ export function updateMyProduct(
 
 export function deleteMyProduct(id: string) {
   return authedRequest<void>(`/my-store/products/${encodeURIComponent(id)}`, { method: "DELETE" })
+}
+
+/**
+ * The My Store transport, in the shape `components-library` asks for.
+ *
+ * Module-level rather than a `useMemo` in the route that happens to need it: it
+ * only names functions declared in this file, and all four My Store routes need
+ * the same object. Passing the references straight through also means no
+ * per-member `Parameters<typeof …>` adapter — the signatures already match.
+ */
+export const myStoreApi = {
+  list: fetchMyProducts,
+  create: createMyProduct,
+  update: updateMyProduct,
+  remove: deleteMyProduct,
 }

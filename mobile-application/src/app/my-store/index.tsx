@@ -1,12 +1,7 @@
-import { useCallback, useMemo } from "react"
+import { useCallback } from "react"
 import { router } from "expo-router"
 import { SessionGate, StoreScreen, useMyStoreRoute } from "@rnw/components-library"
-import {
-  createMyProduct,
-  deleteMyProduct,
-  fetchMyProducts,
-  updateMyProduct,
-} from "../../api/client"
+import { myStoreApi } from "../../api/client"
 
 /**
  * My Store: the seller's own product list.
@@ -26,21 +21,10 @@ export default function MyStoreRoute() {
 }
 
 function SignedInStore() {
-  // The api adapter stays here rather than in `useMyStoreRoute` because it names
-  // this app's own transport functions.
-  const api = useMemo(
-    () => ({
-      list: fetchMyProducts,
-      create: createMyProduct,
-      update: (id: string, values: Parameters<typeof updateMyProduct>[1]) =>
-        updateMyProduct(id, values),
-      remove: deleteMyProduct,
-    }),
-    [],
-  )
-
+  // The api adapter is `api/client`'s `myStoreApi`: it names this app's own
+  // transport functions, and every My Store route needs it.
   const store = useMyStoreRoute(
-    api,
+    myStoreApi,
     () => router.push("/my-store/new"),
     (id) => router.push({ pathname: "/my-store/[id]/edit", params: { id } }),
   )

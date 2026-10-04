@@ -6,6 +6,7 @@ import { ProductFilterControls } from "../../common/ProductFilterControls/Produc
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
 import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
+import { useProductLookup, type FetchProductsByIds } from "../ProductLookup/useProductLookup"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
@@ -19,6 +20,8 @@ export type ProductListScreenProps = {
   isFetchingNextPage?: boolean
   onEndReached?: () => void
   onSelectProduct?: (id: string) => void
+  /** Resolves the recently-viewed rail. Props in, no fetching here — see `StoreScreen`. */
+  fetchProductsByIds: FetchProductsByIds
 }
 
 export function ProductListScreen({
@@ -29,12 +32,21 @@ export function ProductListScreen({
   isFetchingNextPage,
   onEndReached,
   onSelectProduct,
+  fetchProductsByIds,
 }: ProductListScreenProps) {
   const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
     useProductSearch(products)
   const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const sentinelRef = useRef<View>(null)
-  const recentlyViewed = useRecentlyViewedStore((state) => state.items)
+  const recentlyViewedIds = useRecentlyViewedStore((state) => state.ids)
+  // Same lookup the cart and the wishlist use, so the rail is priced by the same
+  // request as the grid below it rather than by whenever the shopper last opened
+  // each of those ten products.
+  const { byId } = useProductLookup(recentlyViewedIds, fetchProductsByIds)
+  const recentlyViewed = recentlyViewedIds.flatMap((id) => {
+    const product = byId[id]
+    return product ? [product] : []
+  })
   const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
 
   // stable element references so unrelated re-renders (e.g.
