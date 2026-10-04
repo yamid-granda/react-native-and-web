@@ -40,6 +40,45 @@ code-optimization-improve-proposals/
 
 Read `code-optimization-improve-proposals/README.md` for the lifecycle.
 
+## Folder discipline
+
+Every proposal lives in exactly one of those four folders. There are no exceptions,
+and a proposal at the folder root is a bug, not a variant.
+
+**You write to `todo/` and nowhere else.** `in-progress/`, `implemented/` and
+`rejected/` belong to the implementer routine. `README.md` files are documentation,
+not proposals.
+
+**Sweep strays before you write.** At the start of every run, list
+`code-optimization-improve-proposals/` and check that every `.md` file other than
+`README.md` sits in one of the four folders:
+
+```bash
+git fetch origin main
+git ls-tree -r --name-only origin/main -- code-optimization-improve-proposals \
+  | grep -vE '/(todo|in-progress|implemented|rejected)/' \
+  | grep -v 'README\.md$'
+```
+
+Any file that command prints is a proposal stranded at the folder root or otherwise
+outside the structure. **Move it into `todo/`** and commit that move with this
+routine's own commit-and-push workflow:
+
+```text
+git mv code-optimization-improve-proposals/<file>.md \
+       code-optimization-improve-proposals/todo/<file>.md
+```
+
+Do the sweep before writing your own proposal, and keep it in its **own** commit so
+the move is auditable separately from new work:
+
+```text
+docs(code-optimization-improve-proposals): file a stranded proposal under todo
+```
+
+A proposal is never deleted to satisfy this rule — it is relocated. If a stranded file
+cannot be parsed as a proposal, move it anyway and say so in your summary.
+
 ## Scope
 
 Review the whole codebase — `api-rs` (Rust/Axum), `web-application` (Next.js),
@@ -99,7 +138,9 @@ outputs are one complete proposal file in `todo/`, or the words `No changes need
 
 1. **Write exactly one file, under `code-optimization-improve-proposals/todo/`.**
    Never write to the folder root, or to `in-progress/`, `implemented/`, or
-   `rejected/` — those belong to the implementer routine.
+   `rejected/` — those belong to the implementer routine. If you find yourself
+   creating a file anywhere else under `code-optimization-improve-proposals/`, stop
+   and move it to `todo/`.
 2. **Do not modify any source file**, config, lockfile, or any other file. This run is
    analysis plus at most one new document.
 3. Prefer one deep, concrete, verifiable improvement over a long list of vague ones.

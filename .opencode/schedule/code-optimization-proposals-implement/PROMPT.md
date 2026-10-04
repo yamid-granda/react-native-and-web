@@ -59,6 +59,25 @@ repository's `git-ops` agent, never inline.
 
 ## Select the proposal
 
+**You select exclusively from `code-optimization-improve-proposals/todo/`.** That
+folder is the queue. Never implement a proposal you found at the folder root or in
+any other location — sweep it into `todo/` first (below), then select from there.
+
+0. **Sweep strays into `todo/`.** Before selecting, check that every `.md` file under
+   `code-optimization-improve-proposals/` other than `README.md` sits in one of the
+   four folders:
+
+   ```bash
+   git ls-tree -r --name-only origin/main -- code-optimization-improve-proposals \
+     | grep -vE '/(todo|in-progress|implemented|rejected)/' \
+     | grep -v 'README\.md$'
+   ```
+
+   Anything that command prints is stranded outside the structure. Move it into `todo/`
+   with `git mv` and commit that to `main` via the `/cc-commit-and-push` workflow, in
+   its own commit. A stranded proposal must never be invisible to you, and never be
+   implemented from its original location. Never delete one to tidy up — relocate it.
+
 1. List the proposal files under `code-optimization-improve-proposals/todo/` on
    `origin/main`, ignoring `README.md`.
 2. Sort them **lexicographically ascending**. Every proposal filename begins
