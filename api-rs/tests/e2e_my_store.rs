@@ -88,7 +88,7 @@ async fn create_product(base: &str, token: &str, title: &str) -> Value {
 #[tokio::test]
 async fn a_seller_sees_their_own_write_immediately() {
     let stack = common::TestStack::start(true, |_| {}).await;
-    let (token, _store_id) = sign_up(&stack, "read-your-writes").await;
+    let (token, store_id) = sign_up(&stack, "read-your-writes").await;
 
     let created = create_product(&stack.base_url, &token, "Leather Weekender").await;
     let id = created["id"].as_str().expect("id");
@@ -108,9 +108,15 @@ async fn a_seller_sees_their_own_write_immediately() {
     assert_eq!(page["items"][0]["id"], id);
     assert_eq!(page["items"][0]["storeName"], "Riverbend Vintage");
 
-    // And on the seller's public store page, which is also owner-scoped.
+    // And on the seller's public store page — which is *not* an owner-scoped
+    // read. That page is eventually consistent by choice: it may be answered by
+    // a replica, so a just-created product can be briefly absent from it. This
+    // stack has no `DATABASE_READ_URL`, so what this asserts is that the page
+    // exists, not that it is fresh. The replica-only fixture carries no owner,
+    // so the storefront's routing is not E2E-pinned; `handlers::stores` asserts
+    // the read path instead.
     let store_page: Value = Client::new()
-        .get(format!("{}/stores/{}/products", stack.base_url, _store_id))
+        .get(format!("{}/stores/{store_id}/products", stack.base_url))
         .send()
         .await
         .unwrap()

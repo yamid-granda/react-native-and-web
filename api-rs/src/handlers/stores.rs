@@ -83,8 +83,9 @@ pub async fn products(
         return Ok(response);
     }
 
-    // The same rows the seller's own `GET /my-store/products` reads, served to
-    // anyone rather than to the seller.
+    // A public page, so the store reads replica-safe: eventually consistent by
+    // choice, as `ARCHITECTURE.md`'s pool table says. The seller's own `GET
+    // /my-store/products` is the read that must not race replica lag.
     let items = state.store.list_public_page_by_owner(&id, query.offset, PAGE_SIZE).await?;
     let total = state.store.count_public_by_owner(&id).await?;
     let body = ProductsPageJson::from_page(items, &query, total);

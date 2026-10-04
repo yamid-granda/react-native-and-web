@@ -109,12 +109,13 @@ pub trait ProductStore: Send + Sync + 'static {
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Product>, StoreError>;
-    /// The public storefront page, for `GET /stores/{id}/products`. The same rows as
-    /// [`Self::list_page_for_owner`], served to anyone rather than to the seller.
+    /// The public storefront page, for `GET /stores/{id}/products`. Replica-safe:
+    /// eventually consistent by choice, per `ARCHITECTURE.md`'s pool table.
     ///
-    /// Split from [`Self::list_page_for_owner`] rather than shared with it so
-    /// neither caller inherits the other's pool by accident — the two have
-    /// opposite requirements and a single name cannot express both.
+    /// The same rows as [`Self::list_page_for_owner`], served to anyone rather
+    /// than to the seller. Split from it rather than shared with it so neither
+    /// caller inherits the other's pool by accident — the two have opposite
+    /// requirements and a single name cannot express both.
     async fn list_public_page_by_owner(
         &self,
         owner_id: &str,
@@ -512,7 +513,7 @@ impl ProductStore for SqlProductStore {
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Product>, StoreError> {
-        self.owned_page(&self.pool, "primary", owner_id, offset, limit).await
+        self.owned_page(self.reads(), self.read_role(), owner_id, offset, limit).await
     }
 
     async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
@@ -520,7 +521,7 @@ impl ProductStore for SqlProductStore {
     }
 
     async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
-        self.owned_count(&self.pool, "primary", owner_id).await
+        self.owned_count(self.reads(), self.read_role(), owner_id).await
     }
 
     async fn find_owned_by_id(
