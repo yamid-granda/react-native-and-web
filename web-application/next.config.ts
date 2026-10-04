@@ -1,5 +1,5 @@
 import type { NextConfig } from "next"
-import { webResolveAlias } from "../components-library/web-resolution"
+import { WEB_RESOLVE_EXTENSIONS, webResolveAlias } from "../components-library/web-resolution"
 
 // Stubs react-native-safe-area-context, which breaks web bundling; see
 // README. Reached from a browser chunk (BottomNav calls useSafeAreaInsets),
@@ -34,22 +34,11 @@ const nextConfig: NextConfig = {
       safeAreaContext: safeAreaContextStubPath,
       svg: reactNativeSvgStubPath,
     }),
-    // Mirrors the webpack `resolve.extensions` below, for project files that
-    // ship their own `.web.*` variant. Turbopack only applies this to
-    // project files, not to node_modules — react-native-svg needs the
-    // resolveAlias above instead.
-    resolveExtensions: [
-      ".web.tsx",
-      ".web.ts",
-      ".web.jsx",
-      ".web.js",
-      ".tsx",
-      ".ts",
-      ".jsx",
-      ".js",
-      ".mjs",
-      ".json",
-    ],
+    // Same list as both Vitest configs, Storybook and esbuild — see
+    // web-resolution.ts. It only applies to project files, not to
+    // node_modules, which is why react-native-svg needs the resolveAlias
+    // above rather than being resolved here.
+    resolveExtensions: [...WEB_RESOLVE_EXTENSIONS],
   },
   // Only exercised if the app is built/run with `--no-turbopack`.
   webpack: (config) => {
@@ -58,6 +47,9 @@ const nextConfig: NextConfig = {
       "react-native-safe-area-context$": safeAreaContextStubPath,
       "react-native$": "react-native-web",
     }
+    // Deliberately its own list rather than WEB_RESOLVE_EXTENSIONS: this
+    // *prepends* to Next's own defaults, so it only has to carry the `.web.*`
+    // preference, whereas resolveExtensions above replaces the list outright.
     config.resolve.extensions = [
       ".web.tsx",
       ".web.ts",
