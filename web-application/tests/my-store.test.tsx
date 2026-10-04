@@ -176,11 +176,14 @@ describe("NewProductPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create product" }))
 
     await waitFor(() => {
+      // `description` and `imageUrl` are sent as `""` rather than omitted: the form
+      // submits every field, and an empty string is what tells the server to store
+      // `NULL` instead of leaving whatever was there.
       expect(createMyProduct).toHaveBeenCalledWith({
         title: "Leather Weekender",
-        description: undefined,
+        description: "",
         price: 189,
-        imageUrl: undefined,
+        imageUrl: "",
         stock: 6,
       })
     })

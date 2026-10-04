@@ -333,20 +333,23 @@ impl ProductStore for InMemoryStore {
             else {
                 return Ok(None);
             };
-            if let Some(title) = patch.title {
-                product.title = title;
+            if let Some(title) = patch.title.set_value() {
+                product.title = title.clone();
             }
-            if let Some(description) = patch.description {
-                product.description = Some(description);
+            // The nullable columns read the same two states the SQL site does:
+            // `is_set` for presence, `set_value` for the value — so `Set(None)`
+            // clears here exactly as `CASE WHEN … THEN NULL` clears in SQL.
+            if patch.description.is_set() {
+                product.description = patch.description.set_value().cloned();
             }
-            if let Some(price) = patch.price {
-                product.price = price;
+            if let Some(price) = patch.price.set_value() {
+                product.price = *price;
             }
-            if let Some(image_url) = patch.image_url {
-                product.image_url = Some(image_url);
+            if patch.image_url.is_set() {
+                product.image_url = patch.image_url.set_value().cloned();
             }
-            if let Some(stock) = patch.stock {
-                product.stock = stock;
+            if let Some(stock) = patch.stock.set_value() {
+                product.stock = *stock;
             }
             let updated = product.clone();
             // Re-sort anyway: a patch cannot move a row today, but the invariant
@@ -384,6 +387,9 @@ mod tests {
 
     use crate::store::contract::assert_store_contract;
     use crate::store::users::{NewUser, UserStore};
+    // Only the tests below name `Patch`; `update_owned` goes through the
+    // `ProductPatch` fields' own methods.
+    use crate::store::Patch;
 
     fn at(hour: u32) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(
@@ -494,7 +500,7 @@ mod tests {
             .update_owned(
                 "usr-1",
                 "prod-a",
-                ProductPatch { price: Some(42.0), ..ProductPatch::default() },
+                ProductPatch { price: Patch::Set(Some(42.0)), ..ProductPatch::default() },
             )
             .await
             .unwrap()
@@ -502,6 +508,44 @@ mod tests {
         assert_eq!(patched.price, 42.0);
         assert_eq!(patched.title, "Product prod-a", "absent fields are left alone");
         assert_eq!(patched.store_name.as_deref(), Some("First Shop"));
+    }
+
+    /// The double's half of the store contract: `Set(None)` clears, `Unset` does
+    /// not. It used to be `if let Some(x)`, which made clearing unreachable — the
+    /// same answer SQL's `COALESCE` gave, for the same reason.
+    #[tokio::test]
+    async fn clearing_a_text_field_clears_it_and_omitting_it_does_not() {
+        let store = store().await;
+        let patch = |description| ProductPatch { description, ..ProductPatch::default() };
+
+        let cleared = store
+            .update_owned("usr-1", "prod-a", patch(Patch::Set(None)))
+            .await
+            .unwrap()
+            .expect("owned row");
+        assert_eq!(cleared.description, None, "an explicit null clears");
+
+        let restored = store
+            .update_owned("usr-1", "prod-a", patch(Patch::Set(Some("Waxed canvas.".to_string()))))
+            .await
+            .unwrap()
+            .expect("owned row");
+        assert_eq!(restored.description.as_deref(), Some("Waxed canvas."));
+
+        let untouched = store
+            .update_owned(
+                "usr-1",
+                "prod-a",
+                ProductPatch { price: Patch::Set(Some(42.0)), ..ProductPatch::default() },
+            )
+            .await
+            .unwrap()
+            .expect("owned row");
+        assert_eq!(
+            untouched.description.as_deref(),
+            Some("Waxed canvas."),
+            "an omitted field is left alone"
+        );
     }
 
     #[tokio::test]

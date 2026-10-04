@@ -230,6 +230,89 @@ async fn patching_then_deleting_is_visible_everywhere_it_matters() {
     assert_eq!(page["total"], 0);
 }
 
+/// Deleting a description or an image has to reach the row, not just the `200`.
+///
+/// Before this, every spelling of "cleared" was swallowed — `""`, `"   "`, `null`
+/// and an absent key all left the stored text in place, so a seller who deleted a
+/// description saw it come back on the storefront. The four cases below are the
+/// four ways a client can say it, and each has to end in `NULL` in the public read.
+#[tokio::test]
+async fn clearing_a_text_field_is_visible_through_the_public_read() {
+    let stack = common::TestStack::start(true, |_| {}).await;
+    let (token, _store_id) = sign_up(&stack, "clear").await;
+
+    let created =
+        authed(reqwest::Method::POST, &format!("{}/my-store/products", stack.base_url), &token)
+            .json(&json!({
+                "title": "Waxed Canvas Bag",
+                "description": "Full-grain leather.",
+                "price": 189,
+                "imageUrl": "https://example.test/bag.png",
+                "stock": 4,
+            }))
+            .send()
+            .await
+            .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created: Value = created.json().await.unwrap();
+    let id = created["id"].as_str().expect("id").to_string();
+    let uri = format!("{}/my-store/products/{id}", stack.base_url);
+
+    // `""` and `"   "` are what the shared form submits for a field the seller
+    // emptied; `null` is the explicit spelling. All three clear.
+    for payload in [
+        json!({ "description": "", "imageUrl": "" }),
+        json!({ "description": "   ", "imageUrl": "   " }),
+        json!({ "description": null, "imageUrl": null }),
+    ] {
+        let response =
+            authed(reqwest::Method::PATCH, &uri, &token).json(&payload).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{payload}");
+
+        let detail: Value = Client::new()
+            .get(format!("{}/products/{id}", stack.base_url))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(detail["description"], Value::Null, "{payload} did not clear the description");
+        assert_eq!(detail["imageUrl"], Value::Null, "{payload} did not clear the image");
+    }
+
+    // The other half, and the one that keeps `PATCH` a `PATCH`: omitting a key
+    // leaves the stored value alone. It is also the state that cannot be told from
+    // `null` by any implementation that binds one optional value per column.
+    let response = authed(reqwest::Method::PATCH, &uri, &token)
+        .json(&json!({ "description": "Waxed, not leather.", "price": 199 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = authed(reqwest::Method::PATCH, &uri, &token)
+        .json(&json!({ "price": 12 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail: Value = Client::new()
+        .get(format!("{}/products/{id}", stack.base_url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        detail["description"], "Waxed, not leather.",
+        "an omitted key left the description alone"
+    );
+    assert_eq!(detail["imageUrl"], Value::Null, "and did not resurrect the cleared image");
+    assert_eq!(detail["price"], 12, "while the field that was sent moved");
+}
+
 /// Another seller gets a 404 for someone else's product: not a 403, which would
 /// confirm the id exists.
 #[tokio::test]

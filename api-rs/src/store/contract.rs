@@ -17,7 +17,7 @@
 
 use std::future::Future;
 
-use super::products::{NewProduct, ProductPatch, StoreError, PAGE_SIZE};
+use super::products::{NewProduct, Patch, ProductPatch, StoreError, PAGE_SIZE};
 use super::MarketplaceStore;
 
 /// The sellers the suite registers. Deliberately unlike the e2e fixtures, so a
@@ -62,6 +62,7 @@ where
 
     listing_windows_state_one_answer(store).await;
     a_cross_owner_row_is_invisible_not_forbidden(store).await;
+    a_patch_distinguishes_absent_from_cleared(store).await;
     a_store_name_is_the_sellers_current_one(store, rename_seller).await;
     a_refused_registration_changes_nothing(store).await;
     expiry_is_folded_into_the_session_lookup(store).await;
@@ -162,6 +163,104 @@ async fn a_cross_owner_row_is_invisible_not_forbidden<S: MarketplaceStore + ?Siz
     assert_eq!(store.count_for_owner(OWNER_ID).await.expect("count"), 1);
     assert!(store.find_by_id(&theirs.id).await.expect("public read").is_some());
 }
+
+/// What a `PATCH` says about a field, which nothing in the repository asserted
+/// before.
+///
+/// A seller can delete a description or an image. That gesture was accepted with
+/// a `200` and discarded, and the stale text is what every shopper reads — so the
+/// three states below are the whole finding in one function. `COALESCE($, column)`
+/// cannot express them: an absent key and a `null` key both bind `NULL`, and both
+/// answer with the stored value. The double's `if let Some(x)` agreed with that,
+/// which is exactly why neither implementation was wrong on its own terms and the
+/// pair of them was still wrong.
+///
+/// Held against both implementations, so a `Patch` that grows a fourth state, or a
+/// SQL site that forgets its presence flag, is a red build rather than a form
+/// that quietly stops saving.
+async fn a_patch_distinguishes_absent_from_cleared<S: MarketplaceStore + ?Sized>(store: &S) {
+    let created = store.create(OWNER_ID, text_product("Patchable")).await.expect("create");
+    assert_eq!(
+        created.description.as_deref(),
+        Some(PATCHABLE_DESCRIPTION),
+        "the fixture starts with a description, or clearing it proves nothing"
+    );
+
+    // A patch that omits the keys leaves the stored values alone — the half of
+    // `COALESCE`'s original intent that must survive.
+    let untouched = store
+        .update_owned(
+            OWNER_ID,
+            &created.id,
+            ProductPatch { price: Patch::Set(Some(7.0)), ..Default::default() },
+        )
+        .await
+        .expect("patch a price")
+        .expect("the row");
+    assert_eq!(
+        untouched.description.as_deref(),
+        Some(PATCHABLE_DESCRIPTION),
+        "an omitted field is untouched"
+    );
+    assert_eq!(untouched.price, 7.0, "and the field that was sent is written");
+
+    // Setting a text field to `None` clears it, and the row the call answers with
+    // reports it cleared. Red on both implementations before `Patch` existed.
+    let cleared = store
+        .update_owned(
+            OWNER_ID,
+            &created.id,
+            ProductPatch { description: Patch::Set(None), ..Default::default() },
+        )
+        .await
+        .expect("clear the description")
+        .expect("the row");
+    assert_eq!(
+        cleared.description, None,
+        "an explicit null clears the column, not just the answer"
+    );
+
+    // Cleared once, cleared for a reader too — a patch that only changed its own
+    // answer would pass the line above.
+    assert_eq!(
+        store.find_by_id(&created.id).await.expect("public read").expect("the row").description,
+        None,
+        "the clear reached the row a shopper reads"
+    );
+
+    // A field can also be set back, so the state space is symmetric rather than
+    // one-way.
+    let restored = store
+        .update_owned(
+            OWNER_ID,
+            &created.id,
+            ProductPatch {
+                description: Patch::Set(Some(PATCHABLE_DESCRIPTION.to_string())),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set the description")
+        .expect("the row");
+    assert_eq!(restored.description.as_deref(), Some(PATCHABLE_DESCRIPTION));
+
+    // Every field `Unset` changes nothing at all, and still answers with the
+    // current product rather than an error. This is what `is_empty` is for.
+    let noop = store
+        .update_owned(OWNER_ID, &created.id, ProductPatch::default())
+        .await
+        .expect("an all-`Unset` patch is not an error")
+        .expect("the row");
+    assert_eq!(
+        noop.description.as_deref(),
+        Some(PATCHABLE_DESCRIPTION),
+        "an empty patch changes nothing"
+    );
+    assert_eq!(noop.price, 7.0);
+}
+
+/// The value [`a_patch_distinguishes_absent_from_cleared`] sets and clears.
+const PATCHABLE_DESCRIPTION: &str = "Full-grain leather.";
 
 /// The value on a product is whatever the owner's row says *now*. Production
 /// joins on every read; a write-time snapshot would answer the old name here,
@@ -345,6 +444,13 @@ fn new_product(title: &str) -> NewProduct {
         image_url: None,
         stock: 2,
     }
+}
+
+/// The same, with a description to clear. A row that starts out `NULL` would make
+/// the clearing assertion vacuous — it would pass against an implementation that
+/// ignored the patch entirely.
+fn text_product(title: &str) -> NewProduct {
+    NewProduct { description: Some(PATCHABLE_DESCRIPTION.to_string()), ..new_product(title) }
 }
 
 fn new_user(id: &str, email: &str, store_name: &str) -> super::users::NewUser {
