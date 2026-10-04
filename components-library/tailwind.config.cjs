@@ -5,7 +5,9 @@ module.exports = {
   presets: [require("nativewind/preset"), preset],
   content: ["./src/**/*.{ts,tsx}", "./.storybook/**/*.{ts,tsx}"],
   important: "html",
-  // Storybook-only: web/mobile stay "media" (OS-driven, see preview.tsx) so the
-  // backgrounds-addon toolbar can toggle dark mode independently of the OS.
+  // Every config in the repo sets darkMode: "class", and
+  // tokens.parity.test.ts fails if one stops. The palette itself flips in
+  // tokens.css, not here: web's Theme button and Storybook's backgrounds toolbar
+  // toggle `.light`/`.dark`, and native follows `Appearance` instead.
   darkMode: "class",
 }

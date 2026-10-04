@@ -24,7 +24,8 @@ module.exports = {
           DEFAULT: "#2563eb",
           dark: "#1d4ed8",
         },
-        // Values come from each app's --color-* custom properties (see
+        // Values come from the --color-* custom properties that
+        // components-library/tokens.css declares for every consumer (see
         // README "Architecture boundaries"), which flip for dark mode —
         // components use these instead of dark: variants.
         background: "rgb(var(--color-background) / <alpha-value>)",

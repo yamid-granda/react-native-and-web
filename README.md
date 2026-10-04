@@ -288,15 +288,26 @@ the contract port 3001 that both clients default to; Grafana (from
   `foreground`, `muted`, `surface`, `surface-muted`) to
   `rgb(var(--color-x) / <alpha-value>)`; components use those names
   (`bg-surface`, `text-muted`, ...) instead of pairing a light utility with
-  a `dark:` variant. Each app's global stylesheet
+  a `dark:` variant. The values live in exactly one place,
+  `components-library/tokens.css`, which each global stylesheet imports
   (`web-application/app/globals.css`, `mobile-application/global.css`,
-  `components-library/global.css`) declares the actual `--color-*` values
-  for light and redefines them for dark. All four (`web-application`,
-  `mobile-application`, `components-library`'s Storybook,
-  `mobile-application`'s tab bar toggle) now use `darkMode: "class"` — the
-  nav bar's Theme button toggles a `.dark`/`.light` class rather than
-  relying on the OS alone. One-off colors that don't change with the
-  scheme (e.g. `bg-brand`) stay as plain Tailwind utilities.
+  `components-library/global.css`) instead of restating. It owns the one
+  dark-mode selector set too: a `:root` light block, an OS-driven
+  `@media (prefers-color-scheme: dark)` block, and `:root.light`/`:root.dark`
+  overrides. All three Tailwind configs use `darkMode: "class"`. Web's Theme
+  button toggles a `.light`/`.dark` class on the document element and
+  Storybook's backgrounds toolbar does the same, so both outrank the OS block;
+  the mobile tab bar's Theme item cannot, because `toggleColorScheme` calls
+  `Appearance.setColorScheme` and there is no DOM on native for a class to live
+  on, so native dark mode follows the OS appearance. That is why the OS block
+  selects a bare `:root` and not `:root:not(.light)`: the latter is equivalent
+  on web, but React Native CSS Interop builds its light/dark root variables from
+  a bare `:root` and silently drops any other selector, which would leave native
+  rendering the light palette in dark mode with nothing failing.
+  `tokens.parity.test.ts` pins all of it and fails if a stylesheet stops
+  importing `tokens.css` or restates a `--color-*` value. One-off colors that
+  don't change with the scheme (e.g. `bg-brand`) stay as plain Tailwind
+  utilities.
 - **Every button is `components-library`'s `Button`, and every button and
   input is one height.** `Button` is the only place a button look is written
   down: its five variants (`primary`, `secondary`, `outline`, `ghost`,
