@@ -71,17 +71,26 @@ export type {
   SessionGuard,
   UseRequireSessionOptions,
 } from "./business/AuthScreen/useRequireSession"
+export { SessionGate } from "./business/AuthScreen/SessionGate"
+export type { SessionGateProps } from "./business/AuthScreen/SessionGate"
 export { useSessionBootstrap } from "./business/AuthScreen/useSessionBootstrap"
 export type { SessionBootstrapOptions } from "./business/AuthScreen/useSessionBootstrap"
 export { StoreScreen } from "./business/StoreScreen/StoreScreen"
 export type { StoreScreenProps } from "./business/StoreScreen/StoreScreen"
-export { useMyStoreProducts, myStoreKey } from "./business/StoreScreen/useMyStoreProducts"
+export {
+  useMyStoreProducts,
+  myStoreKey,
+  productQueryKey,
+} from "./business/StoreScreen/useMyStoreProducts"
 export type { MyStoreApi } from "./business/StoreScreen/useMyStoreProducts"
+export { useMyStoreRoute } from "./business/StoreScreen/useMyStoreRoute"
 export { ProductFormScreen } from "./business/ProductFormScreen/ProductFormScreen"
 export type {
   ProductFormScreenProps,
   ProductFormValues,
 } from "./business/ProductFormScreen/ProductFormScreen"
+export { ProductEditorScreen } from "./business/ProductFormScreen/ProductEditorScreen"
+export type { ProductEditorScreenProps } from "./business/ProductFormScreen/ProductEditorScreen"
 export { PublicStoreScreen } from "./business/PublicStoreScreen/PublicStoreScreen"
 export type { PublicStoreScreenProps } from "./business/PublicStoreScreen/PublicStoreScreen"
 export { createPersistStorage } from "./utils/persistStorage"

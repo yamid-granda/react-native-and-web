@@ -87,7 +87,7 @@ directly — see the plugin README for the storage layout.
 |------|----------|--------------|----------|
 | `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one proposal to `code-optimization-improve-proposals/todo/` | commits straight to `main` |
 | `code-optimization-proposals-implement` | `30 * * * *` | Claims the oldest actionable `todo/` entry and implements it | claim to `main`, then branch + pull request |
-| `code-optimization-proposals-review-and-merge` | `45 * * * *` | Reviews the oldest open `code-optimization-improve-proposals/` pull request, then pushes corrections **or** merges it | corrections to the same branch, or a squash merge to `main` |
+| `code-optimization-proposals-review-and-merge` | `45 * * * *` | Reviews the oldest open `code-optimization-improve-proposals/` pull request, fixes what it finds, and merges it | corrections to the same branch, then a squash merge to `main` |
 
 The three offsets are deliberate. All three routines touch the same repository, and
 the plugin's lock only stops a routine from overlapping *itself* — not two
@@ -96,9 +96,9 @@ keeps a routine from committing to `main` while the other holds the git index. T
 reviewer runs at `:45` so it is downstream of the implementer's `:30` start, and
 still leaves a 15-minute gap before the next hour's proposer.
 
-Together they close the loop: **propose → implement → review and merge.** A proposal
-becomes a pull request, the pull request is independently verified, and the merge
-is what archives the proposal document into `implemented/`.
+Together they close the loop: **propose → implement → review, fix, merge.** A proposal
+becomes a pull request, the pull request is independently reviewed and verified, and
+the merge is what archives the proposal document into `implemented/`.
 
 ## Proposal lifecycle
 
@@ -136,14 +136,16 @@ orphaned claim from a run that died; the implementer's preflight reclaims those
 back to `todo/`. No routine may stop because a candidate is unavailable — they skip
 it and take the next one. See each routine's `PROMPT.md` for the full rules.
 
-**Why the reviewer never merges what it just fixed.** When its review finds a
-defect, the reviewer pushes the correction to the same branch and leaves the pull
-request open. The next run — which selects the oldest open pull request again, so
-still the same one — re-verifies it from scratch and merges it. Every merge is
-therefore performed by a review pass that did not write the code. The only
-exception is the missing `in-progress/` → `implemented/` move, which the reviewer
-still routes through a fresh pass rather than merging directly, so the archive is
-never landed unverified.
+**Why the reviewer fixes and then merges in one run.** Merging is the routine's
+objective, so a pull request that needs a correction is repaired on its own branch,
+re-verified in full, and merged in the same run — never parked for the next hour. The
+controls that make self-approval acceptable are that the reviewer re-runs the whole
+gate on the exact head SHA it merges (`--match-head-commit`), never weakens a test or
+threshold to reach green, may only touch the one oldest pull request, and must declare
+every correction it pushed in both the merge commit body and the run's
+`Corrections pushed` line. A pull request it genuinely cannot fix goes to
+`stalled.json` and is skipped by later runs, so one bad pull request cannot wedge the
+queue.
 
 Runs are supervised: a lock file prevents a routine from overlapping itself, and
 `timeoutSeconds` hard-stops a stuck run with SIGTERM then SIGKILL. Note that
