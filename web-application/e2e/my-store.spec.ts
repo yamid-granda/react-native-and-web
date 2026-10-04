@@ -18,6 +18,13 @@ const password = "correct horse battery"
 const storeName = `E2E Store ${stamp}`
 const title = `E2E Product ${stamp}`
 
+// The price-change spec below registers a seller of its own, so it needs its own
+// identity: the two tests run in parallel against one database, and registration
+// is unique on email, so reusing `email` would answer 409 and fail the run.
+const priceEmail = `e2e-price-${stamp}@rnw.test`
+const priceStoreName = `E2E Price Store ${stamp}`
+const priceTitle = `E2E Priced Product ${stamp}`
+
 test("a seller registers, lists a product, and sees it in the marketplace", async ({ page }) => {
   await page.goto("/login")
 
@@ -76,6 +83,65 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
 
   // Delete, so the next run starts from the same catalogue.
   await page.getByLabel(`Delete ${title} v2`).click()
+  await expect(page.getByText(/You have no products yet/)).toBeVisible()
+})
+
+/// The finding the persisted-snapshot change exists for, in one assertion: a
+/// price the seller has moved has to reach a cart that already holds the
+/// product.
+///
+/// This fails on `main`. The cart used to persist a whole `ProductData` per line
+/// and total the price inside it, so the second total is still the first price and
+/// no amount of revisiting the cart changes it. One browser context is enough
+/// because the cart is a client-side store — the same person can be the shopper
+/// and the seller, which is also what makes this one test rather than two
+/// contexts passing a token around.
+test("a seller's price change reaches a cart that already holds the product", async ({ page }) => {
+  await page.goto("/login")
+  await page.getByRole("button", { name: "Create a store" }).click()
+  await page.getByTestId("auth-email").fill(priceEmail)
+  await page.getByTestId("auth-password").fill(password)
+  await page.getByTestId("auth-store-name").fill(priceStoreName)
+  await page.getByRole("button", { name: "Create store" }).click()
+  await expect(page).toHaveURL("/my-store")
+
+  await page.getByRole("button", { name: "Add product" }).click()
+  await page.getByTestId("product-title").fill(priceTitle)
+  await page.getByTestId("product-price").fill("189")
+  await page.getByTestId("product-stock").fill("6")
+  await page.getByRole("button", { name: "Create product" }).click()
+  await expect(page).toHaveURL("/my-store")
+
+  // The shopper's half: find it in the shared marketplace and put it in the cart.
+  // Searched for rather than scrolled to, for the same reason as above: a product
+  // created now sorts last.
+  await page.goto("/marketplace")
+  await page.getByLabel("Search products").fill(priceTitle)
+  await page.getByRole("button", { name: new RegExp(`^${priceTitle} `) }).click()
+  await expect(page.getByTestId("product-detail-screen")).toBeVisible()
+  await page.getByText("Add to Cart").click()
+
+  await page.goto("/cart")
+  await expect(page.getByText(/Total:\s*\$189\.00/)).toBeVisible()
+
+  // The seller moves the price…
+  await page.goto("/my-store")
+  await page.getByLabel(`Edit ${priceTitle}`).click()
+  await expect(page).toHaveURL(/\/my-store\/.+\/edit/)
+  await page.getByTestId("product-price").fill("299")
+  await page.getByRole("button", { name: "Save changes" }).click()
+  await expect(page).toHaveURL("/my-store")
+
+  // …and the cart that already held the product totals the new one. This also
+  // pins the cache half: the first cart visit filled the detail entry the batch
+  // lookup reads through, so seeing 299 is proof the write retired it rather than
+  // the batch answering from its own copy.
+  await page.goto("/cart")
+  await expect(page.getByText(/Total:\s*\$299\.00/)).toBeVisible()
+
+  // Delete, so the next run starts from the same catalogue.
+  await page.goto("/my-store")
+  await page.getByLabel(`Delete ${priceTitle}`).click()
   await expect(page.getByText(/You have no products yet/)).toBeVisible()
 })
 

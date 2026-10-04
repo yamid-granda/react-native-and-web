@@ -24,6 +24,13 @@ const meta: Meta<typeof ProductListScreen> = {
   component: ProductListScreen,
   args: {
     products: mockProducts,
+    // Only the recently-viewed rail needs it, and it resolves the ids the rail
+    // store holds. A story has no api layer, so this resolves the same fixtures
+    // the grid is given — enough for a "with a rail" story to have a rail.
+    fetchProductsByIds: async (ids: string[]) => ({
+      items: mockProducts.filter((product) => ids.includes(product.id)),
+      missing: ids.filter((id) => !mockProducts.some((product) => product.id === id)),
+    }),
   },
 }
 

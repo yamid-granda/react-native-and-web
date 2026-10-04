@@ -46,13 +46,13 @@ export function ProductDetailScreen({
 }: ProductDetailScreenProps) {
   const addItem = useCartStore((state) => state.addItem)
   const recordView = useRecentlyViewedStore((state) => state.recordView)
-  const wishlisted = useWishlistStore((state) => (product ? isWishlisted(state.items, product.id) : false))
+  const wishlisted = useWishlistStore((state) => (product ? isWishlisted(state.ids, product.id) : false))
   const toggleWishlistItem = useWishlistStore((state) => state.toggleItem)
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the id, not the object, so a same-id re-fetch (new object, unchanged id) doesn't re-record it
   useEffect(() => {
-    if (product) recordView(product)
+    if (product) recordView(product.id)
   }, [product?.id])
 
   return (
@@ -108,7 +108,7 @@ export function ProductDetailScreen({
               label={product.stock === 0 ? "Out of stock" : "Add to Cart"}
               disabled={product.stock === 0}
               onPress={() => {
-                addItem(product)
+                addItem(product.id)
                 setIsCartDrawerOpen(true)
               }}
             />
@@ -121,7 +121,7 @@ export function ProductDetailScreen({
               size="icon"
               variant="secondary"
               testID={`wishlist-toggle-${product.id}`}
-              onPress={() => toggleWishlistItem(product)}
+              onPress={() => toggleWishlistItem(product.id)}
             >
               <HeartIcon filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
             </Button>

@@ -54,6 +54,21 @@ impl From<Product> for ProductJson {
     }
 }
 
+/// `GET /products/by-ids`: the products a client remembered, resolved live, plus
+/// the ids it no longer has.
+///
+/// `missing` is a result rather than an error, and that is the point of the
+/// route. Every id a shopper remembers comes from a client-side store — a cart,
+/// a wishlist, a recently-viewed rail — and a product the seller has since
+/// deleted has to be *reportable* for that store to ever drop it. A 404 could
+/// only ever answer one id at a time, which is why there is no
+/// `GET /products?ids=` to lean on instead.
+#[derive(Serialize)]
+pub struct ProductsByIdsJson {
+    pub items: Vec<ProductJson>,
+    pub missing: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct ProductsPageJson {
     pub items: Vec<ProductJson>,
@@ -213,6 +228,131 @@ pub async fn detail(
         }
         None => Err(AppError::ProductNotFound(id)),
     }
+}
+
+/// How many ids one `/products/by-ids` request will resolve.
+///
+/// A cap, not a validation error: the callers are client stores whose size this
+/// service does not control, and answering the first N is more useful than
+/// refusing the whole cart. 50 is roughly five screens' worth of a cart plus a
+/// recently-viewed rail, and it bounds the request at 50 indexed primary-key
+/// lookups however long the query string gets.
+const MAX_LOOKUP_IDS: usize = 50;
+
+/// The requested ids, de-duplicated, first-seen order, capped.
+///
+/// Repeated `ids` params and commas inside one param are both accepted, because
+/// a caller building the string in JS reaches for `ids.join(",")` and one
+/// building it by hand reaches for `?ids=a&ids=b`, and neither should get a
+/// different answer. Blank segments (`?ids=a,,b`, a trailing comma) are dropped
+/// rather than looked up, so a trailing comma cannot read as a deleted product.
+fn parse_lookup_ids(raw_query: Option<&str>) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for (_key, value) in form_urlencoded::parse(raw_query.unwrap_or("").as_bytes()) {
+        if _key != "ids" {
+            continue;
+        }
+        for segment in value.split(',') {
+            let id = segment.trim();
+            if id.is_empty() || ids.iter().any(|seen| seen == id) {
+                continue;
+            }
+            ids.push(id.to_string());
+            if ids.len() == MAX_LOOKUP_IDS {
+                return ids;
+            }
+        }
+    }
+    ids
+}
+
+pub async fn by_ids(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
+    let (parts, _body) = request.into_parts();
+    let ids = parse_lookup_ids(parts.uri.query());
+    let conditional = Some((&parts.method, &parts.headers));
+
+    // The response body is assembled from each id's *existing* detail bytes
+    // rather than re-serialized, so a row served here is byte-identical to what
+    // `GET /products/{id}` serves for the same id — one cache entry, one
+    // serialization, and no second shape to drift when `ProductJson` changes.
+    let mut bodies: Vec<String> = Vec::with_capacity(ids.len());
+    let mut missing: Vec<String> = Vec::new();
+
+    for id in &ids {
+        let key = cache::detail_key(id);
+
+        if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
+            bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+            continue;
+        }
+
+        // Same two-phase check as `detail`: the first screen of a cold cart is
+        // exactly the burst the flight exists to collapse.
+        let flight = state.cache.flights().for_key(Kind::Detail, &key).await;
+        let _fill = flight.lock().await;
+        if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
+            bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+            continue;
+        }
+
+        match state.store.find_by_id(id).await? {
+            Some(product) => {
+                let bytes = serde_json::to_vec(&ProductJson::from(product))?;
+                // Written under the detail key so the next lookup *and* the
+                // detail route share one entry rather than filling it twice.
+                state.cache.set(Kind::Detail, &key, Bytes::copy_from_slice(&bytes)).await;
+                bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+            }
+            // Not an error: a deleted product is the answer this route exists to
+            // give. It also deliberately leaves no cache entry, so a seller who
+            // re-publishes the same id is visible on the next lookup.
+            None => missing.push(id.clone()),
+        }
+    }
+
+    // Built by hand rather than through `ProductsByIdsJson`, because `items` is
+    // already-serialized JSON. Ids go through `serde_json::to_string` so a
+    // crafted query cannot break out of the string it is quoted into.
+    let mut body = format!("{{\"items\":[{}],\"missing\":[", bodies.join(","));
+    for (index, id) in missing.iter().enumerate() {
+        if index > 0 {
+            body.push(',');
+        }
+        body.push_str(&serde_json::to_string(id)?);
+    }
+    body.push_str("]}");
+
+    Ok(json_response(StatusCode::OK, body.into_bytes(), &lookup_headers(&state), conditional))
+}
+
+/// Headers for `/products/by-ids`.
+///
+/// `product_headers` hands out the catalogue directive —
+/// `public, max-age=0, s-maxage=30, stale-while-revalidate=60` — which is the
+/// right trade for a list of products nobody is about to be charged for. It is
+/// the wrong trade for this route, and not by a small margin: `max-age=0` marks
+/// the response stale the instant it is stored, and `stale-while-revalidate=60`
+/// then permits a browser or shared cache to **serve those stale bytes anyway**
+/// for the next minute while it revalidates in the background.
+///
+/// That is precisely the bug this route exists to remove. A cart that had already
+/// resolved an id keeps totalling the price from before the seller's edit, and no
+/// client-side policy can catch it: `useProductLookup`'s `staleTime: 0` governs
+/// when the client *asks*, not what it is handed when it does. Only the response
+/// directive closes that gap.
+///
+/// `no-store` gives up nothing that was doing any work. The expensive part is
+/// still done once and still deduplicated — in the L1/L2 detail cache and the
+/// singleflight this handler reads through and fills, both of which a seller
+/// write already retires — so this is one conditional round trip instead of a
+/// stored copy, not N round trips instead of one.
+fn lookup_headers(state: &AppState) -> Vec<(HeaderName, HeaderValue)> {
+    let mut headers = product_headers(state, None);
+    // Replaces the catalogue directive rather than adding to it: the two
+    // directives are contradictory, and `no-store` is the one that has to win.
+    headers.retain(|(name, _)| name != header::CACHE_CONTROL);
+    headers.push((header::CACHE_CONTROL, HeaderValue::from_static("no-store")));
+    headers
 }
 
 /// A cached response, or `None` on a miss. The `X-Cache` header reports where
@@ -815,5 +955,142 @@ mod tests {
 
         let response = app.oneshot(get("/products")).await.unwrap();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // --- GET /products/by-ids ---
+
+    /// Three products, so a batch can mix a hit with a miss. `counting_state`
+    /// rather than a bare `InMemoryStore` so the store path is the one exercised.
+    fn lookup_state() -> AppState {
+        counting_state(counting_store(3).0)
+    }
+
+    fn ids_of(raw_query: &str) -> Vec<String> {
+        parse_lookup_ids(Some(raw_query))
+    }
+
+    /// Every way a caller can spell the query reaches the same id list, and a
+    /// blank segment is never read as a deleted product.
+    #[test]
+    fn the_ids_param_accepts_commas_repeats_and_trailing_blanks() {
+        assert_eq!(ids_of("ids=prod-1,prod-2"), ["prod-1", "prod-2"]);
+        assert_eq!(ids_of("ids=prod-1&ids=prod-2"), ["prod-1", "prod-2"]);
+        assert_eq!(ids_of("ids=prod-1,prod-1,prod-2"), ["prod-1", "prod-2"]);
+        assert_eq!(ids_of("ids=prod-1,,prod-2,"), ["prod-1", "prod-2"]);
+        assert_eq!(ids_of("ids=%20prod-1%20"), ["prod-1"]);
+        assert!(ids_of("ids=").is_empty());
+        assert!(ids_of("").is_empty());
+        assert!(parse_lookup_ids(None).is_empty());
+        assert!(ids_of("page=2").is_empty());
+        // First-seen order is the response order, so the caller can zip `items`
+        // back onto its own list.
+        assert_eq!(ids_of("ids=prod-2,prod-1"), ["prod-2", "prod-1"]);
+    }
+
+    #[test]
+    fn the_id_list_is_capped_rather_than_refused() {
+        let query = format!(
+            "ids={}",
+            (0..MAX_LOOKUP_IDS + 20).map(|i| format!("prod-{i},")).collect::<String>()
+        );
+        let ids = parse_lookup_ids(Some(&query));
+        assert_eq!(ids.len(), MAX_LOOKUP_IDS);
+        assert_eq!(ids[0], "prod-0");
+    }
+
+    #[tokio::test]
+    async fn a_batch_resolves_products_and_names_the_ones_that_are_gone() {
+        let app = router(lookup_state());
+
+        let response =
+            app.clone().oneshot(get("/products/by-ids?ids=prod-1,deleted-1,prod-2")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_of(response).await;
+        let items = body["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["id"], "prod-1");
+        assert_eq!(items[1]["id"], "prod-2");
+        assert_eq!(body["missing"], serde_json::json!(["deleted-1"]));
+
+        // Byte-identical to what the detail route serves for the same id: the
+        // batch body is assembled from those bytes, not a second encoding.
+        let detail = body_of(app.oneshot(get("/products/prod-1")).await.unwrap()).await;
+        assert_eq!(items[0], detail);
+    }
+
+    #[tokio::test]
+    async fn a_batch_of_nothing_is_an_empty_result_not_a_404() {
+        let app = router(lookup_state());
+        for uri in ["/products/by-ids", "/products/by-ids?ids="] {
+            let response = app.clone().oneshot(get(uri)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_eq!(body_of(response).await, serde_json::json!({"items": [], "missing": []}));
+        }
+    }
+
+    /// The route's whole reason for existing: an id the server no longer has has
+    /// to be *nameable*, because that is what lets a persisted store drop it. A
+    /// 404 could only ever answer one id at a time.
+    #[tokio::test]
+    async fn an_all_missing_batch_is_still_a_200() {
+        let response = router(lookup_state())
+            .oneshot(get("/products/by-ids?ids=gone-a,gone-b"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            body_of(response).await,
+            serde_json::json!({"items": [], "missing": ["gone-a", "gone-b"]})
+        );
+    }
+
+    /// The directive is the fix, so it is pinned here.
+    ///
+    /// The catalogue's `max-age=0, s-maxage=30, stale-while-revalidate=60` lets a
+    /// browser or shared cache serve a *stale* body for up to a minute while it
+    /// revalidates, which would hand a cart the price from before the seller's
+    /// edit — the exact failure this route removes, and one no client-side
+    /// `staleTime` can catch. `no-store` says what the route actually is.
+    #[tokio::test]
+    async fn a_batch_is_never_left_for_a_cache_to_replay() {
+        let response =
+            router(lookup_state()).oneshot(get("/products/by-ids?ids=prod-1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        // The internal cache report is untouched: `no-store` is about what leaves
+        // this process, not about the deduplicated work behind it.
+        assert_eq!(response.headers()["x-cache"], "miss");
+    }
+
+    /// A repeated batch must not re-query: the ids it resolves are the same
+    /// detail entries the detail route fills, so the second read is a cache hit
+    /// and the mixed batch fills each of them once.
+    #[tokio::test]
+    async fn a_repeated_batch_is_served_from_the_detail_cache() {
+        let (store, _inner) = counting_store(200);
+        let find_calls = Arc::clone(&store.find_calls);
+        let app = router(counting_state(store));
+
+        for _ in 0..2 {
+            let response =
+                app.clone().oneshot(get("/products/by-ids?ids=prod-7,prod-8")).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(body_of(response).await["items"].as_array().unwrap().len(), 2);
+        }
+
+        assert_eq!(find_calls.load(Ordering::SeqCst), 2, "two ids, two lookups, not four");
+    }
+
+    /// The ids are echoed into the body, so a crafted query has to survive being
+    /// quoted into a JSON string. `"` and `\` percent-encoded, because a comma
+    /// would legitimately split into two ids.
+    #[tokio::test]
+    async fn an_id_cannot_break_out_of_the_missing_string() {
+        let id = "\"\\";
+        let response =
+            router(lookup_state()).oneshot(get("/products/by-ids?ids=%22%5C")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_of(response).await["missing"], serde_json::json!([id]));
     }
 }

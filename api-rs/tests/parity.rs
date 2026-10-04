@@ -53,6 +53,18 @@ async fn responses_match_committed_golden_fixtures() {
         include_str!("fixtures/product-prod-1.json"),
     )
     .await;
+    // The batch lookup, beside the two detail goldens it is assembled from: same
+    // bytes per row, `missing` included. It is the wire contract for the three
+    // client stores that keep ids instead of snapshots, so the shape is compared
+    // byte-for-byte like every other route here.
+    assert_golden(
+        &client,
+        &stack.base_url,
+        "/products/by-ids?ids=prod-1,does-not-exist,prod-owned-1",
+        StatusCode::OK,
+        include_str!("fixtures/products-by-ids.json"),
+    )
+    .await;
     // The one fixture with a seller: proves the store `LEFT JOIN` fills
     // `storeId`/`storeName` rather than leaving them null everywhere.
     assert_golden(

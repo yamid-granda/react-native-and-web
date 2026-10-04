@@ -80,6 +80,23 @@ write(
     "product-prod-owned-1.json",
     js_product(next(p for p in products if p["id"] == "prod-owned-1")),
 )
+# The batch lookup, asked for in the order
+# `?ids=prod-1,does-not-exist,prod-owned-1`: `items` comes back in *requested*
+# order so a client can zip it onto its own list, and `missing` holds the id the
+# server never had. Two rows on purpose — one of them owned, so `storeId` and
+# `storeName` are proven to survive being read through a batch rather than only
+# through `/products/{id}` — and one absent id, so `missing` is pinned as a
+# populated result instead of an empty list that happens to look right.
+write(
+    "products-by-ids.json",
+    {
+        "items": [
+            js_product(next(p for p in products if p["id"] == "prod-1")),
+            js_product(next(p for p in products if p["id"] == "prod-owned-1")),
+        ],
+        "missing": ["does-not-exist"],
+    },
+)
 # The storefront page: the same envelope over one seller's rows. Its own golden
 # because `/stores/{id}/products` builds that envelope on a route of its own.
 store_products = [p for p in ordered if p.get("ownerId") == STORE_ID]
