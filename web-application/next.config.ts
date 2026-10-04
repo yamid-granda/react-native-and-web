@@ -1,4 +1,5 @@
 import type { NextConfig } from "next"
+import { webResolveAlias } from "../components-library/web-resolution"
 
 // Stubs react-native-safe-area-context, which breaks web bundling; see
 // README. Reached from a browser chunk (BottomNav calls useSafeAreaInsets),
@@ -25,11 +26,14 @@ const nextConfig: NextConfig = {
   // below — the react-native -> react-native-web alias has to go through
   // this key instead.
   turbopack: {
-    resolveAlias: {
-      "react-native-safe-area-context": safeAreaContextStubPath,
-      "react-native-svg": reactNativeSvgStubPath,
-      "react-native": "react-native-web",
-    },
+    // Same alias contract as the two Vitest configs and Storybook, owned by the
+    // same module. Unlike them, react-native-svg needs the stub here rather than
+    // its real web entry — Turbopack's resolveExtensions does not reach into
+    // node_modules (see stubs/react-native-svg.js).
+    resolveAlias: webResolveAlias({
+      safeAreaContext: safeAreaContextStubPath,
+      svg: reactNativeSvgStubPath,
+    }),
     // Mirrors the webpack `resolve.extensions` below, for project files that
     // ship their own `.web.*` variant. Turbopack only applies this to
     // project files, not to node_modules — react-native-svg needs the

@@ -1,6 +1,7 @@
 import path from "node:path"
-import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
+import { defineConfig } from "vitest/config"
+import { WEB_RESOLVE_EXTENSIONS, webResolveAlias } from "../components-library/web-resolution"
 
 // Tests this app's own integration of the shared component library, distinct
 // from components-library's own suites. jsxImportSource forced to "react"
@@ -8,33 +9,17 @@ import react from "@vitejs/plugin-react"
 export default defineConfig({
   plugins: [react({ jsxImportSource: "react" })],
   resolve: {
-    alias: {
-      "react-native": "react-native-web",
-      "react-native-svg": "react-native-svg/lib/module/ReactNativeSVG.web.js",
-      // same stub Next.js/Storybook use — its native codegen import doesn't
-      // bundle for web (see components-library/stubs and README).
-      "react-native-safe-area-context": path.resolve(
+    // Same contract as components-library/vitest.config.web.ts, owned by the same
+    // module; only the two stub paths differ, because they resolve from this
+    // package root rather than from components-library's. See web-resolution.ts.
+    alias: webResolveAlias({
+      safeAreaContext: path.resolve(
         __dirname,
         "../components-library/stubs/react-native-safe-area-context.js",
       ),
-    },
-    // react-native-svg ships separate native/.web.js implementations and
-    // relies on Metro's RN platform-extension resolution to pick the right
-    // one; Vite doesn't do that by default, so the plain .js (native,
-    // Flow-typed) file gets bundled instead and fails to parse. Same fix as
-    // components-library/vitest.config.web.ts.
-    extensions: [
-      ".web.js",
-      ".web.ts",
-      ".web.tsx",
-      ".mjs",
-      ".js",
-      ".mts",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".json",
-    ],
+      svg: "react-native-svg/lib/module/ReactNativeSVG.web.js",
+    }),
+    extensions: [...WEB_RESOLVE_EXTENSIONS],
   },
   test: {
     environment: "jsdom",

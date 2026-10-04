@@ -1,6 +1,7 @@
 import path from "node:path"
-import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
+import { defineConfig } from "vitest/config"
+import { WEB_RESOLVE_EXTENSIONS, webResolveAlias } from "./web-resolution"
 
 // Renders RN-primitive components through react-native-web into jsdom, like
 // Next.js does at runtime. jsxImportSource is forced to plain "react" since
@@ -9,32 +10,14 @@ import react from "@vitejs/plugin-react"
 export default defineConfig({
   plugins: [react({ jsxImportSource: "react" })],
   resolve: {
-    alias: {
-      "react-native": "react-native-web",
-      "react-native-svg": "react-native-svg/lib/module/ReactNativeSVG.web.js",
-      // same stub Next.js/Storybook use — its native codegen import doesn't
-      // bundle for web (see components-library/stubs and README).
-      "react-native-safe-area-context": path.resolve(
-        __dirname,
-        "./stubs/react-native-safe-area-context.js",
-      ),
-    },
-    // react-native-svg ships separate native/.web.js implementations and
-    // relies on Metro's RN platform-extension resolution to pick the
-    // right one; Vite doesn't do that by default, so the plain .js file
-    // (native, Flow-typed) gets bundled instead and fails to parse.
-    extensions: [
-      ".web.js",
-      ".web.ts",
-      ".web.tsx",
-      ".mjs",
-      ".js",
-      ".mts",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".json",
-    ],
+    // react-native-svg points at its own real web entry here rather than at the
+    // stub Next.js needs: Vite applies resolve.extensions inside node_modules, so
+    // there is nothing left to work around. See web-resolution.ts.
+    alias: webResolveAlias({
+      safeAreaContext: path.resolve(__dirname, "./stubs/react-native-safe-area-context.js"),
+      svg: "react-native-svg/lib/module/ReactNativeSVG.web.js",
+    }),
+    extensions: [...WEB_RESOLVE_EXTENSIONS],
   },
   test: {
     name: "web",
