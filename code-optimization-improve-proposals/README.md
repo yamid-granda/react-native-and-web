@@ -1,7 +1,7 @@
 # Code optimization proposals
 
-Proposals for improving this codebase, and their lifecycle through it. Both stages
-are automated by routines defined in `.opencode/schedule/`; see that directory's
+Proposals for improving this codebase, and their lifecycle through it. Every stage
+is automated by routines defined in `.opencode/schedule/`; see that directory's
 README for how to run and inspect them.
 
 ## Lifecycle
@@ -27,6 +27,28 @@ move, `in-progress/` → `implemented/`.
 Filename convention is `YYYY-MM-DD-HH-mm-ss-<short-kebab-slug>.md`, local time.
 Because the prefix is a timestamp, sorting filenames lexicographically gives
 chronological order — which is how the implementer picks the oldest `todo/` entry.
+
+## How a proposal gets closed
+
+`code-optimization-proposals-review-and-merge` closes the loop. It takes the
+**oldest open pull request** whose branch starts with
+`code-optimization-improve-proposals/` — at most one per run — reviews it against
+the proposal document, and re-runs the tests, typecheck, lint, and web build
+itself rather than trusting the pull request body.
+
+- If the review finds defects, it pushes the corrections to that same branch and
+  leaves the pull request open. The next run re-reviews and merges it.
+- If the review finds nothing wrong, it squash-merges with a Conventional Commits
+  message of its own.
+
+A pull request that does not move its proposal document from `in-progress/` to
+`implemented/` is a blocking defect: the document would never be archived when the
+pull request lands. The reviewer fixes the move before it will merge.
+
+A pull request the reviewer cannot fix without a human decision is recorded in
+`outputs/code-optimization-proposals-review-and-merge/stalled.json` and skipped by
+later runs, so one bad pull request cannot wedge the pipeline. The reviewer never
+closes a pull request and never rejects a proposal itself.
 
 ## The bar
 

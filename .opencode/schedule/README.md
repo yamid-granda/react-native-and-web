@@ -87,16 +87,24 @@ directly — see the plugin README for the storage layout.
 |------|----------|--------------|----------|
 | `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one proposal to `code-optimization-improve-proposals/todo/` | commits straight to `main` |
 | `code-optimization-proposals-implement` | `30 * * * *` | Claims the oldest actionable `todo/` entry and implements it | claim to `main`, then branch + pull request |
+| `code-optimization-proposals-review-and-merge` | `45 * * * *` | Reviews the oldest open `code-optimization-improve-proposals/` pull request, then pushes corrections **or** merges it | corrections to the same branch, or a squash merge to `main` |
 
-The half-hour offset is deliberate. Both routines touch the same repository, and
+The three offsets are deliberate. All three routines touch the same repository, and
 the plugin's lock only stops a routine from overlapping *itself* — not two
 different routines. Staggering them keeps them out of each other's way, and also
-keeps a routine from committing to `main` while the other holds the git index.
+keeps a routine from committing to `main` while the other holds the git index. The
+reviewer runs at `:45` so it is downstream of the implementer's `:30` start, and
+still leaves a 15-minute gap before the next hour's proposer.
+
+Together they close the loop: **propose → implement → review and merge.** A proposal
+becomes a pull request, the pull request is independently verified, and the merge
+is what archives the proposal document into `implemented/`.
 
 ## Proposal lifecycle
 
-The two routines are coupled through the folder structure of
-`code-optimization-improve-proposals/`, not through conversation:
+The routines are coupled through the folder structure of
+`code-optimization-improve-proposals/` and through pull-request titles, not
+through conversation:
 
 ```text
 todo/ ──claim on main──▶ in-progress/ ──PR merges──▶ implemented/
@@ -110,7 +118,12 @@ todo/ ──claim on main──▶ in-progress/ ──PR merges──▶ impleme
   committing that to `main` **before writing any code**. The claim is what makes
   progress durable.
 - The implementation pull request then carries the second move,
-  `in-progress/` → `implemented/`.
+  `in-progress/` → `implemented/`. The reviewer treats a missing or wrong move as
+  a blocking defect and fixes it before merging.
+- The reviewer identifies implementation pull requests **only** by the
+  `code-optimization-improve-proposals/` prefix on the head branch, and always
+  picks the oldest open one. It handles exactly one per run, so a backlog drains
+  at one per hour instead of being reviewed in a rush.
 
 **Why the claim is committed to `main` first.** If the archive to `implemented/`
 only happened on merge, `main` would keep listing the proposal under `todo/` until
@@ -120,8 +133,17 @@ front makes the next run's view of the queue accurate regardless of merge state.
 
 An `in-progress/` entry with no open pull request and no pushed branch is an
 orphaned claim from a run that died; the implementer's preflight reclaims those
-back to `todo/`. Neither routine may stop because a candidate is unavailable — they
-skip it and take the next one. See each routine's `PROMPT.md` for the full rules.
+back to `todo/`. No routine may stop because a candidate is unavailable — they skip
+it and take the next one. See each routine's `PROMPT.md` for the full rules.
+
+**Why the reviewer never merges what it just fixed.** When its review finds a
+defect, the reviewer pushes the correction to the same branch and leaves the pull
+request open. The next run — which selects the oldest open pull request again, so
+still the same one — re-verifies it from scratch and merges it. Every merge is
+therefore performed by a review pass that did not write the code. The only
+exception is the missing `in-progress/` → `implemented/` move, which the reviewer
+still routes through a fresh pass rather than merging directly, so the archive is
+never landed unverified.
 
 Runs are supervised: a lock file prevents a routine from overlapping itself, and
 `timeoutSeconds` hard-stops a stuck run with SIGTERM then SIGKILL. Note that
