@@ -111,10 +111,11 @@ async fn a_seller_sees_their_own_write_immediately() {
     // And on the seller's public store page — which is *not* an owner-scoped
     // read. That page is eventually consistent by choice: it may be answered by
     // a replica, so a just-created product can be briefly absent from it. This
-    // stack has no `DATABASE_READ_URL`, so what this asserts is that the page
-    // exists, not that it is fresh. The replica-only fixture carries no owner,
-    // so the storefront's routing is not E2E-pinned; `handlers::stores` asserts
-    // the read path instead.
+    // stack has no `DATABASE_READ_URL`, so the storefront reads the primary and
+    // the product is there straight away; with a replica configured, the two
+    // assertions below would be about replica lag instead. The replica-only
+    // fixture carries no owner, so the storefront's routing is not E2E-pinned
+    // either way — `handlers::stores` asserts the read path.
     let store_page: Value = Client::new()
         .get(format!("{}/stores/{store_id}/products", stack.base_url))
         .send()
