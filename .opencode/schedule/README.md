@@ -85,23 +85,67 @@ directly — see the plugin README for the storage layout.
 
 | Slug | Schedule | What it does | Lands on |
 |------|----------|--------------|----------|
-| `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one new proposal | commits straight to `main` |
-| `code-optimization-proposals-implement` | `30 * * * *` | Applies the oldest unimplemented proposal | branch + pull request |
+| `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one proposal to `code-optimization-improve-proposals/todo/` | commits straight to `main` |
+| `code-optimization-proposals-implement` | `30 * * * *` | Claims the oldest actionable `todo/` entry and implements it | claim to `main`, then branch + pull request |
+| `code-optimization-proposals-review-and-merge` | `45 * * * *` | Reviews the oldest open `code-optimization-improve-proposals/` pull request, fixes what it finds, and merges it | corrections to the same branch, then a squash merge to `main` |
 
-The half-hour offset is deliberate. Both routines touch the same repository, and
+The three offsets are deliberate. All three routines touch the same repository, and
 the plugin's lock only stops a routine from overlapping *itself* — not two
 different routines. Staggering them keeps them out of each other's way, and also
-keeps a routine from committing to `main` while the other holds the git index.
+keeps a routine from committing to `main` while the other holds the git index. The
+reviewer runs at `:45` so it is downstream of the implementer's `:30` start, and
+still leaves a 15-minute gap before the next hour's proposer.
 
-**They are not mutually exclusive.** The proposer may add a proposal while the
-implementer is mid-run; that is harmless, because the implementer re-reads
-`origin/main` before choosing its target. But the implementer must not run while
-`main` is dirty, or while the proposer is committing — hence the offset.
+Together they close the loop: **propose → implement → review, fix, merge.** A proposal
+becomes a pull request, the pull request is independently reviewed and verified, and
+the merge is what archives the proposal document into `implemented/`.
 
-Applied proposals are archived to
-`code-optimization-improve-proposals/implemented/`. That is how the implementer
-knows what is left; without the archive it would re-apply the same proposal every
-hour. The archive happens in the same pull request as the implementation.
+## Proposal lifecycle
+
+The routines are coupled through the folder structure of
+`code-optimization-improve-proposals/` and through pull-request titles, not
+through conversation:
+
+```text
+todo/ ──claim on main──▶ in-progress/ ──PR merges──▶ implemented/
+   │                          │
+   └────▶ rejected/ ◀─────────┘
+```
+
+- The proposer writes to `todo/` only, and refuses to write anything that already
+  exists in any of the four folders.
+- The implementer **claims** a proposal by moving it `todo/` → `in-progress/` and
+  committing that to `main` **before writing any code**. The claim is what makes
+  progress durable.
+- The implementation pull request then carries the second move,
+  `in-progress/` → `implemented/`. The reviewer treats a missing or wrong move as
+  a blocking defect and fixes it before merging.
+- The reviewer identifies implementation pull requests **only** by the
+  `code-optimization-improve-proposals/` prefix on the head branch, and always
+  picks the oldest open one. It handles exactly one per run, so a backlog drains
+  at one per hour instead of being reviewed in a rush.
+
+**Why the claim is committed to `main` first.** If the archive to `implemented/`
+only happened on merge, `main` would keep listing the proposal under `todo/` until
+a human merged, and the routine would reselect the same file every hour and stall
+on it — which is exactly what happened before this structure existed. Claiming up
+front makes the next run's view of the queue accurate regardless of merge state.
+
+An `in-progress/` entry with no open pull request and no pushed branch is an
+orphaned claim from a run that died; the implementer's preflight reclaims those
+back to `todo/`. No routine may stop because a candidate is unavailable — they skip
+it and take the next one. See each routine's `PROMPT.md` for the full rules.
+
+**Why the reviewer fixes and then merges in one run.** Merging is the routine's
+objective, so a pull request that needs a correction is repaired on its own branch,
+re-verified in full, and merged in the same run — never parked for the next hour. The
+controls that make self-approval acceptable are that the reviewer re-runs the whole
+gate on the exact head SHA it merges (`--match-head-commit`), never weakens a test or
+threshold to reach green, may only touch the one oldest pull request, and must declare
+every correction it pushed in both the merge commit body and the run's
+`Corrections pushed` line. A pull request it genuinely cannot fix goes to
+`stalled.json` and is skipped by later runs, so one bad pull request cannot wedge the
+queue.
 
 Runs are supervised: a lock file prevents a routine from overlapping itself, and
 `timeoutSeconds` hard-stops a stuck run with SIGTERM then SIGKILL. Note that
