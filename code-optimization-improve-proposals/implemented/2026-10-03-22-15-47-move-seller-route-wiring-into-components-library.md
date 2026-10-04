@@ -154,6 +154,18 @@ always meant to be: `useMyStoreRoute(api, onCreate, onEdit)` returning props to
 *already* duplicated for a reason this proposal does not change: it stays in the
 route files, since it names app-specific functions.
 
+> **Superseded on the adapter's placement** by
+> `2026-10-04-02-19-04-one-mutation-seam-for-every-seller-write.md`, which split
+> the mutations out of `useMyStoreProducts` so the two form routes can reach
+> them. That made four route files need the adapter rather than one, so it now
+> lives in each app's api module as `myStoreApi`
+> (`web-application/lib/api.ts:160`, `mobile-application/src/api/client.ts:186`)
+> and no route builds a `useMemo` for it. The argument is that "it names
+> app-specific functions" settles *which package* the code belongs to, not
+> which file inside that package. The paragraph above is left as written because
+> it records what was decided and shipped at the time — read it as history, not
+> as current placement guidance.
+
 ### 3. A `ProductEditorScreen` for the byte-identical `Editor`
 
 The 41-line block at
