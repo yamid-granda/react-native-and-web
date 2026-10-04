@@ -44,13 +44,29 @@ goes through the repository's `git-ops` agent, never inline.
    report — do not attempt to authenticate interactively.
 2. **`git fetch origin --prune`.** Read the repository state and pull-request
    state from the remote, not from a possibly stale local tree.
-3. **You are on `main`, local `main` is not behind `origin/main`, and the working
-   tree is clean.** Both sibling routines refuse to run unless `main` is checked
-   out, so you must never leave a branch behind here. If a previous run of this
-   routine died on a review branch, check whether its work reached the remote; if
-   it did, the branch is still correct and you may continue. If it did not, switch
-   back to `main` and re-review the pull request from scratch — never force-push
-   over it.
+3. **`main` is checked out, local `main` is not behind `origin/main`, and the
+   working tree is clean.**
+
+## The checkout is shared — never fight another routine
+
+All three routines share **one** working directory, and the scheduler's lock only
+stops a routine from overlapping *itself*. A `:30` implementer run can still be
+mid-flight at `:45`, holding a branch and a dirty working tree. That is normal, and
+it is **not** yours to fix.
+
+If `git branch --show-current` is anything other than `main`, or
+`git status --porcelain` prints anything, **another routine owns this checkout**:
+
+- Do **not** switch branches. Do **not** `git checkout main`. Do **not** stash,
+  reset, clean, or stage anything. A `checkout` under a running routine rewrites its
+  index out from under it and can destroy work that was never pushed.
+- Do **not** run `pnpm install` either — it can rewrite `node_modules` mid-run.
+- Report `blocked` with the reason `repository busy: <branch> is checked out with a
+  dirty tree` and stop. This is a healthy outcome, not a failure: your slot was
+  simply too early, and the next hourly run will find the checkout idle.
+
+Once `main` is checked out and the tree is clean, **you own the checkout** and the
+cleanup section at the end becomes your responsibility.
 
 `pnpm install` if `node_modules` is missing or stale. Without it no check can run.
 
@@ -336,7 +352,9 @@ decide. You still do not close it, and you do not move its proposal document.
 5. **Never claim, implement, or write a proposal.** Those belong to the other two
    routines.
 6. **Never merge with `--admin`** to bypass a protection or a failing requirement.
-7. **Every git operation runs in the repository's `git-ops` agent**, never inline.
+7. **Never change the checked-out branch, the index, or `node_modules` while another
+   routine owns the checkout.** Report `blocked` instead.
+8. **Every git operation runs in the repository's `git-ops` agent**, never inline.
    Read `.agents/agents/git-ops.md` first.
 
 ## Output contract
@@ -360,8 +378,9 @@ Verified: <typecheck / lint / web build — or what was skipped and why>
 - `merged` — reviewed, verified, merged. The pipeline is complete for that proposal.
 - `revised` — found defects, pushed corrections to the same branch, left it open for
   the next run's fresh pass.
-- `blocked` — nothing wrong with your reasoning, but a required check is pending or
-  the pull request needs a human decision.
+- `blocked` — nothing wrong with your reasoning, but the run could not proceed or
+  could not conclude: a required check is pending, the checkout is busy with another
+  routine's run, or the pull request needs a human decision.
 - `skipped` — no open pull request carried the optimisation prefix. Expected and
   healthy.
 - `failed` — a genuine error stopped the run. Say which, and state exactly what you
