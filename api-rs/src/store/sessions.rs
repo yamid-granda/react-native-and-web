@@ -86,6 +86,7 @@ impl SessionStore for SqlProductStore {
 #[async_trait]
 impl SessionStore for InMemoryStore {
     async fn find_valid_session(&self, token_hash: &str) -> Result<Option<Session>, StoreError> {
+        self.gate(super::memory::StoreOp::Sessions).await?;
         let sessions = self.sessions().lock().expect("in-memory sessions");
         Ok(sessions
             .get(token_hash)
@@ -99,6 +100,7 @@ impl SessionStore for InMemoryStore {
         user_id: &str,
         expires_at: NaiveDateTime,
     ) -> Result<(), StoreError> {
+        self.gate(super::memory::StoreOp::Sessions).await?;
         self.sessions()
             .lock()
             .expect("in-memory sessions")
@@ -107,6 +109,7 @@ impl SessionStore for InMemoryStore {
     }
 
     async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
+        self.gate(super::memory::StoreOp::Sessions).await?;
         Ok(self.sessions().lock().expect("in-memory sessions").remove(token_hash).is_some())
     }
 }
