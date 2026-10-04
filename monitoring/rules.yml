@@ -33,6 +33,17 @@ groups:
         annotations:
           summary: Valkey cache operations are failing; service is using fail-open path
 
+      - alert: ApiRsRateLimitWindowTtlFailing
+        # A window whose TTL never gets written leaves one permanent Valkey key
+        # per request, with no reclamation path. Separated from the general
+        # Valkey alert because this one is a slow leak rather than a blip.
+        expr: increase(rate_limit_errors_total{op="expire"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rate-limit window TTLs are failing; window keys are leaking in Valkey
+
       - alert: ApiRsLoadShed
         expr: increase(http_load_shed_total[1m]) > 0
         for: 0s
