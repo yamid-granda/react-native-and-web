@@ -29,6 +29,19 @@ export function myStoreKey(storeId: string) {
 }
 
 /**
+ * The cache key for one product.
+ *
+ * Written out in four route files before this existed, in two apps. It has to be
+ * one function because the marketplace detail screen and the seller edit screen
+ * are the *same* read — a seller who saves an edit and goes back to the detail
+ * screen must see it — and a key spelled two ways is two cache entries for one
+ * product.
+ */
+export function productQueryKey(id: string) {
+  return ["product", id] as const
+}
+
+/**
  * The repo's first mutation, and therefore the pattern the rest will follow:
  * `useMutation` for the write, then invalidate the query that read it. Nothing
  * optimistic — the lists are small and the server is the source of truth, so an
