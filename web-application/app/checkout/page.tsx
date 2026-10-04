@@ -2,6 +2,7 @@
 
 import { useRouter } from "solito/navigation"
 import { CheckoutScreen } from "@rnw/components-library"
+import { fetchProductsByIds } from "../../lib/api"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -10,6 +11,7 @@ export default function CheckoutPage() {
     <CheckoutScreen
       onGoToCart={() => router.push("/cart")}
       onContinueShopping={() => router.push("/marketplace")}
+      fetchProductsByIds={fetchProductsByIds}
     />
   )
 }

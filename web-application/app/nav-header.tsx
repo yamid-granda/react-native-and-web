@@ -18,7 +18,7 @@ import { useThemeToggle } from "./use-theme-toggle"
 export function NavHeader() {
   const { theme, toggleTheme } = useThemeToggle()
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
-  const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.items))
+  const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
   return (
     <BottomNav

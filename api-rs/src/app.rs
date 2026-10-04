@@ -69,6 +69,10 @@ pub fn router(state: AppState) -> Router {
         // Method-level fallbacks pin the documented 404 contract: a POST to a
         // GET-only route is `Cannot POST /products`, not axum's default 405.
         .route("/products", get(products::list).fallback(any(fallback)))
+        // Ahead of `/products/{id}` for readability, not correctness: axum
+        // matches the literal segment first either way, so `by-ids` can never be
+        // read as a product whose id is "by-ids".
+        .route("/products/by-ids", get(products::by_ids).fallback(any(fallback)))
         .route("/products/{id}", get(products::detail).fallback(any(fallback)))
         .route("/stores/{id}", get(stores::detail).fallback(any(fallback)))
         .route("/stores/{id}/products", get(stores::products).fallback(any(fallback)))

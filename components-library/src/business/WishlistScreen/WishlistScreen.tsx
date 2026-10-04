@@ -10,6 +10,7 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
 import { useCartStore } from "../CartScreen/useCartStore"
+import { useProductLookup, type FetchProductsByIds } from "../ProductLookup/useProductLookup"
 import { useWishlistStore } from "./useWishlistStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -17,18 +18,64 @@ const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { clas
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 
-export function WishlistScreen() {
-  const items = useWishlistStore((state) => state.items)
+export type WishlistScreenProps = {
+  /** Props in, no fetching here — see `StoreScreen` for why. */
+  fetchProductsByIds: FetchProductsByIds
+}
+
+export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
+  const ids = useWishlistStore((state) => state.ids)
   const removeItem = useWishlistStore((state) => state.removeItem)
   const addItem = useCartStore((state) => state.addItem)
 
-  const products = Object.values(items)
+  const { byId, missing, isLoading, error } = useProductLookup(ids, fetchProductsByIds)
+
+  // Joined against the store's order. `product` here is the *live* product, not
+  // the snapshot the wishlist used to hold — which is why "Add to Cart" can no
+  // longer carry a price from weeks ago into the cart.
+  const products = ids.flatMap((id) => {
+    const product = byId[id]
+    return product ? [product] : []
+  })
+
+  // An id that no longer resolves is a saved item that cannot come back. It is
+  // said out loud rather than silently shortening the list, and removable in one
+  // press — an id that renders nothing is otherwise impossible to clear.
+  const unavailableNotice =
+    missing.length > 0 ? (
+      <ClassNameView className="gap-2">
+        <ClassNameText testID="wishlist-missing" className="text-sm text-muted">
+          {missing.length === 1
+            ? "1 saved item is no longer available."
+            : `${missing.length} saved items are no longer available.`}
+        </ClassNameText>
+        <Button
+          label="Remove unavailable items"
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          onPress={() => missing.forEach(removeItem)}
+        />
+      </ClassNameView>
+    ) : null
 
   return (
     <ClassNameScrollView testID="wishlist-screen" className="flex-1 bg-background">
       <ClassNameView className="gap-4 p-6">
         <ClassNameText className="text-2xl font-semibold text-foreground">Wishlist</ClassNameText>
-        {products.length === 0 ? (
+        {error ? (
+          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+        ) : null}
+        {unavailableNotice}
+        {/* In this order, and the order is the point: a lookup that failed is
+            reported above and must not *also* claim the wishlist is empty, and a
+            lookup still in flight has not answered yet — only a settled answer may
+            say "empty". Checking `products.length` first got both wrong: an error
+            rendered the empty state beside itself, and a pending list flashed
+            "empty" before its first paint. */}
+        {error ? null : isLoading ? (
+          <ClassNameText className="text-muted">Loading your wishlist…</ClassNameText>
+        ) : products.length === 0 ? (
           <ClassNameText className="text-muted">Your wishlist is empty.</ClassNameText>
         ) : (
           <ClassNameView className="gap-3">
@@ -49,7 +96,7 @@ export function WishlistScreen() {
                   label="Add to Cart"
                   size="sm"
                   testID={`add-to-cart-${product.id}`}
-                  onPress={() => addItem(product)}
+                  onPress={() => addItem(product.id)}
                 />
                 <Button
                   label="Remove"

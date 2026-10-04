@@ -16,8 +16,8 @@ const product = {
 describe("ProductDetailScreen (web, via react-native-web)", () => {
   beforeEach(() => {
     useCartStore.setState({ items: {} })
-    useRecentlyViewedStore.setState({ items: [] })
-    useWishlistStore.setState({ items: {} })
+    useRecentlyViewedStore.setState({ ids: [] })
+    useWishlistStore.setState({ ids: [] })
   })
 
   it("renders the title, description, and formatted price", () => {
@@ -45,7 +45,7 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
   it("adds the product to the cart when Add to Cart is clicked", () => {
     render(<ProductDetailScreen product={product} />)
     fireEvent.click(screen.getByText("Add to Cart"))
-    expect(useCartStore.getState().items["1"]).toEqual({ product, quantity: 1 })
+    expect(useCartStore.getState().items["1"]).toEqual({ id: "1", quantity: 1 })
   })
 
   it("shows a confirmation drawer when Add to Cart is clicked", () => {
@@ -90,13 +90,13 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     const { rerender } = render(<ProductDetailScreen product={product} />)
     rerender(<ProductDetailScreen product={product} />)
     expect(recordView).toHaveBeenCalledTimes(1)
-    expect(useRecentlyViewedStore.getState().items).toEqual([product])
+    expect(useRecentlyViewedStore.getState().ids).toEqual(["1"])
   })
 
   it("does not record a view while loading or when the product is not found", () => {
     render(<ProductDetailScreen isLoading />)
     render(<ProductDetailScreen product={null} />)
-    expect(useRecentlyViewedStore.getState().items).toEqual([])
+    expect(useRecentlyViewedStore.getState().ids).toEqual([])
   })
 
   it("toggles the wishlist state when the wishlist button is clicked", () => {
@@ -104,11 +104,11 @@ describe("ProductDetailScreen (web, via react-native-web)", () => {
     expect(screen.getByLabelText("Add Wireless Headphones to wishlist")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
-    expect(useWishlistStore.getState().items["1"]).toEqual(product)
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
     expect(screen.getByLabelText("Remove Wireless Headphones from wishlist")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from wishlist"))
-    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
+    expect(useWishlistStore.getState().ids).toEqual([])
   })
 
   describe("Sold by", () => {

@@ -2,6 +2,7 @@ import Constants from "expo-constants"
 import type {
   AuthSession,
   ProductData,
+  ProductsByIds,
   ProductsPage,
   StoreProfile,
   StoreUser,
@@ -102,6 +103,19 @@ export function fetchProducts(page = 1) {
 
 export function fetchProduct(id: string) {
   return request<ProductData>(`/products/${encodeURIComponent(id)}`)
+}
+
+/**
+ * Resolve remembered product ids to live products, one request for the lot.
+ *
+ * The comma is left unescaped on purpose — it is a legal separator inside a
+ * query value, and the ids themselves are escaped. `missing` is what lets the
+ * cart, the wishlist and the recently-viewed rail drop a product a seller has
+ * since deleted; see `useProductLookup`.
+ */
+export function fetchProductsByIds(ids: string[], signal?: AbortSignal) {
+  const query = ids.map((id) => encodeURIComponent(id)).join(",")
+  return request<ProductsByIds>(`/products/by-ids?ids=${query}`, { signal })
 }
 
 export function fetchStore(id: string) {

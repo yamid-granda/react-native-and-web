@@ -6,35 +6,53 @@ const otherProduct = { id: "2", title: "Mechanical Keyboard", price: 89.5, stock
 
 describe("useWishlistStore", () => {
   beforeEach(() => {
-    useWishlistStore.setState({ items: {} })
+    useWishlistStore.setState({ ids: [] })
   })
 
-  it("toggleItem adds a product that isn't in the wishlist yet", () => {
-    useWishlistStore.getState().toggleItem(product)
-    expect(useWishlistStore.getState().items["1"]).toEqual(product)
+  it("toggleItem adds an id that isn't in the wishlist yet", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
   })
 
-  it("toggleItem removes a product that's already in the wishlist", () => {
-    useWishlistStore.getState().toggleItem(product)
-    useWishlistStore.getState().toggleItem(product)
-    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
+  it("persists ids only, so a wishlisted price cannot go stale in storage", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
   })
 
-  it("removeItem removes the item", () => {
-    useWishlistStore.getState().toggleItem(product)
+  it("toggleItem removes an id that's already in the wishlist", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    useWishlistStore.getState().toggleItem(product.id)
+    expect(useWishlistStore.getState().ids).toEqual([])
+  })
+
+  it("keeps insertion order, so the list reads the way it was built", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    useWishlistStore.getState().toggleItem(otherProduct.id)
+    expect(useWishlistStore.getState().ids).toEqual(["1", "2"])
+  })
+
+  it("removeItem removes the id", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    useWishlistStore.getState().toggleItem(otherProduct.id)
     useWishlistStore.getState().removeItem("1")
-    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
+    expect(useWishlistStore.getState().ids).toEqual(["2"])
   })
 
-  it("isWishlisted reflects whether an id is in the items map", () => {
-    useWishlistStore.getState().toggleItem(product)
-    expect(isWishlisted(useWishlistStore.getState().items, "1")).toBe(true)
-    expect(isWishlisted(useWishlistStore.getState().items, "2")).toBe(false)
+  it("removeItem is a no-op for an id that was never wishlisted", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    useWishlistStore.getState().removeItem("nobody")
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
   })
 
-  it("getWishlistTotalCount counts the number of wishlisted products", () => {
-    useWishlistStore.getState().toggleItem(product)
-    useWishlistStore.getState().toggleItem(otherProduct)
-    expect(getWishlistTotalCount(useWishlistStore.getState().items)).toBe(2)
+  it("isWishlisted reflects whether an id is in the list", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    expect(isWishlisted(useWishlistStore.getState().ids, "1")).toBe(true)
+    expect(isWishlisted(useWishlistStore.getState().ids, "2")).toBe(false)
+  })
+
+  it("getWishlistTotalCount counts the number of wishlisted ids", () => {
+    useWishlistStore.getState().toggleItem(product.id)
+    useWishlistStore.getState().toggleItem(otherProduct.id)
+    expect(getWishlistTotalCount(useWishlistStore.getState().ids)).toBe(2)
   })
 })

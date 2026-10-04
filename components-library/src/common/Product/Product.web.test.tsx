@@ -7,7 +7,7 @@ describe("Product (web, via react-native-web)", () => {
   const props = { id: "1", title: "Wireless Headphones", price: 129.99, stock: 10 }
 
   beforeEach(() => {
-    useWishlistStore.setState({ items: {} })
+    useWishlistStore.setState({ ids: [] })
   })
 
   it("renders the title and formatted price", () => {
@@ -48,11 +48,21 @@ describe("Product (web, via react-native-web)", () => {
     expect(screen.getByLabelText("Add Wireless Headphones to wishlist")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
-    expect(useWishlistStore.getState().items["1"]).toEqual({ ...props, currency: "USD" })
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
     expect(screen.getByLabelText("Remove Wireless Headphones from wishlist")).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText("Remove Wireless Headphones from wishlist"))
-    expect(useWishlistStore.getState().items["1"]).toBeUndefined()
+    expect(useWishlistStore.getState().ids).toEqual([])
+  })
+
+  /// The card used to hand the wishlist a hand-built `ProductData` that silently
+  /// dropped `storeId`/`storeName`, so wishlisting from a card and from the detail
+  /// page persisted two different things. Persisting the id is what makes the
+  /// drift impossible rather than merely relocated.
+  it("persists the id, so the seller this card knows about cannot be dropped", () => {
+    render(<Product {...props} storeId="usr_1" storeName="Riverbend Vintage" />)
+    fireEvent.click(screen.getByLabelText("Add Wireless Headphones to wishlist"))
+    expect(useWishlistStore.getState().ids).toEqual(["1"])
   })
 
   it("does not trigger onPress (card navigation) when the wishlist toggle is pressed", () => {
