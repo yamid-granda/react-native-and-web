@@ -8,6 +8,34 @@ use serde_json::Value;
 use api_rs::config::Config;
 use api_rs::store::SqlProductStore;
 
+/// The same store-layer assertions the in-memory double runs under
+/// `cargo test --lib`, run here against Postgres. Both implementations are held
+/// to one contract, so "the unit test was green because the fake agreed with
+/// itself" stops being possible.
+#[tokio::test]
+async fn the_store_contract_holds_for_postgres() {
+    let stack = common::TestStack::start(false, |_| {}).await;
+    let store = SqlProductStore::new(stack.pool.clone());
+    api_rs::store::contract::assert_store_contract(&store, |owner_id, new_name| {
+        // Owned, not borrowed: the contract takes one future type, so the
+        // closure's arguments cannot be captured by reference.
+        let owner_id = owner_id.to_string();
+        let new_name = new_name.to_string();
+        let pool = stack.pool.clone();
+        async move {
+            // No store method renames a seller, which is why the contract takes
+            // the rename as an argument: production has no such call either.
+            sqlx::query(r#"UPDATE "User" SET "storeName" = $1 WHERE "id" = $2"#)
+                .bind(new_name)
+                .bind(owner_id)
+                .execute(&pool)
+                .await
+                .expect("rename the contract's seller");
+        }
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn product_read_contract_and_pagination_boundaries() {
     let stack = common::TestStack::start(true, |_| {}).await;
