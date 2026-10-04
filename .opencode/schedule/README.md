@@ -9,8 +9,11 @@ three things below together.
 
 ```text
 .opencode/schedule/
-└── <routine-slug>/
-    └── PROMPT.md      # the routine's complete instructions
+├── README.md
+├── <routine-slug>/
+│   └── PROMPT.md      # the routine's complete instructions
+└── <another-routine-slug>/
+    └── PROMPT.md
 ```
 
 `<routine-slug>` must match the job's `name` passed to `schedule_job`, which in
@@ -77,6 +80,28 @@ The `routine:*` scripts in the repository root drive the
 `code-optimization-proposals` routine. For other routines, use the plugin tools
 (`list_jobs`, `get_job`, `job_logs`, `run_job`, `update_job`) or `launchctl`
 directly — see the plugin README for the storage layout.
+
+## Current routines
+
+| Slug | Schedule | What it does | Lands on |
+|------|----------|--------------|----------|
+| `code-optimization-proposals` | `0 * * * *` | Reviews the repo and writes at most one new proposal | commits straight to `main` |
+| `code-optimization-proposals-implement` | `30 * * * *` | Applies the oldest unimplemented proposal | branch + pull request |
+
+The half-hour offset is deliberate. Both routines touch the same repository, and
+the plugin's lock only stops a routine from overlapping *itself* — not two
+different routines. Staggering them keeps them out of each other's way, and also
+keeps a routine from committing to `main` while the other holds the git index.
+
+**They are not mutually exclusive.** The proposer may add a proposal while the
+implementer is mid-run; that is harmless, because the implementer re-reads
+`origin/main` before choosing its target. But the implementer must not run while
+`main` is dirty, or while the proposer is committing — hence the offset.
+
+Applied proposals are archived to
+`code-optimization-improve-proposals/implemented/`. That is how the implementer
+knows what is left; without the archive it would re-apply the same proposal every
+hour. The archive happens in the same pull request as the implementation.
 
 Runs are supervised: a lock file prevents a routine from overlapping itself, and
 `timeoutSeconds` hard-stops a stuck run with SIGTERM then SIGKILL. Note that
