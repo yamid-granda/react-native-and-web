@@ -146,6 +146,22 @@ fn session(status: StatusCode, token: String, user: &StoreUser) -> Result<Respon
 /// and then only ever compared by hash — it is written down nowhere.
 async fn issue_token(state: &AppState, user_id: &str) -> Result<String, AppError> {
     let token = generate_token();
+    // Reclaim this seller's dead rows before adding one. Every login and every
+    // registration inserts a row and, before this, nothing removed one except a
+    // logout — so the table was an append-only log of login events. Doing it
+    // here costs one indexed DELETE on a path that is already a write and has
+    // already paid for an argon2 hash, and needs no scheduler and no new config
+    // key; a seller logging in again is exactly when their dead rows are worth
+    // reclaiming.
+    //
+    // Fail-open, deliberately: the token below is minted either way. A row
+    // already past its expiry cannot authenticate regardless of whether this
+    // delete ran, so propagating the error would turn a housekeeping problem
+    // into an outage.
+    if let Err(error) = state.store.delete_expired_for_user(user_id).await {
+        tracing::warn!(user_id, error = %error, "expired session cleanup failed");
+        metrics::counter!("session_cleanup_errors_total").increment(1);
+    }
     state
         .store
         .create_session(
@@ -319,18 +335,24 @@ mod handler_tests {
     use crate::app::{router, AppState};
     use crate::auth::token::hash_token;
     use crate::config::Config;
-    use crate::store::{InMemoryStore, SessionStore};
+    use crate::store::{InMemoryStore, SessionStore, StoreOp};
 
     use super::*;
 
-    fn app() -> Router {
+    /// An app over a store whose session surface is on a handle the test can
+    /// break, which is how the handler tests reach a store error without Docker.
+    fn app_with_store() -> (Router, InMemoryStore) {
         // Cheap argon2 for the whole suite: it registers, logs in and verifies
         // dozens of times, and at production parameters that is the slowest thing
         // in `cargo test --lib` by an order of magnitude.
         password::use_cheap_params_for_tests();
-        let state =
-            AppState::new(Config::default(), Arc::new(InMemoryStore::default()), None, None);
-        router(state)
+        let store = InMemoryStore::default();
+        let state = AppState::new(Config::default(), Arc::new(store.clone()), None, None);
+        (router(state), store)
+    }
+
+    fn app() -> Router {
+        app_with_store().0
     }
 
     async fn body(response: Response) -> serde_json::Value {
@@ -474,6 +496,46 @@ mod handler_tests {
         assert_eq!(body(response).await["user"]["storeName"], "Riverbend Vintage");
     }
 
+    /// Reclaiming a seller's dead rows is housekeeping, so a failure there is
+    /// warned about and counted, never propagated: the credential being minted
+    /// is unaffected, and turning a cleanup error into a 500 would make a
+    /// housekeeping problem an outage.
+    ///
+    /// `fail_once` rather than `fail_always` because the sweep and the insert
+    /// share one surface: a one-shot failure lands on whichever runs first, and
+    /// the sweep is deliberately first.
+    #[tokio::test]
+    async fn a_failed_session_cleanup_does_not_fail_the_login() {
+        let (app, store) = app_with_store();
+        let token = sign_up(&app).await;
+
+        store.fail_once(StoreOp::Sessions);
+        let response = app
+            .clone()
+            .oneshot(json_request(
+                Method::POST,
+                "/auth/login",
+                json!({ "email": "seller@example.com", "password": "correct horse battery" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "the sweep failed, not the login");
+
+        // The session it minted is a working one. That is the whole assertion: a
+        // cleanup error costs dead weight, not a credential.
+        let me = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/me")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(me.status(), StatusCode::OK);
+    }
+
     /// The two failures are indistinguishable in body *and* in status, so the
     /// endpoint cannot be used to enumerate which addresses are registered.
     #[tokio::test]
@@ -567,7 +629,8 @@ mod handler_tests {
     }
 
     /// Expiry is checked as part of the lookup, so a dead session is not a
-    /// session: nothing has to sweep the table for correctness.
+    /// session: correctness never depended on a sweep. The sweep exists anyway,
+    /// on login, because the table's cost did.
     #[tokio::test]
     async fn an_expired_session_is_rejected() {
         let token = "already-expired-token".to_string();
