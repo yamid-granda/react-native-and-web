@@ -1,14 +1,9 @@
 "use client"
 
-import { useCallback, useMemo } from "react"
+import { useCallback } from "react"
 import { useRouter } from "solito/navigation"
 import { SessionGate, StoreScreen, useMyStoreRoute } from "@rnw/components-library"
-import {
-  createMyProduct,
-  deleteMyProduct,
-  fetchMyProducts,
-  updateMyProduct,
-} from "../../lib/api"
+import { myStoreApi } from "../../lib/api"
 
 /**
  * My Store: the seller's own product list.
@@ -30,21 +25,10 @@ export default function MyStorePage() {
 
 function SignedInStore() {
   const router = useRouter()
-  // The api adapter stays here rather than in `useMyStoreRoute` because it names
-  // this app's own transport functions.
-  const api = useMemo(
-    () => ({
-      list: fetchMyProducts,
-      create: createMyProduct,
-      update: (id: string, values: Parameters<typeof updateMyProduct>[1]) =>
-        updateMyProduct(id, values),
-      remove: deleteMyProduct,
-    }),
-    [],
-  )
-
+  // The api adapter is `lib/api`'s `myStoreApi`: it names this app's own transport
+  // functions, and every My Store route needs it.
   const store = useMyStoreRoute(
-    api,
+    myStoreApi,
     () => router.push("/my-store/new"),
     (id) => router.push(`/my-store/${id}/edit`),
   )

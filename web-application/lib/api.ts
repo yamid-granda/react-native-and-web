@@ -168,3 +168,18 @@ export function updateMyProduct(
 export function deleteMyProduct(id: string) {
   return authedRequest<void>(`/my-store/products/${encodeURIComponent(id)}`, { method: "DELETE" })
 }
+
+/**
+ * The My Store transport, in the shape `components-library` asks for.
+ *
+ * Module-level rather than a `useMemo` in the route that happens to need it: it
+ * only names functions declared in this file, and all four My Store routes need
+ * the same object. Passing the references straight through also means no
+ * per-member `Parameters<typeof …>` adapter — the signatures already match.
+ */
+export const myStoreApi = {
+  list: fetchMyProducts,
+  create: createMyProduct,
+  update: updateMyProduct,
+  remove: deleteMyProduct,
+}

@@ -73,8 +73,8 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
           (unlike plain CSS, which would floor this at trailingItem's own
           min-content size by default), so without an explicit min-width
           here this box gets squeezed by flex-1's 50/50 split with the
-          empty leading spacer and trailingItem overflows past it — see
-          MainNav.web.tsx's matching shrink/overflow-hidden. */}
+          empty leading spacer and trailingItem overflows past it — hence
+          MainNav.web.tsx's own shrink/overflow-hidden on the item. */}
       <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
         {trailingItem ? (
           <MainNav

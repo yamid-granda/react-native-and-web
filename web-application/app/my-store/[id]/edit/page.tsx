@@ -7,8 +7,10 @@ import {
   ProductEditorScreen,
   SessionGate,
   productQueryKey,
+  useMyStoreMutations,
+  useSessionStore,
 } from "@rnw/components-library"
-import { fetchProduct, updateMyProduct } from "../../../../lib/api"
+import { fetchProduct, myStoreApi } from "../../../../lib/api"
 
 /**
  * Edit one of the caller's products.
@@ -41,6 +43,10 @@ function EditProductForm({ id }: { id: string }) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const storeId = useSessionStore((state) => state.user?.id ?? "")
+  // The write seam, so saving retires the `["product", id]` this screen read as
+  // well as the seller's own list.
+  const store = useMyStoreMutations(storeId, myStoreApi)
 
   const { data: product, isLoading, error: loadError } = useQuery({
     queryKey: productQueryKey(id),
@@ -57,7 +63,7 @@ function EditProductForm({ id }: { id: string }) {
       isSubmitting={isSubmitting}
       setSubmitting={setIsSubmitting}
       setError={setError}
-      update={updateMyProduct}
+      update={(productId, values) => store.update.mutateAsync({ id: productId, values })}
       onDone={() => router.replace("/my-store")}
       onCancel={() => router.back()}
     />
