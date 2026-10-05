@@ -80,6 +80,84 @@ async fn product_read_contract_and_pagination_boundaries() {
     assert!(ids_one.iter().all(|id| !ids_two.contains(id)));
 }
 
+/// The bug this search was written for, asserted over HTTP: a product the shopper
+/// just created sits at the end of the catalogue (`createdAt ASC`), so the mobile
+/// client — which cannot scroll its way to a second page once a query has
+/// collapsed the list — used to report "no match" for a product that demonstrably
+/// existed. The search has to be answered by the database for both platforms to
+/// agree.
+#[tokio::test]
+async fn a_search_finds_a_product_the_client_would_never_have_paged_to() {
+    let stack = common::TestStack::start(true, |_| {}).await;
+    let client = reqwest::Client::new();
+
+    // Two rows sharing a word, so a search has to discriminate rather than match
+    // everything. The shared word is a nonce: the catalogue is seeded, and a term
+    // picked out of ordinary English is at the mercy of whatever the fixtures
+    // happen to contain.
+    for (id, title) in [("prod-kettle", "Calyx Kettle"), ("prod-lantern", "Calyx Lantern")] {
+        sqlx::query(
+            r#"INSERT INTO "Product" ("id", "title", "price", "currency", "stock", "createdAt") VALUES ($1, $2, 10, 'USD', 1, '2026-01-01 00:00:00.000')"#,
+        )
+        .bind(id)
+        .bind(title)
+        .execute(&stack.pool)
+        .await
+        .expect("insert a searchable product");
+    }
+
+    let search = |term: &str| {
+        let client = &client;
+        let url = format!("{}/products?q={term}", stack.base_url);
+        async move {
+            let response = client.get(url).send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            (
+                response.headers()["x-cache"].to_str().unwrap().to_string(),
+                response.json::<Value>().await.unwrap(),
+            )
+        }
+    };
+
+    let (first_cache, kettle) = search("kettle").await;
+    assert_eq!(first_cache, "miss", "the first read of a key fills it");
+    let items = kettle["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1, "only one of the two names the term");
+    assert_eq!(items[0]["id"], "prod-kettle");
+    // The total describes the *filtered* rows. A catalogue-wide count here would
+    // leave `hasNextPage` true for pages that can never arrive, which is the same
+    // "search lies about the catalogue" failure one level down.
+    assert_eq!(kettle["total"], 1);
+    assert_eq!(kettle["hasNextPage"], false, "one match means there is no next page");
+
+    // Same page, different term. This is the assertion the cache key exists for:
+    // without the term in the key this is an L1/L2 hit on the first search's bytes
+    // and answers with the wrong product.
+    let (second_cache, lantern) = search("lantern").await;
+    assert_eq!(second_cache, "miss", "a different term must not reuse another term's entry");
+    assert_eq!(lantern["items"][0]["id"], "prod-lantern");
+    assert_eq!(lantern["total"], 1);
+
+    // And each term is then served from its own entry, so repeating a search is
+    // cheap without the two having shared one.
+    for (term, expected) in [("kettle", "prod-kettle"), ("lantern", "prod-lantern")] {
+        let (cache, body) = search(term).await;
+        assert!(cache.starts_with("hit-"), "a repeated search should be cached: {cache}");
+        assert_eq!(body["items"][0]["id"], expected);
+    }
+
+    // A term matching both is not narrowed to one of them.
+    let (_, both) = search("Calyx").await;
+    assert_eq!(both["items"].as_array().unwrap().len(), 2);
+    assert_eq!(both["total"], 2);
+
+    // A blank term is the unfiltered listing, and shares its cache entry rather
+    // than minting a second copy of the whole catalogue.
+    let (_, all) = search("").await;
+    assert!(all["total"].as_i64().unwrap() > 2, "a blank search must not be a filter");
+    assert_eq!(all["items"].as_array().unwrap().len(), 20);
+}
+
 #[tokio::test]
 async fn detail_404_health_and_cache_are_contract_compatible() {
     let stack = common::TestStack::start(true, |_| {}).await;

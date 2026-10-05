@@ -121,8 +121,23 @@ export function createApi(config: ApiConfig) {
     })
   }
 
-  function fetchProducts(page = 1) {
-    return request<ProductsPage>(`/products?page=${page}`)
+  /**
+   * One page of the marketplace catalogue, optionally narrowed by a search term.
+   *
+   * The term is the server's job, not the caller's. It used to be applied by
+   * `useProductSearch` to whatever pages the client happened to have loaded, so a
+   * product on page six read as "no match" until the shopper had scrolled there —
+   * and the two platforms disagreed, because web's sentinel auto-loaded the whole
+   * catalogue and mobile's `FlatList` could not. One request, one answer, both
+   * platforms.
+   *
+   * A blank term is omitted rather than sent as `q=`, so an empty search box is
+   * byte-identical to no search box and hits the same cache entry.
+   */
+  function fetchProducts(page = 1, q?: string) {
+    const term = q?.trim()
+    const search = term ? `&q=${encodeURIComponent(term)}` : ""
+    return request<ProductsPage>(`/products?page=${page}${search}`)
   }
 
   function fetchProduct(id: string) {

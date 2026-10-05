@@ -107,3 +107,27 @@ the same way it does today:
 - Manual pass on both apps against a seeded catalog with more products
   than one page: search for a title/description substring known to exist
   only past the first page and confirm it's found immediately.
+
+## What landed
+
+Shipped as described, with three decisions the proposal left open:
+
+1. **`search` is a parameter on `list_page`/`count`, not a second method
+   pair.** Two names for one listing would let the filtered and unfiltered
+   paths drift, and would leave the contract suite free to pass while
+   `SqlProductStore` quietly ignored the term.
+2. **`count` follows the filter.** The envelope's `total` is the count of
+   the *filtered* rows, so `hasNextPage` describes the search rather than
+   the catalogue. A catalogue-wide count would leave a 1-match search
+   promising thousands more pages.
+3. **The client's query is debounced (250ms) before it becomes a
+   request.** `ILIKE '%term%'` is a sequential scan that no index can
+   serve, so one request per pause rather than per keystroke. The
+   client-side substring filter is *kept*, for the ~250ms between a
+   keystroke and its response — it is what stops the grid showing the
+   previous, unfiltered page-1 rows under a term that does not match them.
+
+`ILIKE '%…%'` is still unindexed. That is a deliberate follow-up rather
+than an oversight: a `pg_trgm` GIN index is the obvious answer, but it
+is write-amplified on the product table and should be a decision made
+against a real catalogue size rather than assumed here.

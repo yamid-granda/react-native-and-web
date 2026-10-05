@@ -171,10 +171,45 @@ fn round_to_significant_digits(value: f64, digits: i32) -> f64 {
     (value * factor).round() / factor
 }
 
+/// Cap on the `q` param.
+///
+/// A search box is not a field with a maximum length; a shopper pastes into it.
+/// Truncating rather than rejecting is deliberate — a shorter term still matches
+/// a superset of what was asked for, so the shopper sees results and a narrower
+/// list, whereas a 400 would turn a long paste into an error page. 200 is
+/// [`MAX_TITLE_LENGTH`], so no term a shopper could type from a title is ever cut.
+const MAX_SEARCH_LENGTH: usize = 200;
+
+/// The shopper's search term, normalized, or `None` for "no search".
+///
+/// Normalized because it becomes part of a cache key: `?q=`, `?q=%20` and
+/// `?q=+` are three spellings of an empty search, and without this each would
+/// mint its own key for the very same rows. Whitespace is collapsed rather than
+/// trimmed because `"blue  shirt"` and `"blue shirt"` are one search to a person.
+///
+/// `%` and `_` are deliberately *not* escaped here — they are ordinary
+/// characters in a product title until the store turns the term into a LIKE
+/// pattern, which is the layer that has to know about them. See
+/// [`crate::store::products::like_pattern`].
+pub fn parse_search(raw_query: Option<&str>) -> Option<String> {
+    // First `q` wins, matching how `?ids=` resolves repeated params: a caller
+    // that appends its own term must not have the URL's own silently overridden.
+    let raw = form_urlencoded::parse(raw_query.unwrap_or("").as_bytes())
+        .find(|(key, _)| key == "q")
+        .map(|(_, value)| value.into_owned())?;
+
+    let term: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if term.is_empty() {
+        return None;
+    }
+    Some(term.chars().take(MAX_SEARCH_LENGTH).collect())
+}
+
 pub async fn list(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
     let query = parse_page(parts.uri.query())?;
-    let key = cache::list_key(state.cache.generation(), query.page);
+    let search = parse_search(parts.uri.query());
+    let key = cache::list_key(state.cache.generation(), query.page, search.as_deref());
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
@@ -190,8 +225,12 @@ pub async fn list(State(state): State<AppState>, request: Request) -> Result<Res
         return Ok(response);
     }
 
-    let products = state.store.list_page(query.offset, PAGE_SIZE).await?;
-    let total = catalog_total(&state).await?;
+    let products = state.store.list_page(query.offset, PAGE_SIZE, search.as_deref()).await?;
+    // The count is over the *filtered* rows, not the catalogue: `hasNextPage` is
+    // derived from it, so a catalogue-wide count would tell a shopper whose
+    // search matched 3 of 40,000 products that there were 2,000 more pages to
+    // scroll.
+    let total = catalog_total(&state, search.as_deref()).await?;
     let body = ProductsPageJson::from_page(products, &query, total);
     let bytes = serde_json::to_vec(&body)?;
     state.cache.set(Kind::List, &key, Bytes::copy_from_slice(&bytes)).await;
@@ -382,10 +421,20 @@ pub(crate) async fn cached(
 /// per TTL window. It carries the generation too: `total` is the field a new
 /// product changes most visibly, so a retired entry here is the one a shopper
 /// would actually notice.
+///
+/// The search term is part of it for the same reason it is part of
+/// [`cache::list_key`]: a count of the whole catalogue is not the `total` a
+/// filtered page is describing, and serving one under the other's key would be
+/// the same collision as serving another search's rows.
 const COUNT_KEY_PREFIX: &str = "products:count";
 
-fn count_key(state: &AppState) -> String {
-    format!("{COUNT_KEY_PREFIX}:{}", state.cache.generation())
+fn count_key(state: &AppState, search: Option<&str>) -> String {
+    match search {
+        None => format!("{COUNT_KEY_PREFIX}:{}", state.cache.generation()),
+        Some(term) => {
+            format!("{COUNT_KEY_PREFIX}:{}:{}", state.cache.generation(), cache::search_token(term))
+        }
+    }
 }
 
 /// `total` for the envelope, evaluated at most once per cache TTL window.
@@ -395,8 +444,8 @@ fn count_key(state: &AppState) -> String {
 /// page. A genuine store error still surfaces as the same 500 it always did.
 /// The flight stops a cold burst across *different* pages from turning into one
 /// `COUNT(*)` per page.
-async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
-    let key = count_key(state);
+async fn catalog_total(state: &AppState, search: Option<&str>) -> Result<i64, AppError> {
+    let key = count_key(state, search);
     let flight = state.cache.flights().for_key(Kind::List, &key).await;
     let _fill = flight.lock().await;
 
@@ -409,7 +458,7 @@ async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
         tracing::warn!("discarding unreadable cached product count");
     }
 
-    let total = state.store.count().await?;
+    let total = state.store.count(search).await?;
     state.cache.set(Kind::List, &key, Bytes::from(total.to_string())).await;
     Ok(total)
 }
@@ -513,6 +562,82 @@ mod tests {
         assert_eq!(ok("0.975").skip, -0.5000000000000004);
     }
 
+    /// The term becomes part of a cache key, so the spellings of "no search" have
+    /// to collapse to one — otherwise `?q=`, `?q=%20` and `?q=+` each mint a key
+    /// for the very same rows.
+    #[test]
+    fn a_blank_search_is_no_search_whatever_spelling_it_arrives_in() {
+        for blank in ["", "%20", "+", "%09%0A"] {
+            assert_eq!(parse_search(Some(&format!("q={blank}"))), None, "q={blank:?}");
+        }
+        assert_eq!(parse_search(Some("page=2")), None, "an absent param");
+        assert_eq!(parse_search(None), None);
+        // Trimming and collapsing are what make one shopper's typing one search.
+        assert_eq!(parse_search(Some("q=%20blusa%20%20para%20")), Some("blusa para".to_string()));
+        // First `q` wins, so a caller appending its own term cannot be silently
+        // overridden by the URL's — matching how `?ids=` resolves repeats.
+        assert_eq!(parse_search(Some("q=first&q=second")), Some("first".to_string()));
+        // Truncated rather than refused: a long paste still matches a superset of
+        // what was asked for, where a 400 would be an error page instead.
+        let long = parse_search(Some(&format!("q={}", "a".repeat(MAX_SEARCH_LENGTH + 50))));
+        assert_eq!(long.unwrap().chars().count(), MAX_SEARCH_LENGTH);
+    }
+
+    /// The end-to-end behaviour, over HTTP: a term narrows the page *and* the
+    /// `total` that describes it. The count half is the one that matters — a
+    /// catalogue-wide total would leave `hasNextPage` true for pages that do not
+    /// exist, so the list would promise results forever.
+    #[tokio::test]
+    async fn a_searched_page_reports_the_filtered_total() {
+        let store = InMemoryStore::new(vec![
+            product("old", 10.0),
+            Product { title: "Blusa para bebé".to_string(), ..product("new", 20.0) },
+        ]);
+        let app = router(counting_state(CountingStore::new(store)));
+
+        let found = body_of(app.clone().oneshot(get("/products?q=beb%C3%A9")).await.unwrap()).await;
+        let items = found["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1, "the term matches only the product that names it");
+        assert_eq!(items[0]["id"], "new");
+        assert_eq!(found["total"], 1, "the total counts the filtered rows, not the catalogue");
+        assert_eq!(found["hasNextPage"], false, "one match means there is no next page");
+
+        // The unfiltered listing is untouched by any of that.
+        let all = body_of(app.clone().oneshot(get("/products")).await.unwrap()).await;
+        assert_eq!(all["total"], 2);
+
+        // And a term nothing matches is an empty page, which is what the clients'
+        // "no products match" state is built on.
+        let none = body_of(app.oneshot(get("/products?q=nothing")).await.unwrap()).await;
+        assert_eq!(none["items"], serde_json::json!([]));
+        assert_eq!(none["total"], 0);
+    }
+
+    /// Two searches must not answer each other. Without the term in the cache key
+    /// the second request below is served the first one's bytes — a shopper
+    /// searching for one product is shown a different one.
+    #[tokio::test]
+    async fn two_searches_never_serve_each_others_rows() {
+        let store = InMemoryStore::new(vec![
+            Product { title: "Blue Kettle".to_string(), ..product("blue", 10.0) },
+            Product { title: "Red Kettle".to_string(), ..product("red", 20.0) },
+        ]);
+        let app = router(counting_state(CountingStore::new(store)));
+
+        for (term, expected) in [("blue", "blue"), ("red", "red")] {
+            let body =
+                body_of(app.clone().oneshot(get(&format!("/products?q={term}"))).await.unwrap())
+                    .await;
+            let ids: Vec<&str> = body["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, [expected], "a search for {term} returned someone else's rows");
+        }
+    }
+
     #[test]
     fn product_json_matches_prisma_shape() {
         let json = serde_json::to_string(&ProductJson::from(product("prod-1", 18.0))).unwrap();
@@ -555,13 +680,13 @@ mod tests {
     async fn a_bump_changes_the_list_key() {
         let (store, _inner) = counting_store(1);
         let state = counting_state(store);
-        let before = cache::list_key(state.cache.generation(), 1.0);
+        let before = cache::list_key(state.cache.generation(), 1.0, None);
         state.cache.bump_list_generation().await;
-        let after = cache::list_key(state.cache.generation(), 1.0);
+        let after = cache::list_key(state.cache.generation(), 1.0, None);
         assert_ne!(before, after);
         assert!(before.starts_with("products:list:0:"), "{before}");
         assert!(after.starts_with("products:list:1:"), "{after}");
-        assert_ne!(count_key(&state), format!("{COUNT_KEY_PREFIX}:0"));
+        assert_ne!(count_key(&state, None), format!("{COUNT_KEY_PREFIX}:0"));
     }
 
     /// The write path and the detail handler must address one key. If they
@@ -629,15 +754,20 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ProductStore for CountingStore {
-        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+        async fn list_page(
+            &self,
+            offset: i64,
+            limit: i64,
+            search: Option<&str>,
+        ) -> Result<Vec<Product>, StoreError> {
             self.list_calls.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(self.delay).await;
-            self.inner.list_page(offset, limit).await
+            self.inner.list_page(offset, limit, search).await
         }
 
-        async fn count(&self) -> Result<i64, StoreError> {
+        async fn count(&self, search: Option<&str>) -> Result<i64, StoreError> {
             self.count_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.count().await
+            self.inner.count(search).await
         }
 
         async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
@@ -946,7 +1076,10 @@ mod tests {
         let (store, _inner) = counting_store(200);
         let count_calls = Arc::clone(&store.count_calls);
         let state = counting_state(store);
-        state.cache.set(Kind::List, &count_key(&state), Bytes::from_static(b"not-a-number")).await;
+        state
+            .cache
+            .set(Kind::List, &count_key(&state, None), Bytes::from_static(b"not-a-number"))
+            .await;
 
         let response = router(state).oneshot(get("/products")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);

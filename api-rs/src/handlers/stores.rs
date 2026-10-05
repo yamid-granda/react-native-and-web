@@ -196,12 +196,17 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ProductStore for CountingStore {
-        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_page(offset, limit).await
+        async fn list_page(
+            &self,
+            offset: i64,
+            limit: i64,
+            search: Option<&str>,
+        ) -> Result<Vec<Product>, StoreError> {
+            self.inner.list_page(offset, limit, search).await
         }
 
-        async fn count(&self) -> Result<i64, StoreError> {
-            self.inner.count().await
+        async fn count(&self, search: Option<&str>) -> Result<i64, StoreError> {
+            self.inner.count(search).await
         }
 
         async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {

@@ -35,6 +35,12 @@ const RENAMED_STORE_NAME: &str = "Contract Shop Renamed";
 const LIFECYCLE_OWNER_ID: &str = "usr_store_contract_lifecycle";
 const LIFECYCLE_OWNER_EMAIL: &str = "store-contract-lifecycle@rnw.test";
 const LIFECYCLE_OWNER_STORE_NAME: &str = "Lifecycle Contract Shop";
+/// The search assertion's own seller, for the reason the lifecycle one has: its
+/// rows have to be identifiable so "this search returns exactly my three rows"
+/// stays true whatever the harness has seeded.
+const SEARCH_OWNER_ID: &str = "usr_store_contract_search";
+const SEARCH_OWNER_EMAIL: &str = "store-contract-search@rnw.test";
+const SEARCH_OWNER_STORE_NAME: &str = "Search Contract Shop";
 
 /// Run every store-layer assertion against `store`.
 ///
@@ -67,6 +73,9 @@ where
     a_refused_registration_changes_nothing(store).await;
     expiry_is_folded_into_the_session_lookup(store).await;
     expired_sessions_leave_the_table_and_live_ones_are_enumerable(store).await;
+    // Last: it writes the most rows of any assertion here, and the ones above
+    // count a seller's products exactly.
+    a_search_narrows_the_listing_and_the_total_together(store).await;
 }
 
 async fn register_the_contract_sellers<S: MarketplaceStore + ?Sized>(store: &S) {
@@ -85,20 +94,20 @@ async fn register_the_contract_sellers<S: MarketplaceStore + ?Sized>(store: &S) 
 /// negative ones; a double that clamps instead would return a page the database
 /// never produces, and a test asserting against it would be asserting fiction.
 async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &S) {
-    let first_page = store.list_page(0, PAGE_SIZE).await.expect("first page");
+    let first_page = store.list_page(0, PAGE_SIZE, None).await.expect("first page");
     assert!(!first_page.is_empty(), "the harness must seed at least one product");
 
-    let whole = store.list_page(0, i64::MAX).await.expect("the whole catalogue");
+    let whole = store.list_page(0, i64::MAX, None).await.expect("the whole catalogue");
     assert_eq!(
         first_page.first().map(|product| product.id.as_str()),
         whole.first().map(|product| product.id.as_str()),
         "offset 0 is the first row, not a page of its own"
     );
 
-    let total = store.count().await.expect("count the catalogue");
+    let total = store.count(None).await.expect("count the catalogue");
     assert_eq!(total, whole.len() as i64, "the total is the whole catalogue");
     assert!(
-        store.list_page(total, PAGE_SIZE).await.expect("offset past the end").is_empty(),
+        store.list_page(total, PAGE_SIZE, None).await.expect("offset past the end").is_empty(),
         "an offset past the last row is an empty page"
     );
     assert!(
@@ -110,7 +119,10 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
         "an unknown owner has no rows"
     );
 
-    assert!(store.list_page(0, 0).await.expect("limit 0").is_empty(), "limit 0 is an empty page");
+    assert!(
+        store.list_page(0, 0, None).await.expect("limit 0").is_empty(),
+        "limit 0 is an empty page"
+    );
     assert_eq!(
         store.count_for_owner(OWNER_ID).await.expect("count a seller with nothing"),
         0,
@@ -118,13 +130,150 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
     );
 
     assert!(
-        store.list_page(-1, PAGE_SIZE).await.is_err(),
+        store.list_page(-1, PAGE_SIZE, None).await.is_err(),
         "a negative offset is refused, not clamped to page one"
     );
     assert!(
-        store.list_page(0, -1).await.is_err(),
+        store.list_page(0, -1, None).await.is_err(),
         "a negative limit is refused, not read as unlimited"
     );
+}
+
+/// A search narrows the rows *and* the count that describes them, matches on
+/// the description as well as the title, and reads `%` and `_` as themselves.
+///
+/// The count half is the assertion that catches the bug this search exists for.
+/// If `count` ignored the term, a page filtered down to 1 of 40,000 rows would
+/// still report `hasNextPage: true` — promising pages that can never arrive.
+///
+/// Own products, so every assertion is about rows this function wrote. The
+/// catalogue already holds the harness's fixtures, and an assertion like "a
+/// search for `%` returns nothing" would otherwise be a claim about someone
+/// else's seed data.
+///
+/// Terms are ASCII on purpose: `ILIKE` folds case using the database's collation
+/// and the double uses Rust's `to_lowercase`, and the two agree on ASCII without
+/// the suite depending on a collation neither harness may have configured.
+async fn a_search_narrows_the_listing_and_the_total_together<S: MarketplaceStore + ?Sized>(
+    store: &S,
+) {
+    store
+        .create_user(new_user(SEARCH_OWNER_ID, SEARCH_OWNER_EMAIL, SEARCH_OWNER_STORE_NAME))
+        .await
+        .expect("register the search suite's seller");
+
+    // Three rows, so a search has something to exclude and the terms below
+    // cannot all land on the same row.
+    store
+        .create(SEARCH_OWNER_ID, new_product("Baby Blouse"))
+        .await
+        .expect("create a row matched by title");
+    store
+        .create(SEARCH_OWNER_ID, new_product("Winter Hat"))
+        .await
+        .expect("create a row matched by description only");
+    store
+        .create(
+            SEARCH_OWNER_ID,
+            NewProduct {
+                description: Some("Kept warm in a pinch.".to_string()),
+                ..new_product("Cap")
+            },
+        )
+        .await
+        .expect("create a described row");
+
+    assert_eq!(
+        own_titles(store, Some("blouse")).await,
+        ["Baby Blouse"],
+        "a title search finds the row and excludes the two it does not name"
+    );
+    assert_eq!(
+        own_titles(store, Some("BABY")).await,
+        ["Baby Blouse"],
+        "a title search ignores case"
+    );
+    assert_eq!(
+        own_titles(store, Some("pinch")).await,
+        ["Cap"],
+        "the description is searched too, and the term need not appear in the title"
+    );
+    assert_eq!(
+        own_titles(store, Some("winter")).await,
+        ["Winter Hat"],
+        "a term present in both a title and a description resolves to one row"
+    );
+
+    // The total a filtered page reports has to be the filtered one, or
+    // `hasNextPage` describes rows that will never arrive.
+    assert_eq!(
+        store.count(Some("blouse")).await.expect("the filtered total"),
+        1,
+        "the count follows the same filter as the listing"
+    );
+    assert_eq!(
+        store.count(Some("a term that matches nothing at all")).await.expect("count nothing"),
+        0,
+        "a term nothing matches counts zero, so `hasNextPage` is false"
+    );
+
+    // Nothing matching is an empty page, never an error and never the whole
+    // catalogue. The clients' "no products match" state is built on this.
+    assert!(
+        store
+            .list_page(0, PAGE_SIZE, Some("a term that matches nothing at all"))
+            .await
+            .expect("a term nothing matches")
+            .is_empty(),
+        "a term nothing matches is an empty page"
+    );
+
+    // `%`, `_` and `\` are ordinary characters in a product name, but `ILIKE`
+    // reads the first two as wildcards and treats a bare `\` as an escape. A
+    // shopper searching `50%` must get discounts, not every row with a `50` in
+    // it — and this suite runs against the double too, so it catches an
+    // implementation that escapes in only one of them.
+    for (title, term) in
+        [("50% off", "50%"), ("Large_Widget", "Large_"), (r"Back\slash", r"Back\slash")]
+    {
+        store
+            .create(SEARCH_OWNER_ID, new_product(title))
+            .await
+            .expect("create a row with a LIKE metacharacter in its title");
+        assert_eq!(
+            own_titles(store, Some(term)).await,
+            [title],
+            "`{term}` is matched literally, not as a pattern"
+        );
+    }
+    // On its own a metacharacter is still just a character: it finds the one row
+    // that literally contains it, and not the whole catalogue. This is the
+    // assertion that fails without escaping — `%` as a wildcard matches every
+    // row, and `_` matches anything with a character in it.
+    for (wildcard, expected) in [("%", "50% off"), ("_", "Large_Widget")] {
+        assert_eq!(
+            own_titles(store, Some(wildcard)).await,
+            [expected],
+            "`{wildcard}` alone finds only the row that literally contains it, not every row"
+        );
+    }
+}
+
+/// Every row `term` matches, narrowed to the search suite's own products.
+///
+/// Narrowed because the catalogue already holds the harness's fixtures: these
+/// assertions are about what this suite wrote, so an unrelated seeded product
+/// that happens to match a term cannot make them fail — or, worse, pass for the
+/// wrong reason.
+async fn own_titles<S: MarketplaceStore + ?Sized>(store: &S, term: Option<&str>) -> Vec<String> {
+    store
+        .list_page(0, i64::MAX, term)
+        .await
+        .unwrap_or_else(|error| panic!("search {term:?} failed: {error}"))
+        .into_iter()
+        .filter(|product| product.owner_id.as_deref() == Some(SEARCH_OWNER_ID))
+        .map(|product| product.title)
+        .collect()
 }
 
 /// `None` for another owner's row, not a 403: a forbidden answer would confirm

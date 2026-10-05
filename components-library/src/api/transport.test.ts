@@ -167,6 +167,34 @@ describe("createApi — responses", () => {
   })
 })
 
+describe("createApi — fetchProducts", () => {
+  it("asks the server for the search, rather than leaving it to filter the page", async () => {
+    const fetch = respondWith({})
+    await makeApi().fetchProducts(1, "blusa para bebé")
+
+    // Escaped, because the term is free text on its way into a query string, and
+    // it reaches the server because that is the only layer holding the whole
+    // catalogue — a client-side filter only ever sees the pages already loaded.
+    expect(urlOf(fetch)).toBe(`${BASE_URL}/products?page=1&q=blusa%20para%20beb%C3%A9`)
+  })
+
+  it("pages and searches together", async () => {
+    const fetch = respondWith({})
+    await makeApi().fetchProducts(3, "kettle")
+    expect(urlOf(fetch)).toBe(`${BASE_URL}/products?page=3&q=kettle`)
+  })
+
+  /// A blank box is no search, so it must be the same request — otherwise clearing
+  /// the input re-keys the query and the shopper loses the pages already fetched.
+  it("omits a blank term rather than sending an empty one", async () => {
+    for (const blank of [undefined, "", "   "]) {
+      const fetch = respondWith({})
+      await makeApi().fetchProducts(2, blank)
+      expect(urlOf(fetch), `q: ${JSON.stringify(blank)}`).toBe(`${BASE_URL}/products?page=2`)
+    }
+  })
+})
+
 describe("createApi — validateSession", () => {
   it("sends the token it is given, not the store's", async () => {
     const fetch = respondWith({ id: "usr_1" })

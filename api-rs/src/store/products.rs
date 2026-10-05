@@ -136,14 +136,51 @@ impl From<sqlx::Error> for StoreError {
     }
 }
 
+/// The `%term%` pattern a search binds, with the LIKE metacharacters escaped.
+///
+/// The shopper's term is free text typed into a search box, and `_` and `%` are
+/// wildcards to `ILIKE` — so a search for `50%` would otherwise match every row
+/// with a `50` anywhere in it. Escaping is what makes the term mean itself.
+///
+/// A function rather than inline SQL for one reason: the in-memory double has to
+/// apply the *same* rule, or the E2E contract suite would be comparing Postgres
+/// against a fiction. One spelling of "what a search means" is what makes that
+/// comparison worth running.
+pub fn like_pattern(term: &str) -> String {
+    let mut escaped = String::with_capacity(term.len() + 2);
+    for character in term.chars() {
+        // `\` first: escaping it is what stops an escaped `%` from being read as
+        // a literal backslash followed by a wildcard.
+        if matches!(character, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    format!("%{escaped}%")
+}
+
 #[async_trait::async_trait]
 pub trait ProductStore: Send + Sync + 'static {
-    /// The rows for one page. The total row count is deliberately a separate
-    /// call: it is per-catalog rather than per-page, so the handler caches it
-    /// instead of recomputing it on every request.
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError>;
-    /// `COUNT(*)` over the whole catalog — the `total` the envelope requires.
-    async fn count(&self) -> Result<i64, StoreError>;
+    /// The rows for one page, narrowed to `search` when it is `Some`.
+    ///
+    /// The total row count is deliberately a separate call: it is per-catalog
+    /// rather than per-page, so the handler caches it instead of recomputing it
+    /// on every request.
+    ///
+    /// `search` is a parameter rather than a second method pair on purpose. A
+    /// search is the same listing with a `WHERE`, and two names for it would let
+    /// the filtered and unfiltered paths drift — and would leave the contract
+    /// suite free to pass while `SqlProductStore` quietly ignored the term.
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError>;
+    /// `COUNT(*)` over the whole catalog — the `total` the envelope requires —
+    /// counting the same rows `list_page` would return for `search`, so that
+    /// `hasNextPage` describes the filtered set rather than the whole catalogue.
+    async fn count(&self, search: Option<&str>) -> Result<i64, StoreError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError>;
     /// The seller's own rows, for `GET /my-store/products`. Always the primary:
     /// a seller must see their own writes, so a lagged read here is a bug rather
@@ -255,11 +292,25 @@ impl From<ProductRow> for Product {
 /// join, not an inner one, precisely because seeded rows have no owner: an
 /// inner join would silently drop most of the catalogue.
 const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" ORDER BY p."createdAt" ASC, p."id" ASC LIMIT $1 OFFSET $2"#;
+
+/// The searched twin of `LIST_QUERY`, and of `LIST_OWNED_QUERY`'s `WHERE`.
+///
+/// `ILIKE` is what makes a search case-insensitive, and `description` is in the
+/// match because a shopper looking for a product describes it as often as they
+/// name it. The parentheses are not decoration: `OR` binds looser than the
+/// `ORDER BY` that follows, so an unbracketed pair of `ILIKE`s is a filter here
+/// only by luck of the statement's shape.
+///
+/// No index can serve `ILIKE '%…%'` — the pattern is a suffix-anchored
+/// substring on both sides — so this is a sequential scan, which is why the
+/// clients debounce the term into a request rather than asking per keystroke.
+const SEARCH_LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE (p."title" ILIKE $3 ESCAPE '\' OR p."description" ILIKE $3 ESCAPE '\') ORDER BY p."createdAt" ASC, p."id" ASC LIMIT $1 OFFSET $2"#;
 // Not a raw string: this one *ends* in a `"`, and in `r#"…"#` that quote would
 // pair with the `#` and become the terminator — leaving the identifier
 // unclosed. The two queries above get away with `r#"…"#` only because neither
 // ends in a quote.
 const COUNT_QUERY: &str = "SELECT COUNT(*) FROM \"Product\"";
+const SEARCH_COUNT_QUERY: &str = r#"SELECT COUNT(*) FROM "Product" WHERE ("title" ILIKE $1 ESCAPE '\' OR "description" ILIKE $1 ESCAPE '\')"#;
 const DETAIL_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = $1"#;
 
 /// The owner-scoped twin of `LIST_QUERY`, backed by
@@ -524,16 +575,47 @@ pub fn generate_product_id() -> String {
 
 #[async_trait::async_trait]
 impl ProductStore for SqlProductStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError> {
         let mut connection = Self::acquire(self.reads(), self.read_role()).await?;
-        let rows: Vec<ProductRow> =
-            sqlx::query_as(LIST_QUERY).bind(limit).bind(offset).fetch_all(&mut *connection).await?;
+        // Two statements rather than one built at runtime: sqlx 0.9 only accepts
+        // literal SQL without an injection audit, and the bind counts differ, so
+        // there is no single call shape to share between them.
+        let rows: Vec<ProductRow> = match search {
+            None => {
+                sqlx::query_as(LIST_QUERY)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&mut *connection)
+                    .await?
+            }
+            Some(term) => {
+                sqlx::query_as(SEARCH_LIST_QUERY)
+                    .bind(limit)
+                    .bind(offset)
+                    .bind(like_pattern(term))
+                    .fetch_all(&mut *connection)
+                    .await?
+            }
+        };
         Ok(rows.into_iter().map(Product::from).collect())
     }
 
-    async fn count(&self) -> Result<i64, StoreError> {
+    async fn count(&self, search: Option<&str>) -> Result<i64, StoreError> {
         let mut connection = Self::acquire(self.reads(), self.read_role()).await?;
-        let total: i64 = sqlx::query_scalar(COUNT_QUERY).fetch_one(&mut *connection).await?;
+        let total: i64 = match search {
+            None => sqlx::query_scalar(COUNT_QUERY).fetch_one(&mut *connection).await?,
+            Some(term) => {
+                sqlx::query_scalar(SEARCH_COUNT_QUERY)
+                    .bind(like_pattern(term))
+                    .fetch_one(&mut *connection)
+                    .await?
+            }
+        };
         Ok(total)
     }
 

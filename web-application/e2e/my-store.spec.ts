@@ -58,8 +58,10 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   // It is in the shared marketplace, and it says who sells it.
   //
   // Searched for rather than scrolled to: the list is `createdAt ASC`, so a
-  // product created *now* sorts last, behind the seeded fixtures. Searching is
-  // also what a shopper would actually do.
+  // product created *now* sorts last, behind the seeded fixtures — this is
+  // exactly the case that used to fail on mobile, where a search collapsed the
+  // list to nothing, an unscrollable list never fired `onEndReached`, and the
+  // product was never fetched. Searching is also what a shopper would do.
   await page.goto("/marketplace")
   await page.getByLabel("Search products").fill(title)
   // By role, not by text: the title `Text` is inside the card's Pressable, and
@@ -97,9 +99,10 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   // answers" is exactly what this catches — and `toHaveValue` retries, so it
   // waits for the refetch rather than racing it.
   //
-  // Deliberately not asserted through the marketplace search: that filters only
-  // the pages already fetched, and this product sorts last of 1000+, which is a
-  // pagination question this spec does not own.
+  // Deliberately not asserted through the marketplace search: that answers from
+  // the server, but a product renamed to `${title} v2` is a *different* search
+  // term, and asserting the rename through search would be testing the search
+  // rather than the edit. The form is read back above instead.
   await page.goto("/my-store")
   await page.getByLabel(`Edit ${title} v2`).click()
   await expect(page).toHaveURL(/\/my-store\/.+\/edit/)

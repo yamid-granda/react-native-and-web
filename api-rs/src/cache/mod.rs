@@ -36,7 +36,8 @@ pub fn detail_key(id: &str) -> String {
     format!("products:detail:{id}")
 }
 
-/// The catalog list key: namespace generation, then the page's float bits.
+/// The catalog list key: namespace generation, then the page's float bits, then
+/// the search term if there is one.
 ///
 /// The generation is what makes a write path possible at all. Page keys cannot
 /// be enumerated — `products:list:<bits>` over every page a shopper has ever
@@ -44,8 +45,37 @@ pub fn detail_key(id: &str) -> String {
 /// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
 /// that a write bumps retires all of them at once, with one `INCR` and no
 /// `SCAN` (see `ARCHITECTURE.md` §12).
-pub fn list_key(generation: i64, page: f64) -> String {
-    format!("products:list:{generation}:{}", page.to_bits())
+///
+/// The search term has to be in here or two different searches for the same page
+/// answer each other's rows: a shopper typing "blue" would be served whatever
+/// "red" last put in the cache. It is a *suffix* rather than a segment because
+/// the unfiltered case must keep producing the exact bytes it always has —
+/// otherwise deploying search would silently invalidate every cached page in
+/// every instance's Valkey.
+pub fn list_key(generation: i64, page: f64, search: Option<&str>) -> String {
+    match search {
+        None => format!("products:list:{generation}:{}", page.to_bits()),
+        Some(term) => {
+            format!("products:list:{generation}:{}:{}", page.to_bits(), search_token(term))
+        }
+    }
+}
+
+/// A fixed-width stand-in for the search term inside a cache key.
+///
+/// The raw term would work, but it is unbounded: a shopper can paste kilobytes
+/// into a search box, and every byte of that would become a Valkey key. A digest
+/// is bounded by construction and cannot collide, since distinct inputs have
+/// distinct digests — the property a cache key actually needs.
+///
+/// Not `auth::token::hash_token`: that one hashes because a token is a secret,
+/// and this hashes because a key has to be short. Different reason, same
+/// primitive, and sha256 is unremarkable here — the term is not a secret and
+/// there is nothing to protect.
+pub(crate) fn search_token(term: &str) -> String {
+    use base64::Engine as _;
+    use sha2::{Digest as _, Sha256};
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(term.as_bytes()))
 }
 
 /// A public storefront's list key: the same scheme under a per-store namespace,
@@ -236,7 +266,7 @@ mod tests {
             CacheTier::new(L1Cache::new(Duration::from_secs(60), Duration::from_secs(60)), None);
         // The builder under test, not a literal copy of its format: a literal
         // here would keep passing if the scheme changed underneath it.
-        let key = |generation: i64| list_key(generation, 1.0);
+        let key = |generation: i64| list_key(generation, 1.0, None);
         cache.set(Kind::List, &key(cache.generation()), Bytes::from_static(b"before")).await;
         assert!(cache.get(Kind::List, &key(cache.generation())).await.is_some());
 
@@ -252,15 +282,47 @@ mod tests {
     #[test]
     fn the_key_scheme_keeps_its_format() {
         assert_eq!(detail_key("prod-1"), "products:detail:prod-1");
-        assert_eq!(list_key(7, 1.0), format!("products:list:7:{}", 1.0f64.to_bits()));
+        assert_eq!(list_key(7, 1.0, None), format!("products:list:7:{}", 1.0f64.to_bits()));
         assert_eq!(
             store_list_key(7, "usr-1", 1.0),
             format!("stores:usr-1:products:list:7:{}", 1.0f64.to_bits())
         );
         // Distinct pages and distinct stores are distinct keys — the property
         // singleflight and retirement both rest on.
-        assert_ne!(list_key(7, 1.0), list_key(7, 2.0));
+        assert_ne!(list_key(7, 1.0, None), list_key(7, 2.0, None));
         assert_ne!(store_list_key(7, "usr-1", 1.0), store_list_key(7, "usr-2", 1.0));
+    }
+
+    /// A search is part of the key, or two searches for the same page answer each
+    /// other's rows: someone typing "blue" would be served whatever "red" last
+    /// put in the cache. This is the assertion the bug report behind search
+    /// would have failed, and it fails here rather than in production.
+    #[test]
+    fn distinct_searches_never_share_a_cache_key() {
+        let unfiltered = list_key(7, 1.0, None);
+        assert_ne!(unfiltered, list_key(7, 1.0, Some("blue")));
+        assert_ne!(unfiltered, list_key(7, 1.0, Some("red")));
+        assert_ne!(list_key(7, 1.0, Some("blue")), list_key(7, 1.0, Some("red")));
+
+        // The unfiltered key is byte-identical to the one this builder has always
+        // produced. Shipping search must not silently retire every cached page
+        // already sitting in a fleet's Valkey under the old format.
+        assert_eq!(unfiltered, format!("products:list:7:{}", 1.0f64.to_bits()));
+        assert!(list_key(7, 1.0, Some("blue")).starts_with(&unfiltered));
+
+        // Search still varies by page, or page 2 of a search would be answered
+        // with page 1's rows.
+        assert_ne!(list_key(7, 1.0, Some("blue")), list_key(7, 2.0, Some("blue")));
+    }
+
+    /// The key has to stay short whatever the shopper pastes into the box, since
+    /// every byte of it would otherwise become a Valkey key.
+    #[test]
+    fn a_search_key_is_bounded_however_long_the_term_is() {
+        let short = list_key(7, 1.0, Some("blusa"));
+        let absurd = list_key(7, 1.0, Some(&"a".repeat(100_000)));
+        assert_eq!(short.len(), absurd.len(), "the term's length must not reach the key");
+        assert!(!absurd.contains("aaaa"));
     }
 
     #[tokio::test]
@@ -289,14 +351,14 @@ mod tests {
     async fn invalidate_detail_only_touches_the_detail_key() {
         let cache =
             CacheTier::new(L1Cache::new(Duration::from_secs(60), Duration::from_secs(60)), None);
-        cache.set(Kind::List, &list_key(0, 1.0), Bytes::from_static(b"list")).await;
+        cache.set(Kind::List, &list_key(0, 1.0, None), Bytes::from_static(b"list")).await;
         cache.set(Kind::Detail, &detail_key("prod-1"), Bytes::from_static(b"detail")).await;
 
         cache.invalidate_detail("prod-1").await;
 
         assert!(cache.get(Kind::Detail, &detail_key("prod-1")).await.is_none());
         assert!(
-            cache.get(Kind::List, &list_key(0, 1.0)).await.is_some(),
+            cache.get(Kind::List, &list_key(0, 1.0, None)).await.is_some(),
             "list pages are retired by the generation, not per key"
         );
     }

@@ -14,11 +14,15 @@ function page(page: number, hasNextPage: boolean): ProductsPage {
   }
 }
 
-function renderWithClient(fetchProducts: (page: number) => Promise<ProductsPage>) {
+function renderWithClient(fetchProducts: (page: number, query?: string) => Promise<ProductsPage>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return renderHook(() => useInfiniteProducts(fetchProducts), {
-    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
-  })
+  return {
+    client,
+    ...renderHook(({ query }: { query?: string }) => useInfiniteProducts(fetchProducts, query), {
+      initialProps: { query: "" },
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    }),
+  }
 }
 
 describe("useInfiniteProducts", () => {
@@ -28,7 +32,10 @@ describe("useInfiniteProducts", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(fetchProducts).toHaveBeenCalledWith(1)
+    // The term is always passed, blank included: the fetcher and the cache key have
+    // to agree on what "no search" means, and a caller that has to remember to omit
+    // it is how the two drift apart.
+    expect(fetchProducts).toHaveBeenCalledWith(1, "")
     expect(result.current.products).toEqual(page(1, true).items)
     expect(result.current.hasNextPage).toBe(true)
   })
@@ -41,10 +48,61 @@ describe("useInfiniteProducts", () => {
 
     result.current.fetchNextPage()
 
-    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(2))
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(2, ""))
     await waitFor(() =>
       expect(result.current.products).toEqual([...page(1, true).items, ...page(2, false).items]),
     )
     expect(result.current.hasNextPage).toBe(false)
+  })
+
+  /// The bug this hook was changed for: a search used to filter only the pages
+  /// already loaded, so a product past page one was reported as "no match" until
+  /// the shopper scrolled to it — and on mobile they then could not, because a
+  /// collapsed list is not scrollable. The term has to reach the server.
+  it("asks the server for a page narrowed by the term, rather than filtering what it has", async () => {
+    const fetchProducts = vi.fn((p: number, query?: string) =>
+      Promise.resolve(query ? { ...page(p, false), items: [] } : page(p, true)),
+    )
+    const { result, rerender } = renderWithClient(fetchProducts)
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    rerender({ query: "blusa" })
+
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(1, "blusa"))
+    expect(result.current.products).toEqual([])
+  })
+
+  /// A new term is a different listing, not a filter over the current one: the
+  /// pages fetched for the old term describe rows that are no longer on screen,
+  /// and the new term starts at page one.
+  it("restarts at page one under a new cache key when the term changes", async () => {
+    const fetchProducts = vi.fn((p: number) => Promise.resolve(page(p, true)))
+    const { result, rerender, client } = renderWithClient(fetchProducts)
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    result.current.fetchNextPage()
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(2, ""))
+
+    rerender({ query: "bebé" })
+
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(1, "bebé"))
+    expect(result.current.products).toEqual(page(1, true).items)
+    // Both listings stay cached, so backspacing to the previous term is free and a
+    // seller write can still retire either of them through PRODUCTS_KEY.
+    expect(client.getQueryState(["products", ""])).toBeDefined()
+    expect(client.getQueryState(["products", "bebé"])).toBeDefined()
+  })
+
+  /// `?q=` and no `q` are the same request, so they have to be the same cache key
+  /// — otherwise a shopper who clears the box re-fetches the whole catalogue.
+  it("treats a blank term as no term", async () => {
+    const fetchProducts = vi.fn((p: number) => Promise.resolve(page(p, true)))
+    const { rerender, client } = renderWithClient(fetchProducts)
+
+    await waitFor(() => expect(fetchProducts).toHaveBeenCalledWith(1, ""))
+    rerender({ query: "   " })
+
+    await waitFor(() => expect(client.getQueryState(["products", ""])).toBeDefined())
+    expect(fetchProducts).toHaveBeenCalledTimes(1)
   })
 })

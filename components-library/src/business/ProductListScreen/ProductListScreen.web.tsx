@@ -20,6 +20,15 @@ export type ProductListScreenProps = {
   isFetchingNextPage?: boolean
   onEndReached?: () => void
   onSelectProduct?: (id: string) => void
+  /**
+   * The debounced search term, reported upwards so the owning page can re-run its
+   * catalogue query with it. Optional: a screen given a fixed `products` array (a
+   * story, a test) filters it locally and needs no request.
+   *
+   * See `ProductListScreen.tsx` for why the term has to reach the server rather
+   * than filter the pages already loaded.
+   */
+  onQueryChange?: (query: string) => void
   /** Resolves the recently-viewed rail. Props in, no fetching here — see `StoreScreen`. */
   fetchProductsByIds: FetchProductsByIds
 }
@@ -32,9 +41,10 @@ export function ProductListScreen({
   isFetchingNextPage,
   onEndReached,
   onSelectProduct,
+  onQueryChange,
   fetchProductsByIds,
 }: ProductListScreenProps) {
-  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
+  const { query, setQuery, settledQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
     useProductSearch(products)
   const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const sentinelRef = useRef<View>(null)
@@ -76,6 +86,13 @@ export function ProductListScreen({
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, onEndReached])
 
+  // Reported from an effect rather than during render so the parent's state
+  // update is a separate commit — setting state mid-render is a React error, and
+  // `onQueryChange` is a plain `setState` in both apps.
+  useEffect(() => {
+    onQueryChange?.(settledQuery)
+  }, [onQueryChange, settledQuery])
+
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
       <ClassNameView className="gap-4 p-6">
@@ -110,10 +127,13 @@ export function ProductListScreen({
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
         ) : null}
-        {!isLoading && !error && products.length === 0 ? (
+        {!isLoading && !error && products.length === 0 && !query.trim() ? (
           <ClassNameText className="text-muted">No products yet.</ClassNameText>
         ) : null}
-        {!isLoading && !error && products.length > 0 && results.length === 0 ? (
+        {/* Keyed on `results`, not on `products.length`: a search that matched
+            nothing leaves `products` empty too, and "No products yet." is a
+            statement about the catalogue, not about the term just typed. */}
+        {!isLoading && !error && results.length === 0 && (query.trim() || products.length > 0) ? (
           <ClassNameText className="text-muted">
             {query && isPriceRangeActive
               ? `No products match "${query}" in this price range.`

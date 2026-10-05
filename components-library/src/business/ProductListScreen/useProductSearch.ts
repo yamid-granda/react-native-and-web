@@ -1,11 +1,28 @@
-import { useDeferredValue, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import type { ProductData } from "../../types/Product"
 
 export type SortOption = "relevance" | "price-asc" | "price-desc"
 export type PriceRange = { min?: number; max?: number }
 
-// same substring-match approach as IconsGallery's search. Only matches
-// against products already fetched — search doesn't query further pages.
+/**
+ * How long the shopper has to stop typing before the term becomes a request.
+ *
+ * Not cosmetic: the server answers a search with `ILIKE '%term%'`, which no index
+ * can serve, so one keystroke is one sequential scan. `useDeferredValue` below
+ * solves the *render* problem and is not a substitute — it coalesces work under
+ * load, but every distinct value still reaches the network.
+ */
+const SEARCH_DEBOUNCE_MS = 250
+
+/**
+ * The same substring match the server applies, kept for what it is still good for.
+ *
+ * The listing itself is filtered by the server now — see `useInfiniteProducts` —
+ * so this is not what makes a search find anything. It is what keeps the grid
+ * honest for the ~250ms between a keystroke and the response: without it the
+ * unfiltered page-1 rows would keep on screen, showing products that do not match
+ * what was just typed.
+ */
 function matchesQuery(query: string, product: ProductData) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
@@ -13,6 +30,16 @@ function matchesQuery(query: string, product: ProductData) {
     product.title.toLowerCase().includes(normalized) ||
     (product.description?.toLowerCase().includes(normalized) ?? false)
   )
+}
+
+/** A value that stops changing once it has been still for `delayMs`. */
+function useSettledValue<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return settled
 }
 
 function matchesPriceRange(price: number, { min, max }: PriceRange) {
@@ -42,6 +69,7 @@ export function useProductSearch(products: ProductData[]) {
   const [priceRange, setPriceRange] = useState<PriceRange>({})
   const deferredQuery = useDeferredValue(query)
   const deferredPriceRange = useDeferredValue(priceRange)
+  const settledQuery = useSettledValue(query, SEARCH_DEBOUNCE_MS)
 
   const results = useMemo(
     () =>
@@ -53,5 +81,16 @@ export function useProductSearch(products: ProductData[]) {
     [products, deferredQuery, sortBy, deferredPriceRange],
   )
 
-  return { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results }
+  // `settledQuery`, not `query`: this is the term a list screen hands up to be
+  // turned into a request, and one request per pause is the whole point.
+  return {
+    query,
+    setQuery,
+    settledQuery,
+    sortBy,
+    setSortBy,
+    priceRange,
+    setPriceRange,
+    results,
+  }
 }

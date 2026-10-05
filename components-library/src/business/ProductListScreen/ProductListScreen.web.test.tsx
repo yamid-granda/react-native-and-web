@@ -179,4 +179,57 @@ describe("ProductListScreen (web, via react-native-web)", () => {
       screen.getByText('No products match "keyboard" in this price range.'),
     ).toBeInTheDocument()
   })
+
+  /// The reported bug, and the reason `onQueryChange` exists. A search used to
+  /// filter only the pages already fetched, so a product the server had never
+  /// been asked for read as "no match" — a search bar silently lying about a
+  /// product that existed. The grid still filters locally for what it is handed;
+  /// this is what makes the *server* narrow the listing.
+  it("reports the term upwards so the catalogue is re-queried with it", async () => {
+    const onQueryChange = vi.fn()
+    renderList({ products, onQueryChange })
+
+    // Reported as blank on mount: the page has to be told the starting state, or a
+    // term restored from a back-navigation would never reach the server at all.
+    expect(onQueryChange).toHaveBeenCalledWith("")
+
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
+
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalledWith("keyboard"))
+  })
+
+  /// One request per pause, not one per keystroke: the server answers a search
+  /// with `ILIKE '%term%'`, which no index can serve.
+  it("debounces the reported term rather than reporting every keystroke", async () => {
+    const onQueryChange = vi.fn()
+    renderList({ products, onQueryChange })
+
+    for (const value of ["b", "be", "beb"]) {
+      fireEvent.change(screen.getByLabelText("Search products"), { target: { value } })
+    }
+
+    // Nothing yet: the shopper is still typing.
+    expect(onQueryChange).not.toHaveBeenCalledWith("beb")
+
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalledWith("beb"))
+    expect(onQueryChange).toHaveBeenCalledTimes(2)
+  })
+
+  /// `No products yet.` is a claim about the catalogue. Once a term is in play and
+  /// the server answers with nothing, the honest answer is that the term matched
+  /// nothing — which is what the shopper typed and what they need told.
+  it("reports an empty search result as no match rather than an empty catalogue", () => {
+    renderList({ products: [] })
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "blusa" } })
+
+    expect(screen.getByText('No products match "blusa".')).toBeInTheDocument()
+    expect(screen.queryByText("No products yet.")).not.toBeInTheDocument()
+  })
+
+  /// And with no term it is still the catalogue that is empty — the two states are
+  /// genuinely different and must not have collapsed into one message.
+  it("reports an empty catalogue as such when no term is in play", () => {
+    renderList({ products: [] })
+    expect(screen.getByText("No products yet.")).toBeInTheDocument()
+  })
 })

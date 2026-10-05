@@ -132,6 +132,29 @@ impl InMemoryStore {
         Ok(rows[start..end].to_vec())
     }
 
+    /// The public catalogue narrowed by `term` — the rows `SEARCH_LIST_QUERY`
+    /// returns, in the same order.
+    ///
+    /// Lowercased containment is exactly what `ILIKE '%term%'` does, because
+    /// [`super::products::like_pattern`] has already neutralised the one thing
+    /// the pattern could otherwise mean beyond "these characters, in this order,
+    /// somewhere in the string".
+    fn searched_rows(&self, term: &str) -> Vec<Product> {
+        let needle = term.to_lowercase();
+        self.rows(None)
+            .into_iter()
+            .filter(|product| Self::matches_search(product, &needle))
+            .collect()
+    }
+
+    fn matches_search(product: &Product, lowered_term: &str) -> bool {
+        product.title.to_lowercase().contains(lowered_term)
+            || product
+                .description
+                .as_deref()
+                .is_some_and(|description| description.to_lowercase().contains(lowered_term))
+    }
+
     /// The `LEFT JOIN "User"` that every product query does in one statement: a
     /// product's store name is whatever the owner's row says *now*, and `NULL`
     /// when the owner has no row.
@@ -216,14 +239,26 @@ fn sort_by_contract(products: &mut [Product]) {
 
 #[async_trait]
 impl ProductStore for InMemoryStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Self::slice(&self.rows(None), offset, limit)
+        let rows = match search {
+            None => self.rows(None),
+            Some(term) => self.searched_rows(term),
+        };
+        Self::slice(&rows, offset, limit)
     }
 
-    async fn count(&self) -> Result<i64, StoreError> {
+    async fn count(&self, search: Option<&str>) -> Result<i64, StoreError> {
         self.gate(StoreOp::Count).await?;
-        Ok(self.len() as i64)
+        Ok(match search {
+            None => self.len(),
+            Some(term) => self.searched_rows(term).len(),
+        } as i64)
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
@@ -473,8 +508,8 @@ mod tests {
         assert_eq!(store.count_public_by_owner("usr-1").await.unwrap(), 1);
         assert_eq!(store.count_public_by_owner("usr-nobody").await.unwrap(), 0);
         // The ownerless seed row stays visible on the public list.
-        assert_eq!(store.count().await.unwrap(), 3);
-        let public = store.list_page(0, 20).await.unwrap();
+        assert_eq!(store.count(None).await.unwrap(), 3);
+        let public = store.list_page(0, 20, None).await.unwrap();
         assert!(public
             .iter()
             .any(|product| product.id == "seeded" && product.store_name.is_none()));
@@ -606,16 +641,16 @@ mod tests {
         let store = InMemoryStore::new(vec![seed("prod-1", 1)]);
 
         store.fail_once(StoreOp::Count);
-        assert!(store.count().await.is_err(), "the first call fails");
-        assert_eq!(store.count().await.unwrap(), 1, "one-shot means one failure");
+        assert!(store.count(None).await.is_err(), "the first call fails");
+        assert_eq!(store.count(None).await.unwrap(), 1, "one-shot means one failure");
 
         store.fail_always(StoreOp::Products);
-        assert!(store.list_page(0, 20).await.is_err());
+        assert!(store.list_page(0, 20, None).await.is_err());
         assert!(store.count_for_owner("usr-1").await.is_err(), "the surface, not the method");
-        assert_eq!(store.count().await.unwrap(), 1, "another surface is untouched");
+        assert_eq!(store.count(None).await.unwrap(), 1, "another surface is untouched");
 
         store.clear_failures(StoreOp::Products);
-        assert_eq!(store.list_page(0, 20).await.unwrap().len(), 1);
+        assert_eq!(store.list_page(0, 20, None).await.unwrap().len(), 1);
 
         store.hang_always(StoreOp::Ping);
         assert!(
@@ -628,7 +663,7 @@ mod tests {
     async fn delete_removes_exactly_one_row_and_is_idempotent_safe() {
         let store = store().await;
         assert!(store.delete_owned("usr-1", "prod-a").await.unwrap());
-        assert_eq!(store.count().await.unwrap(), 2);
+        assert_eq!(store.count(None).await.unwrap(), 2);
         // A second delete reports "nothing to do", not an error.
         assert!(!store.delete_owned("usr-1", "prod-a").await.unwrap());
     }
