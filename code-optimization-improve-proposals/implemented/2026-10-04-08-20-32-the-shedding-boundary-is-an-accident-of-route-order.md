@@ -380,3 +380,80 @@ cost every other request already pays.
   today and add the one it lacks. If a reviewer prefers the alternative in step 4 —
   limiter stays a `route_layer`, metrics moves to `layer` — that is a strictly smaller
   version of this change, not a different proposal.
+
+---
+
+## Implementation notes (added when this proposal was applied)
+
+**The finding holds. Step 1 as written does not, and neither does the step 4
+alternative, because both move `http_metrics` to a router-wide `.layer()`.**
+
+`MatchedPath` is inserted by `PathRouter::call_with_state` when it matches
+(`axum-0.8.9/src/routing/path_router.rs:388-399`). That is *inside* every layer, so a
+`.layer()` runs before matching and reads no `MatchedPath` at all. Step 1's assurance
+that "`MatchedPath` still resolves for matched routes (it is inserted *inside* every
+layer)" has the insertion point backwards: being inside every layer is precisely why a
+`layer` cannot see it. Promoting `http_metrics` would have left `app.rs:122`'s
+`unwrap_or_else` as the only reachable arm and relabelled **every** request in the
+service `route="unmatched"`.
+
+So the position each middleware needs is not a style preference — it is forced, and the
+two of them need opposite positions:
+
+| middleware | needs | why |
+| --- | --- | --- |
+| `http_metrics` | `route_layer` | labels by `MatchedPath`, readable only after matching |
+| `rate_limit::enforce` | must reach the fallback | `route_layer` cannot reach the router's fallback |
+
+`.layer()` always wraps `route_layer`, so moving only the limiter would have put
+`enforce` outside `http_metrics` and undone the "metrics wrap the limiter" invariant at
+`ARCHITECTURE.md:280-282`.
+
+### What was implemented instead
+
+The fallback is served by `fallback_service`, a router carrying its own copy of the same
+two middlewares:
+
+```rust
+.fallback_service(
+    Router::new()
+        .fallback(fallback)
+        .layer(middleware::from_fn_with_state(state.clone(), rate_limit::enforce))
+        .layer(middleware::from_fn(http_metrics)),
+)
+```
+
+`MatchedPath` is absent there by design, which is correct: for an unmatched path
+`"unmatched"` is the label we want anyway. This delivers every outcome step 1 and step 2
+were after, and the step 4 judgement call resolves to the recommended ending:
+
+- unmatched paths are shed by the same `enforce`, so the bound is now
+  `GLOBAL_CONCURRENCY_LIMIT` / `PER_IP_CONCURRENCY_LIMIT` / `RATE_LIMIT_PER_IP_RPS`
+- the manual counter in `fallback` is deleted, and 404s are counted exactly once
+- 404s gain `http_requests_duration_seconds` samples
+- shed and limited responses appear in RED on the 404 path too
+- `app.rs:122`'s `"unmatched"` arm becomes the live path instead of dead code
+- **no matched route changes** which middleware runs, in what order, or with what labels
+
+### Deviations from the Validation section
+
+- The "regression gate" is hermetic, not Docker-only. `unmatched_paths_are_load_shed`
+  holds the single global permit (`global_concurrency_limit: 1`) and asserts a 503 on
+  `/nope`. Confirmed to fail with 404 before the change and pass after. `cargo test
+  --lib`, no Docker. The proposal's own Risks section doubted such a seam existed for the
+  *Valkey window*; it does exist for the semaphores.
+- The Docker E2E test (`unmatched_paths_are_rate_limited_too`) was added as specified
+  and does cover the rps window.
+- The "double-count gate" (scrape `/metrics` for a delta of 3) was **not** added: the
+  test stack installs no metrics recorder, so `/metrics` returns 503 under
+  `tests/common/`. Counting is instead argued structurally — a wrong method is answered
+  by the route's own `MethodRouter` fallback, inside the `route_layer`s, and never
+  reaches `fallback_service`, so no request is metered twice.
+- Validation step 6 (the negative check) was run: reverting the `fallback_service`
+  reproduces 404, so the test does assert the boundary.
+
+### Corrections this run confirmed
+
+The measurement in §2 that a wrong method on a declared route *is* limited is correct.
+`wrong_method_is_load_shed` passes both before and after the change. The `ARCHITECTURE.md`
+arrow was wrong about that, and is now corrected.
