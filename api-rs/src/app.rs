@@ -454,4 +454,78 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    /// The `Some` arm of `metrics_handler`, which every harness used to leave
+    /// unreachable: `tests/common/mod.rs`, `benches/handlers.rs` and every other
+    /// builder in this module pass `metrics: None`, so `/metrics` was asserted
+    /// only in its 503 form. That is why the descriptions in `telemetry.rs` could
+    /// be dispatched to the no-op recorder for as long as they were, with the
+    /// suite green: nothing ever rendered a scrape.
+    ///
+    /// One recorder per process is the constraint. `install_recorder()` installs
+    /// a *global* recorder and fails if one is already installed, so this is the
+    /// only test in the `api-rs` lib binary that may call it, and it calls
+    /// `init_metrics()` rather than building a recorder directly so the production
+    /// entry point is what is under test. A second test that needed a recorder
+    /// would have to assert against this one's handle instead.
+    ///
+    /// The three claims it pins, each of which was false before:
+    /// - a described series reaches the exporter, so `/metrics` carries `# HELP`
+    ///   and not just `# TYPE`;
+    /// - `auth_login_total` is present *before* any login has happened, which is
+    ///   what `init_metrics` registering it at zero buys, and which describing
+    ///   alone does not — an absent series and a zero series are the same absence;
+    /// - a series emitted during a request shows up in the same scrape.
+    ///
+    /// `contains`, never an exact value: the other tests in this binary emit into
+    /// the same global recorder concurrently, so `auth_login_total` is not
+    /// reliably zero here.
+    #[tokio::test]
+    async fn metrics_endpoint_renders_described_and_boot_registered_series() {
+        let handle = crate::telemetry::init_metrics().expect(
+            "no other test in this binary may install the global recorder; \
+             assert against this test's handle instead",
+        );
+        let state = AppState::new(
+            Config::default(),
+            Arc::new(InMemoryStore::default()),
+            None,
+            Some(handle),
+        );
+
+        // Something this router meters, so the scrape is not only boot state.
+        router(state.clone())
+            .oneshot(axum::http::Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        let response = router(state)
+            .oneshot(axum::http::Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/plain; version=0.0.4; charset=utf-8"
+        );
+
+        let body = body_string(response).await;
+        assert!(
+            body.contains("# HELP auth_login_total "),
+            "no # HELP for the login counter:\n{body}"
+        );
+        assert!(
+            body.contains("# TYPE auth_login_total counter"),
+            "no # TYPE for the login counter:\n{body}"
+        );
+        assert!(
+            body.contains("auth_login_total{result=\"invalid\"}"),
+            "the login counter is not present before any login, so \"no failed \
+             logins\" and \"this scrape cannot see logins\" look the same:\n{body}"
+        );
+        assert!(
+            body.contains("http_requests_total{"),
+            "a request through this router left no series:\n{body}"
+        );
+    }
 }

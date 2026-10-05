@@ -604,3 +604,147 @@ a scope *exclusion*, never a subject.
   ordering bug either.
 - **Nothing is superseded.** No proposal in any folder changes a metric name, a
   label name, a label value, `telemetry.rs`, or `monitoring/`.
+---
+
+## Implementation record
+
+Written when the proposal was applied. Every "decision belongs in review" and
+"say which was chosen" below had no reviewer — this run was unattended — so each
+choice is recorded here with its reason instead of being left to inheritance.
+
+### Step 1 — option (b), and the premise checked first
+
+`describe_counter!` moved after `install_recorder()`, into `describe_api_metrics()`,
+which now documents **all 21** series rather than one. The counter is also
+registered at zero:
+
+```rust
+metrics::counter!("auth_login_total", "result" => "ok").increment(0);
+metrics::counter!("auth_login_total", "result" => "invalid").increment(0);
+```
+
+Option (b) was chosen over (a) because §2's first row is true and was verified
+rather than assumed: describing does not create a series. The pair is registered
+rather than the bare name so the series carries the `result` label the emission
+site uses, with no unlabelled twin in every scrape. The comment was rewritten,
+not moved — it now says what registering does, why it is the login counter
+specifically, and where the counter is charted.
+
+Measured on a real service against throwaway Postgres 17 + Valkey 8, same binary
+before and after, 13 series in the scrape after three `/products` requests and one
+failed login:
+
+| | `# TYPE` | `# HELP` | `auth_login_total` before any login |
+| --- | --- | --- | --- |
+| before (`origin/main`) | 13 | **0** | absent |
+| after | 13 | **13** | `0` for both `result` values |
+
+So §1's diagnosis was right, and §2's first row is why the zero-registration was
+needed rather than optional.
+
+### Step 2 — a panel, and deliberately no rule
+
+`sum by (result) (rate(auth_login_total{result="invalid"}[1m]))` added to
+`api-red.json` panel 6, beside the other two limiter panels. Verified live: the
+series is `0` from boot and moves to `1` after a real `POST /auth/login` with a
+wrong password.
+
+**No alert rule was added.** The threshold for "sustained failed logins" is an
+operational judgement, and `rules.yml` is where that judgement belongs; guessing
+one unattended would be worse than not having it. This is the same call the
+`http_rate_limited_total` row of the fail-open matrix already makes — expected
+client behaviour lives on the dashboard, not in a page. Recorded in the
+`telemetry.rs` comment and corrected in `ARCHITECTURE.md` §7, which listed
+`auth_login_total` in the "Alert" column while no rule existed.
+
+### Step 3 — the owner list exists; the emission sites keep their literals
+
+`api-rs/src/metrics_names.rs` holds `Metric { name, labels }` and the `METRICS`
+table, and nothing at runtime imports it. This is the fallback the Risks section
+sets out, taken deliberately: substituting `HTTP_REQUESTS.name` into the
+`metrics` macros would put the request hot path in `app.rs` behind this module for
+no behavioural gain, and the drift this file exists to catch is caught by the
+tests either way. The names are unchanged and byte-identical, so no dashboard or
+rule needed editing.
+
+### Step 4 — five assertions, and in `src/` rather than `tests/`
+
+The parity test is `src/metrics_names.rs`'s own `#[cfg(test)] mod tests`, not
+`tests/metrics_contract.rs`. **The proposal's validation step 4 is wrong about
+this:** `pnpm --filter @rnw/api-rs test` is `cargo test --lib`, which does not
+build `tests/` targets at all — they run under `test:e2e`, which is the
+Docker-requiring script. A contract test filed there would not have gated
+anything on a machine without Docker, which is the exact failure this proposal
+exists to end. Colocated, it runs in `pnpm test`, `pnpm lint` and
+`pnpm typecheck`. `env!("CARGO_MANIFEST_DIR")` works there, as `tests/parity.rs`
+already does.
+
+The four assertions are as specified, plus a fifth: every declared series is
+passed to a `describe_*` macro. Without it the description list could drift from
+the owner list and reintroduce this proposal's own failure class inside its fix.
+
+The source is read as text with comments blanked first, so a commented-out
+`metrics::counter!` cannot register a phantom series. Label keys are told apart
+from series names by position relative to `=>`, which is what makes
+`"result" => "invalid"` one key and no series while
+`"method" => method.clone(), "route" => route.clone()` keeps both keys. The two
+runtime-selected pairs are resolved from their preceding `let` binding.
+
+`INSTRUMENTED_WITHOUT_A_CONSUMER` has **six** entries, not seven: `auth_login_total`
+left the list when step 2 gave it a panel. Each carries a reason, and a companion
+assertion fails if an entry becomes monitored, so the allowlist cannot quietly
+become a place to hide a metric that should have a panel.
+
+**Negative checks, all five passing** — each mutation was made, the suite was
+confirmed to fail on the predicted assertion, and the mutation was reverted:
+
+| mutation | assertion that failed |
+| --- | --- |
+| `status` → `code` at `app.rs:163` | `declared_label_keys_are_the_keys_each_series_is_emitted_with` |
+| drop `cache_l1_misses_total` from `METRICS` | bidirectional names + `monitoring_only_reads_series_this_service_emits` |
+| add a phantom `brand_new_counter` to `METRICS` | bidirectional names |
+| point `rules.yml` at `cache_l2_nonexistent_total` | `monitoring_only_reads_series_this_service_emits` |
+| emit an undeclared `cache_undeclared_probe_total` | bidirectional names + the allowlist check |
+
+### Step 5 — the `Some` arm is reachable
+
+`app::tests::metrics_endpoint_renders_described_and_boot_registered_series`
+installs the recorder through the production `init_metrics()`, builds an
+`AppState` with `metrics: Some(handle)`, and asserts a rendered scrape carries
+`# HELP auth_login_total`, `# TYPE auth_login_total counter`,
+`auth_login_total{result="invalid"}` before any login, and `http_requests_total`
+after a request through the router. Hermetic: `InMemoryStore`, no Docker, no
+Postgres, no Valkey.
+
+**The global-recorder caveat is real and is now documented in the test.** One
+recorder per process, so this is the only test in the `api-rs` lib binary that
+may install one; a second would need to assert against this one's handle. The
+existing `metrics_endpoint_unavailable_without_recorder` still passes unchanged —
+it exercises the `None` arm, which no recorder affects.
+
+The gate `implemented/2026-10-04-08-20-32-…` recorded as unwritable — "scrape
+`/metrics` before and after three unmatched requests and assert the counter moved
+by 3" — is now writable, since the render path is reachable from `cargo test --lib`.
+It was not written here: that proposal's verification, not this one's.
+
+### Also changed
+
+`ARCHITECTURE.md` §7's fail-open matrix said `auth_login_total` was an alert; it
+is a panel. §8 gained a paragraph on the name contract and a verification row;
+§10's code map gained `src/metrics_names.rs`.
+
+### Not done, stated plainly
+
+- **The Grafana UI was not loaded.** Validation step 10 asks for a human-visible
+  panel check. What was verified instead is the substance: the panel's PromQL
+  references a series the service really emits (asserted), and that series really
+  moves on a real failed login (measured). Whether Grafana renders the tile is
+  not something an unattended run can usefully establish.
+- **No mobile simulator**, and nothing in `mobile-application` was touched.
+- **`pnpm format:check` fails on 79 pre-existing diagnostics**, all in
+  `components-library` / `web-application` / `mobile-application` TypeScript and
+  `commitlint.config.js`. None is a file this change touches and `monitoring/` is
+  outside biome's scope. Not fixed here; not this proposal's business.
+- **The dev database has migration drift** (`VersionMismatch(20261003120100)`) that
+  predates this change. The live verification used throwaway containers on unused
+  ports instead, and they were removed afterwards.

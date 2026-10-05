@@ -128,9 +128,14 @@
           "expr": "sum by (scope) (rate(http_load_shed_total[1m]))",
           "legendFormat": "shed {{scope}}",
           "refId": "C"
+        },
+        {
+          "expr": "sum by (result) (rate(auth_login_total{result=\"invalid\"}[1m]))",
+          "legendFormat": "login {{result}}",
+          "refId": "D"
         }
       ],
-      "title": "Errors, rate limits, and shed requests",
+      "title": "Errors, rate limits, shed requests, and failed logins",
       "type": "timeseries"
     },
     {
