@@ -66,7 +66,9 @@ pub fn router(state: AppState) -> Router {
         // called, and to nothing added afterwards. Putting the credential
         // throttle here is therefore how it is scoped to exactly these two —
         // the two routes an unauthenticated caller can hammer, each costing an
-        // argon2 hash.
+        // argon2 hash. This one scoping is why the general-purpose shedder
+        // below cannot simply become a router-wide `layer`: `enforce_auth` has
+        // to stay a `route_layer`, and so does the `enforce` beside it.
         .route("/auth/register", post(auth::register).fallback(any(fallback)))
         .route("/auth/login", post(auth::login).fallback(any(fallback)))
         .route_layer(middleware::from_fn_with_state(state.clone(), rate_limit::enforce_auth))
@@ -99,10 +101,28 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/metrics", get(metrics_handler))
         // Order: metrics wraps rate limiting so shed/limited responses are
-        // counted in RED too. route_layer keeps MatchedPath available.
+        // counted in RED too.
+        //
+        // These two must stay `route_layer` rather than `layer`. `MatchedPath`
+        // is inserted by axum's path router when it matches, which happens
+        // *inside* every layer, so a `layer` sees no `MatchedPath` at all and
+        // would label every request `route="unmatched"`. `route_layer` runs
+        // after matching and is the only position that can read it.
         .route_layer(middleware::from_fn_with_state(state.clone(), rate_limit::enforce))
         .route_layer(middleware::from_fn(http_metrics))
-        .fallback(fallback)
+        // A `route_layer` cannot reach the fallback, and a router-wide `layer`
+        // cannot be used because the two middlewares above need the opposite
+        // position. So the fallback is served by its own router carrying the
+        // same two, rather than sitting outside the load protection entirely.
+        // Unmatched paths — the cheapest requests to generate and the ones an
+        // unauthenticated scanner produces by default — are therefore shed and
+        // metered exactly like every other request in this service.
+        .fallback_service(
+            Router::new()
+                .fallback(fallback)
+                .layer(middleware::from_fn_with_state(state.clone(), rate_limit::enforce))
+                .layer(middleware::from_fn(http_metrics)),
+        )
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, timeout))
         .layer(cors_layer(&state.config))
         .layer(CompressionLayer::new())
@@ -168,15 +188,14 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
 /// Unmatched-route and wrong-method handler: `Cannot ${method} ${url}`, with
 /// `url` including the query string, in the same JSON error shape as every
 /// other 404.
+///
+/// Counted by `http_metrics`, not here. Every path that reaches this handler
+/// passes through it: a wrong method is answered by the route's own
+/// `MethodRouter` fallback, which is inside the `route_layer`s, and an
+/// unmatched path is answered through `fallback_service`, which carries the
+/// same middleware. Incrementing here as well would double-count every 404.
 pub async fn fallback(request: Request) -> Response {
     let (parts, _body) = request.into_parts();
-    metrics::counter!(
-        "http_requests_total",
-        "method" => parts.method.to_string(),
-        "route" => "unmatched",
-        "status" => "404",
-    )
-    .increment(1);
 
     let url = parts.uri.path_and_query().map_or(parts.uri.path(), |pq| pq.as_str());
     let body = ErrorBody {
@@ -231,6 +250,60 @@ mod tests {
             body_string(response).await,
             r#"{"message":"Cannot GET /nope?x=1","error":"Not Found","statusCode":404}"#
         );
+    }
+
+    /// The load shedder has to reach the fallback. It used not to: the fallback
+    /// was registered after both `route_layer` calls, and an unmatched path
+    /// matched nothing, so every 404 arrived with no global semaphore, no
+    /// per-IP semaphore and no rps window against it.
+    ///
+    /// Deterministic without Docker or Valkey: one global permit, held by this
+    /// test, makes the limiter shed whatever arrives next. The default limit is
+    /// 1024, so the state here is built with 1.
+    #[tokio::test]
+    async fn unmatched_paths_are_load_shed() {
+        let state = AppState::new(
+            Config { global_concurrency_limit: 1, ..Config::default() },
+            Arc::new(InMemoryStore::default()),
+            None,
+            None,
+        );
+        let held = state.limiter.check("198.51.100.7").await;
+        assert!(matches!(held, crate::middleware::rate_limit::Verdict::Allowed(_)));
+
+        let response = router(state)
+            .oneshot(axum::http::Request::builder().uri("/nope").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// A wrong method on a declared route never reaches the router's fallback —
+    /// the route's own `MethodRouter` fallback answers it — so it was already
+    /// inside the shedder. Asserted because the architecture diagram used to
+    /// claim otherwise, and because that claim was what hid the real gap.
+    #[tokio::test]
+    async fn wrong_method_is_load_shed() {
+        let state = AppState::new(
+            Config { global_concurrency_limit: 1, ..Config::default() },
+            Arc::new(InMemoryStore::default()),
+            None,
+            None,
+        );
+        let held = state.limiter.check("198.51.100.7").await;
+        assert!(matches!(held, crate::middleware::rate_limit::Verdict::Allowed(_)));
+
+        let response = router(state)
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(Method::POST)
+                    .uri("/products")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]

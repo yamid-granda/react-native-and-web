@@ -36,6 +36,7 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
         >
           <Button
             label="Close"
+            testId="drawer-close"
             size="icon"
             variant="ghost"
             onPress={onClose}

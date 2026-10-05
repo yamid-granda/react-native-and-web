@@ -9,6 +9,7 @@ const meta: Meta<typeof Button> = {
   component: Button,
   args: {
     label: "Press me",
+    testId: "press-me",
   },
 }
 
@@ -28,6 +29,7 @@ export const AllVariants: Story = {
           <Button
             key={`${variant}-${size}`}
             label={size === "icon" ? "Add to wishlist" : `${variant} ${size}`}
+            testId={`${variant}-${size}`}
             variant={variant}
             size={size}
             selected={variant === "chip" ? true : undefined}
@@ -46,8 +48,8 @@ export const HeightMatchesInput: Story = {
   render: () => (
     <View className="gap-2">
       <View className="flex-row items-center gap-3">
-        <Button label="Default" />
-        <Button label="Small" size="sm" />
+        <Button label="Default" testId="height-default" />
+        <Button label="Small" size="sm" testId="height-small" />
       </View>
       <Input value="" onChangeText={() => {}} accessibilityLabel="Example input" />
     </View>
@@ -57,17 +59,15 @@ export const HeightMatchesInput: Story = {
 export const Default: Story = {}
 
 export const Small: Story = {
-  args: { label: "Add to Cart", size: "sm" },
+  args: { label: "Add to Cart", size: "sm", testId: "add-to-cart" },
 }
 
 export const Disabled: Story = {
-  args: { label: "Out of stock", disabled: true },
+  args: { label: "Out of stock", disabled: true, testId: "out-of-stock" },
 }
 
-// Icon buttons have no text to derive a test id from, so they pass one
-// explicitly — see toButtonTestId for the rule the rest of them follow.
 export const Icon: Story = {
-  args: { label: "Add to wishlist", size: "icon", variant: "secondary" },
+  args: { label: "Add to wishlist", size: "icon", variant: "secondary", testId: "add-to-wishlist" },
   render: (args) => (
     <Button {...args}>
       <HeartIcon size={18} className="text-muted" />
@@ -75,8 +75,12 @@ export const Icon: Story = {
   ),
 }
 
-// A chip's test id comes from its label with punctuation collapsed into dashes
-// — this one's is "price-low-to-high".
 export const Chip: Story = {
-  args: { label: "Price: Low to High", variant: "chip", size: "sm", selected: true },
+  args: {
+    label: "Price: Low to High",
+    variant: "chip",
+    size: "sm",
+    selected: true,
+    testId: "price-low-to-high",
+  },
 }

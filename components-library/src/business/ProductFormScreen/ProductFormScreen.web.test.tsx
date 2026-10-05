@@ -59,7 +59,10 @@ describe("ProductFormScreen (web, via react-native-web)", () => {
     })
   })
 
-  it("treats blank optional fields as absent rather than empty strings", async () => {
+  /// The regression this shape exists for: a cleared field is submitted as `""`,
+  /// not omitted. Omitting it made the server read "leave it alone", so the
+  /// seller deleted a description, got a successful save, and the text stayed.
+  it("submits a cleared optional field as empty rather than omitting it", async () => {
     const onSubmit = vi.fn()
     render(<ProductFormScreen onSubmit={onSubmit} />)
 
@@ -70,7 +73,7 @@ describe("ProductFormScreen (web, via react-native-web)", () => {
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ description: undefined, imageUrl: undefined })
+        expect.objectContaining({ description: "", imageUrl: "" })
       )
     })
   })
@@ -167,11 +170,15 @@ describe("parse", () => {
   it("mirrors the server's rules", () => {
     expect(parse(fields)).toEqual({
       title: "Mug",
-      description: undefined,
+      // Trimmed, and present: `""` is what tells the server to clear the column.
+      description: "",
       price: 18,
-      imageUrl: undefined,
+      imageUrl: "",
       stock: 3,
     })
+    expect(parse({ ...fields, description: "  Full-grain.  ", imageUrl: " https://a/b.png " })).toEqual(
+      { title: "Mug", description: "Full-grain.", price: 18, imageUrl: "https://a/b.png", stock: 3 }
+    )
     expect(parse({ ...fields, title: "  " })).toEqual({ error: "Title is required" })
     expect(parse({ ...fields, title: "x".repeat(201) })).toEqual({
       error: "Title must be at most 200 characters",

@@ -33,6 +33,18 @@ module.exports = {
         muted: "rgb(var(--color-muted) / <alpha-value>)",
         surface: "rgb(var(--color-surface) / <alpha-value>)",
         "surface-muted": "rgb(var(--color-surface-muted) / <alpha-value>)",
+        // The outline of a control, kept apart from `surface-muted` so that
+        // token can stay a plain fill: a border has to clear 3:1 against both
+        // its neighbours (WCAG 1.4.11), a fill does not. `Button`'s outline and
+        // chip variants use this; decorative dividers keep `surface-muted`,
+        // which 1.4.11 does not cover.
+        border: "rgb(var(--color-border) / <alpha-value>)",
+        // The quieter edge, for a control that repeats down a form. Clearing
+        // 3:1 is a floor rather than a target and overshoots as one: at ~1.7:1
+        // this is the weight of iOS's systemGray4, and a cage of 3.4:1 borders
+        // on every field reads as heavier than the cards it sits on. See the
+        // "two border weights" section of tokens.css for the trade.
+        "border-muted": "rgb(var(--color-border-muted) / <alpha-value>)",
       },
     },
   },

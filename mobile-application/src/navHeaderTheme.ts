@@ -6,7 +6,7 @@
 // --color-surface/--color-foreground tokens.
 export function getHeaderScreenOptions(isDark: boolean) {
   return {
-    headerStyle: { backgroundColor: isDark ? "#18181b" : "#ffffff" },
+    headerStyle: { backgroundColor: isDark ? "#202024" : "#ffffff" },
     headerTintColor: isDark ? "#fafafa" : "#18181b",
   }
 }

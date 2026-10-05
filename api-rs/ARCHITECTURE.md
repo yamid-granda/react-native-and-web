@@ -252,8 +252,13 @@ Two consequences worth writing down rather than discovering:
 ## 6. C4 + C5 — Middleware stack and load protection
 
 `.layer()` wraps the router, so the **last** layer declared is the **outermost**.
-`route_layer` runs only for matched routes — which is why `app::fallback`
-increments its own counter: an unmatched request has no `MatchedPath`.
+The two positions are not interchangeable. `route_layer` runs only for matched
+routes, but a `layer` runs *before* axum matches anything, and `MatchedPath` is
+inserted at match time — so a `layer` sees no matched path and would label every
+request `route="unmatched"`. That is why the limiter and the RED metrics are
+`route_layer`s, and why the fallback — which no `route_layer` can reach — is
+served through `fallback_service` carrying its own copy of both rather than
+sitting outside them.
 
 ```mermaid
 flowchart TD
@@ -272,8 +277,14 @@ flowchart TD
     win -->|"under limit, or Valkey error → fail open"| h["handler"]
     h --> met
     met --> resp["response"]
-    fb["unmatched path or wrong method"] -.->|"bypasses route_layers"| fb404["404 Cannot GET /nope?x=1<br/>self-counted as route=unmatched"]
+    fb["unmatched path"] -.->|"fallback_service:<br/>same limiter + metrics"| fb404["404 Cannot GET /nope?x=1<br/>measured as route=unmatched"]
 ```
+
+A wrong method on a declared route never reaches that node: each route carries
+its own `.fallback(any(fallback))`, which sits *inside* the `route_layer`s, so
+`POST /products` is shed and measured like any other request. Only a path that
+matches no route reaches the fallback, and it is load protected by the same two
+middlewares.
 
 The ordering is a design statement:
 
@@ -326,6 +337,11 @@ limiter is worth a failed request.**
 | Valkey's generation `INCR` fails | The write still retires *this* instance's pages; other instances keep the old namespace until they refresh | One instance briefly serves a pre-write page | `cache_l2_errors_total{op="incr-generation"}` |
 | Metrics recorder not installed | `/metrics` returns 503; the service is otherwise unaffected | n/a | startup `eprintln` |
 | Traced exporter unavailable | Tracing falls back to JSON logs only | n/a | `eprintln` |
+
+Unmatched paths are **not** an exception to the two rows above. They face the same
+semaphores and the same rps windows as every other request, and the 404 body is
+unchanged when they are not shed; the 404s that get through are measured as
+`route="unmatched"`.
 
 Note the asymmetry: **Postgres is the one hard dependency.** It is also the one
 thing the caches exist to protect, and the reason `/health` pings the primary
@@ -391,6 +407,7 @@ Verification layers, cheapest first:
 | E2E | `cargo test --test e2e_products` | Real HTTP against throwaway Postgres 17 + Valkey 8: page boundaries, 429s, cache hits, degraded `/health` with the DB down, fail-open with Valkey absent, read-replica routing |
 | E2E | `cargo test --test e2e_auth` | Real HTTP for the credential endpoints: concurrent registration resolves to one seller, only the token hash is stored, logout revokes immediately, the login throttle is scoped and fail-open |
 | E2E | `cargo test --test e2e_my_store` | Real HTTP for the write path: read-your-writes for the seller, `404` not `403` across sellers, a warm cache retired by a write on both this instance and another, `ON DELETE SET NULL` |
+| E2E | `cargo test --test seed` | The dev/test split against a real database: `db:seed` writes the seller and no products, `seed-fixtures` adds the e2e fixtures idempotently, and `clear-fixtures` removes exactly those and leaves a created product alone |
 | Micro | `cargo bench` | Criterion: list-page cache miss over 50k rows, list hit, detail hit |
 | Load | `k6 run load-tests/k6/spike.js` | Origin behaviour under 100 → 5 000 rps; SLO thresholds fail the run |
 | Coverage | `pnpm --filter @rnw/api-rs coverage` | 80 % line gate over unit + E2E |
@@ -455,7 +472,7 @@ A reading order that follows the request path:
 | `src/main.rs` | Bootstrap order, bounded pool, optional Valkey, graceful shutdown |
 | `src/config.rs` | Every knob and its default — the service's real policy surface |
 | `src/migrations.rs` | The embedded migrator; the single owner of the schema |
-| `src/seed.rs` | Fixture and generated rows, chunked inserts, `SEED_COUNT` |
+| `src/seed.rs` | The demo seller `db:seed` writes, and the e2e fixture products `seed-fixtures` adds and `clear-fixtures` removes |
 | `src/app.rs` | `AppState`, the router, middleware order, RED metrics, the 404 fallback |
 | `src/middleware/rate_limit.rs` | Shedding and limiting, IP resolution, the fail-open decisions |
 | `src/cache/` | Read-through tiering, TTLs, key format, fail-open everywhere; `singleflight.rs` is the stampede guard |

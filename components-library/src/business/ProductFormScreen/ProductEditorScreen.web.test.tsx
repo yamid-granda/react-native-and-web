@@ -97,7 +97,9 @@ describe("ProductEditorScreen (web, via react-native-web)", () => {
       title: "Leather Weekender Bag",
       description: "Full-grain leather.",
       price: 189,
-      imageUrl: undefined,
+      // The product has no image, and the form still sends the key: `""` is how
+      // the server is told to clear a column rather than leave it alone.
+      imageUrl: "",
       stock: 6,
     })
     // Still in flight: the screen must not report success before the server has.
@@ -110,6 +112,19 @@ describe("ProductEditorScreen (web, via react-native-web)", () => {
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledTimes(1)
     })
+  })
+
+  /// The bug this screen carried: deleting the description and saving submitted a
+  /// body with no `description` key at all, which the server read as "leave it
+  /// alone". Clearing has to arrive as an empty string.
+  it("submits a cleared description as empty so the server can clear it", async () => {
+    const { update } = renderEditor()
+
+    fireEvent.change(screen.getByTestId("product-description"), { target: { value: "" } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith("prd_1", expect.objectContaining({ description: "" }))
   })
 
   it("surfaces the server's message and stays on the form", async () => {

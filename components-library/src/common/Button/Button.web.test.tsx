@@ -6,76 +6,83 @@ import { Button } from "./Button"
 
 describe("Button (web, via react-native-web)", () => {
   it("renders the label", () => {
-    render(<Button label="Click me" />)
+    render(<Button label="Click me" testId="click-me" />)
     expect(screen.getByText("Click me")).toBeInTheDocument()
   })
 
   it("calls onPress when clicked", () => {
     const onPress = vi.fn()
-    render(<Button label="Click me" onPress={onPress} />)
+    render(<Button label="Click me" testId="click-me" onPress={onPress} />)
     fireEvent.click(screen.getByText("Click me"))
     expect(onPress).toHaveBeenCalledTimes(1)
   })
 
-  describe("testID", () => {
-    it("derives one from the label: lowercase, spaces dashed", () => {
-      render(<Button label="Add to Cart" />)
-      expect(screen.getByTestId("add-to-cart")).toBeInTheDocument()
+  describe("testId", () => {
+    it("passes the given test id through, and derives nothing from the label", () => {
+      render(<Button label="Price: Low to High" testId="sort-price-asc" variant="chip" />)
+      expect(screen.getByTestId("sort-price-asc")).toBeInTheDocument()
+      expect(screen.queryByTestId("price-low-to-high")).not.toBeInTheDocument()
     })
 
-    it("collapses punctuation in the label", () => {
-      render(<Button label="Price: Low to High" variant="chip" />)
-      expect(screen.getByTestId("price-low-to-high")).toBeInTheDocument()
-    })
-
-    it("gives every button a testID, icon buttons included", () => {
+    it("gives icon buttons a test id too", () => {
       render(
-        <Button label="Add to wishlist" size="icon">
+        <Button label="Add to wishlist" testId="wishlist-toggle-1" size="icon">
           <HeartIcon size={18} />
         </Button>,
       )
-      expect(screen.getByTestId("add-to-wishlist")).toBeInTheDocument()
+      expect(screen.getByTestId("wishlist-toggle-1")).toBeInTheDocument()
     })
 
-    it("prefers an explicit testID over the derived one", () => {
-      render(<Button label="Remove" testID="remove-prod-1" />)
-      expect(screen.getByTestId("remove-prod-1")).toBeInTheDocument()
-      expect(screen.queryByTestId("remove")).not.toBeInTheDocument()
+    it("keeps the same test id while loading, since it does not come from the text", () => {
+      render(<Button label="Save changes" testId="auth-submit" loading />)
+      expect(screen.getByTestId("auth-submit")).toBeInTheDocument()
     })
 
-    it("gives every variant and size a testID", () => {
+    it("gives every variant and size the test id it was given", () => {
       const variants = ["primary", "secondary", "outline", "ghost", "chip"] as const
       const sizes = ["sm", "md", "icon"] as const
 
       for (const variant of variants) {
         for (const size of sizes) {
-          const { unmount } = render(<Button label="Order now" variant={variant} size={size} />)
-          expect(screen.getByTestId("order-now"), `${variant}/${size}`).toBeInTheDocument()
+          const { unmount } = render(
+            <Button
+              label="Order now"
+              testId={`order-now-${variant}-${size}`}
+              variant={variant}
+              size={size}
+            />,
+          )
+          expect(
+            screen.getByTestId(`order-now-${variant}-${size}`),
+            `${variant}/${size}`,
+          ).toBeInTheDocument()
           unmount()
         }
       }
-    })
-
-    it("keeps the same testID while loading, since it comes from label not text", () => {
-      render(<Button label="Save changes" loading />)
-      expect(screen.getByTestId("save-changes")).toBeInTheDocument()
     })
   })
 
   describe("accessibility", () => {
     it("uses the label as its accessible name", () => {
-      render(<Button label="Place Order" />)
+      render(<Button label="Place Order" testId="checkout-place-order" />)
       expect(screen.getByRole("button", { name: "Place Order" })).toBeInTheDocument()
     })
 
     it("prefers accessibilityLabel over the label", () => {
-      render(<Button label="Relevance" accessibilityLabel="Sort by Relevance" variant="chip" />)
+      render(
+        <Button
+          label="Relevance"
+          testId="sort-relevance"
+          accessibilityLabel="Sort by Relevance"
+          variant="chip"
+        />,
+      )
       expect(screen.getByRole("button", { name: "Sort by Relevance" })).toBeInTheDocument()
     })
 
     it("names an icon button after its label, with no text of its own", () => {
       render(
-        <Button label="Close" size="icon">
+        <Button label="Close" testId="drawer-close" size="icon">
           <HeartIcon size={18} />
         </Button>,
       )
@@ -86,7 +93,7 @@ describe("Button (web, via react-native-web)", () => {
 
     it("marks a disabled button as disabled and ignores presses", () => {
       const onPress = vi.fn()
-      render(<Button label="Out of stock" disabled onPress={onPress} />)
+      render(<Button label="Out of stock" testId="out-of-stock" disabled onPress={onPress} />)
       const button = screen.getByRole("button", { name: "Out of stock" })
       expect(button).toBeDisabled()
       fireEvent.click(button)
@@ -96,30 +103,32 @@ describe("Button (web, via react-native-web)", () => {
     it("keeps its accessible name while loading", () => {
       // The visible label becomes "…", which on its own would leave a screen reader
       // with nothing to announce.
-      render(<Button label="Save changes" loading />)
+      render(<Button label="Save changes" testId="auth-submit" loading />)
       expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument()
     })
 
     it("announces the busy state", () => {
-      const { unmount } = render(<Button label="Save changes" loading />)
+      const { unmount } = render(<Button label="Save changes" testId="auth-submit" loading />)
       expect(screen.getByRole("button", { name: "Save changes" })).toHaveAttribute(
         "aria-busy",
         "true",
       )
       unmount()
 
-      render(<Button label="Go" />)
+      render(<Button label="Go" testId="go" />)
       expect(screen.getByRole("button", { name: "Go" })).toHaveAttribute("aria-busy", "false")
     })
 
     it("exposes aria-selected on a chip, and only on a chip", () => {
-      const { rerender } = render(<Button label="Relevance" variant="chip" selected={false} />)
+      const { rerender } = render(
+        <Button label="Relevance" testId="sort-relevance" variant="chip" selected={false} />,
+      )
       expect(screen.getByRole("button")).toHaveAttribute("aria-selected", "false")
 
-      rerender(<Button label="Relevance" variant="chip" selected />)
+      rerender(<Button label="Relevance" testId="sort-relevance" variant="chip" selected />)
       expect(screen.getByRole("button")).toHaveAttribute("aria-selected", "true")
 
-      rerender(<Button label="Relevance" />)
+      rerender(<Button label="Relevance" testId="sort-relevance" />)
       expect(screen.getByRole("button")).not.toHaveAttribute("aria-selected")
     })
   })
@@ -127,7 +136,7 @@ describe("Button (web, via react-native-web)", () => {
   describe("loading", () => {
     it("shows an ellipsis and refuses presses", () => {
       const onPress = vi.fn()
-      render(<Button label="Save changes" onPress={onPress} loading />)
+      render(<Button label="Save changes" testId="auth-submit" onPress={onPress} loading />)
       expect(screen.queryByText("Save changes")).not.toBeInTheDocument()
       expect(screen.getByText("…")).toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled()
@@ -139,7 +148,7 @@ describe("Button (web, via react-native-web)", () => {
   describe("children", () => {
     it("renders children instead of the label text", () => {
       render(
-        <Button label="Decrease quantity" size="icon">
+        <Button label="Decrease quantity" testId="cart-decrease-prd-1" size="icon">
           <Text>-</Text>
         </Button>,
       )
@@ -150,17 +159,17 @@ describe("Button (web, via react-native-web)", () => {
     it("still calls onPress", () => {
       const onPress = vi.fn()
       render(
-        <Button label="Close" size="icon" onPress={onPress}>
+        <Button label="Close" testId="drawer-close" size="icon" onPress={onPress}>
           <HeartIcon size={18} />
         </Button>,
       )
-      fireEvent.click(screen.getByTestId("close"))
+      fireEvent.click(screen.getByTestId("drawer-close"))
       expect(onPress).toHaveBeenCalledTimes(1)
     })
 
     it("keeps children while loading, so an icon button never becomes a bare ellipsis", () => {
       render(
-        <Button label="Close" size="icon" loading>
+        <Button label="Close" testId="drawer-close" size="icon" loading>
           <HeartIcon size={18} />
         </Button>,
       )

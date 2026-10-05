@@ -53,24 +53,69 @@ pub struct NewProduct {
     pub stock: i32,
 }
 
-/// The fields a seller controls on update. Every one is optional: `PATCH` with
-/// an empty body is a no-op, not an error.
+/// What a `PATCH` says about one field.
+///
+/// `Unset` is "the key was absent — leave the column alone". `Set(None)` is
+/// `"key": null`, which clears the column. They are different operations and
+/// `Option<T>` cannot hold both, which is exactly why [`UPDATE_PRODUCT`] needs a
+/// presence flag per nullable column: `COALESCE(NULL, "description")` returns the
+/// stored value, so a patch built on `Option<T>` had no spelling at all that
+/// cleared a description or an image.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Patch<T> {
+    /// The key was absent. Leave the column alone.
+    #[default]
+    Unset,
+    /// The key was sent. `None` is an explicit `null`, which clears the column.
+    Set(Option<T>),
+}
+
+impl<T> Patch<T> {
+    /// Whether the request said anything at all about this field.
+    ///
+    /// This is the flag the SQL cannot derive for itself: with only a bound
+    /// `Option<T>`, an absent key and a `null` key are the same value, so the
+    /// statement has no way to choose between keeping the column and clearing it.
+    pub fn is_set(&self) -> bool {
+        matches!(self, Patch::Set(_))
+    }
+
+    /// The value to write, or `None` when there is none.
+    ///
+    /// `None` covers both `Unset` and `Set(None)`; [`Self::is_set`] is what tells
+    /// them apart. A `NOT NULL` column only ever reads `Unset` or `Set(Some(_))` —
+    /// the handler validates `title` rather than clearing it — so binding this
+    /// into `COALESCE` gives that column the same answer either way.
+    pub fn set_value(&self) -> Option<&T> {
+        match self {
+            Patch::Unset => None,
+            Patch::Set(value) => value.as_ref(),
+        }
+    }
+}
+
+/// The fields a seller controls on update. Every one is a [`Patch`], because a
+/// `PATCH` with an empty body is a no-op rather than an error and "absent" has to
+/// survive next to "set to nothing".
 #[derive(Clone, Debug, Default)]
 pub struct ProductPatch {
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub price: Option<f64>,
-    pub image_url: Option<String>,
-    pub stock: Option<i32>,
+    pub title: Patch<String>,
+    pub description: Patch<String>,
+    pub price: Patch<f64>,
+    pub image_url: Patch<String>,
+    pub stock: Patch<i32>,
 }
 
 impl ProductPatch {
+    /// Every field [`Patch::Unset`]: the body named no key, so there is nothing to
+    /// write. The two states that are *not* emptiness — `Set(Some(_))` and
+    /// `Set(None)` — both mean the caller said something.
     pub fn is_empty(&self) -> bool {
-        self.title.is_none()
-            && self.description.is_none()
-            && self.price.is_none()
-            && self.image_url.is_none()
-            && self.stock.is_none()
+        !self.title.is_set()
+            && !self.description.is_set()
+            && !self.price.is_set()
+            && !self.image_url.is_set()
+            && !self.stock.is_set()
     }
 }
 
@@ -230,12 +275,13 @@ const DELETE_PRODUCT: &str = r#"DELETE FROM "Product" WHERE "id" = $1 AND "owner
 
 /// One statement for every partial update.
 ///
-/// `COALESCE($, column)` per field is what makes this a real PATCH: an absent
-/// field leaves the stored value alone. There is no way to distinguish "absent"
-/// from "explicitly null" this way, which is a deliberate limit — clearing an
-/// image or a description is out of scope, and doing it properly needs a
-/// per-field presence list in the request body.
-const UPDATE_PRODUCT: &str = r#"UPDATE "Product" SET "title" = COALESCE($2, "title"), "description" = COALESCE($3, "description"), "price" = COALESCE($4, "price"), "imageUrl" = COALESCE($5, "imageUrl"), "stock" = COALESCE($6, "stock") WHERE "id" = $1 AND "ownerId" = $7"#;
+/// The two nullable text columns carry a presence flag (`$8`, `$9`) because
+/// `COALESCE` cannot tell an absent key from a `null` one: both bind `NULL`, and
+/// both answer with the stored value. `CASE WHEN $8 THEN $3 ELSE "description" END`
+/// can — it writes `NULL` when the key was sent as `null` and keeps the column
+/// when the key was not sent at all. The other three columns have no null state,
+/// so `COALESCE` still says exactly what they mean.
+const UPDATE_PRODUCT: &str = r#"UPDATE "Product" SET "title" = COALESCE($2, "title"), "description" = CASE WHEN $8 THEN $3 ELSE "description" END, "price" = COALESCE($4, "price"), "imageUrl" = CASE WHEN $9 THEN $5 ELSE "imageUrl" END, "stock" = COALESCE($6, "stock") WHERE "id" = $1 AND "ownerId" = $7"#;
 
 /// How the *bootstrap* connection differs from a request's pool acquisition.
 ///
@@ -571,19 +617,16 @@ impl ProductStore for SqlProductStore {
         patch: ProductPatch,
     ) -> Result<Option<Product>, StoreError> {
         let mut connection = self.acquire_primary().await?;
-        // `COALESCE($, column)` per field is what makes this a real PATCH: an
-        // absent field leaves the stored value alone. There is no way to
-        // distinguish "absent" from "explicitly null" this way, which is a
-        // deliberate limit — clearing an image or description is out of scope,
-        // and doing it properly needs a per-field presence list.
         let updated = sqlx::query(UPDATE_PRODUCT)
             .bind(id)
-            .bind(patch.title.as_deref())
-            .bind(patch.description.as_deref())
-            .bind(patch.price)
-            .bind(patch.image_url.as_deref())
-            .bind(patch.stock)
+            .bind(patch.title.set_value().map(String::as_str))
+            .bind(patch.description.set_value().map(String::as_str))
+            .bind(patch.price.set_value().copied())
+            .bind(patch.image_url.set_value().map(String::as_str))
+            .bind(patch.stock.set_value().copied())
             .bind(owner_id)
+            .bind(patch.description.is_set())
+            .bind(patch.image_url.is_set())
             .execute(&mut *connection)
             .await?;
         if updated.rows_affected() == 0 {
@@ -634,7 +677,23 @@ mod tests {
     #[test]
     fn an_empty_patch_changes_nothing() {
         assert!(ProductPatch::default().is_empty());
-        assert!(!ProductPatch { stock: Some(0), ..ProductPatch::default() }.is_empty());
+        assert!(!ProductPatch { stock: Patch::Set(Some(0)), ..ProductPatch::default() }.is_empty());
+        // Clearing a field is not emptiness: the body named the key.
+        assert!(
+            !ProductPatch { description: Patch::Set(None), ..ProductPatch::default() }.is_empty(),
+            "an explicit null is something the patch says"
+        );
+    }
+
+    /// The two states a nullable field can be in must stay distinguishable down
+    /// here, or the statement above cannot choose between keeping and clearing.
+    #[test]
+    fn only_unset_reports_nothing_to_bind() {
+        assert!(!Patch::<String>::Unset.is_set());
+        assert!(!Patch::<String>::Unset.set_value().is_some());
+        assert!(Patch::Set(None::<String>).is_set());
+        assert!(!Patch::Set(None::<String>).set_value().is_some());
+        assert_eq!(Patch::Set(Some("hi".to_string())).set_value().map(String::as_str), Some("hi"));
     }
 
     /// Backs off and succeeds — the case that was killing `pnpm dev`: Postgres
