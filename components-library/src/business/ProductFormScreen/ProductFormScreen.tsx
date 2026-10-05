@@ -17,12 +17,19 @@ const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { clas
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
 
-/** What the form collects, with price and stock already parsed. */
+/**
+ * What the form collects, with price and stock already parsed.
+ *
+ * `description` and `imageUrl` are required strings rather than optional ones,
+ * and that is the point: a blank field submits `""`, which the server reads as
+ * "clear it". Making them optional is what let a deleted description be dropped
+ * from the body and silently discarded.
+ */
 export type ProductFormValues = {
   title: string
-  description?: string
+  description: string
   price: number
-  imageUrl?: string
+  imageUrl: string
   stock: number
 }
 
@@ -201,9 +208,14 @@ export function parse(fields: {
 
   return {
     title,
-    description: fields.description.trim() || undefined,
+    // Trimmed but never dropped: `""` is how a seller says "clear this", and it is
+    // the only spelling that says it. Omitting the key instead would be read as
+    // "leave it alone", so a blank field would silently keep its old value while
+    // the form reported a successful save. On create the server normalises `""` to
+    // `NULL` anyway, so the two paths cost the same body.
+    description: fields.description.trim(),
     price,
-    imageUrl: fields.imageUrl.trim() || undefined,
+    imageUrl: fields.imageUrl.trim(),
     stock,
   }
 }

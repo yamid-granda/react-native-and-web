@@ -15,7 +15,7 @@ use crate::error::{json_response, no_content, AppError, NO_STORE};
 use crate::handlers::products::{parse_page, ProductJson, ProductsPageJson};
 use crate::handlers::JsonBody;
 use crate::middleware::AuthUser;
-use crate::store::{NewProduct, ProductPatch, MAX_TITLE_LENGTH, PAGE_SIZE};
+use crate::store::{NewProduct, Patch, ProductPatch, MAX_TITLE_LENGTH, PAGE_SIZE};
 
 #[derive(Deserialize)]
 pub struct CreateProductRequest {
@@ -31,16 +31,21 @@ pub struct CreateProductRequest {
 
 /// A `PATCH` body. Every field is optional, including all of them at once: an
 /// empty patch is a no-op that still returns the current product.
+///
+/// `description` and `imageUrl` are three-state, because a seller can delete them
+/// and "deleted" has to be a request the server can tell from "not mentioned".
+/// `title`, `price` and `stock` stay two-state on purpose: `title` is validated
+/// rather than cleared, and neither number has an empty state worth expressing.
 #[derive(Deserialize, Default)]
 pub struct UpdateProductRequest {
     #[serde(default)]
     title: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    description: Option<Option<String>>,
     #[serde(default)]
     price: Option<f64>,
-    #[serde(rename = "imageUrl", default)]
-    image_url: Option<String>,
+    #[serde(rename = "imageUrl", default, deserialize_with = "double_option")]
+    image_url: Option<Option<String>>,
     #[serde(default)]
     stock: Option<i32>,
 }
@@ -92,11 +97,11 @@ pub async fn update(
     JsonBody(request): JsonBody<UpdateProductRequest>,
 ) -> Result<Response, AppError> {
     let patch = ProductPatch {
-        title: request.title.map(validate_title).transpose()?,
-        description: trim_to_none(request.description),
-        price: request.price.map(validate_price).transpose()?,
-        image_url: trim_to_none(request.image_url),
-        stock: request.stock.map(validate_stock).transpose()?,
+        title: set(request.title.map(validate_title).transpose()?),
+        description: trim_to_patch(request.description),
+        price: set(request.price.map(validate_price).transpose()?),
+        image_url: trim_to_patch(request.image_url),
+        stock: set(request.stock.map(validate_stock).transpose()?),
     };
 
     // `None` covers both "no such product" and "not yours", and both answer 404:
@@ -165,9 +170,49 @@ fn validate_stock(stock: i32) -> Result<i32, AppError> {
 
 /// An empty or whitespace-only optional field is stored as `NULL`, so
 /// `description: ""` and `description: null` produce the same row instead of a
-/// product card with a blank line under the title.
+/// product card with a blank line under the title. Used by `create`, where there
+/// is nothing to preserve.
 fn trim_to_none(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+}
+
+/// The same normalisation, kept three-state for a `PATCH`.
+///
+/// `None` (key absent) is [`Patch::Unset`], and `Some("")` / `Some("   ")` are
+/// `Set(None)` — clear it. Collapsing all three to `None` is what made a seller
+/// unable to delete a description.
+fn trim_to_patch(value: Option<Option<String>>) -> Patch<String> {
+    match value {
+        None => Patch::Unset,
+        Some(value) => match trim_to_none(value) {
+            Some(value) => Patch::Set(Some(value)),
+            None => Patch::Set(None),
+        },
+    }
+}
+
+/// A field with no empty state: an absent key leaves the column alone and a
+/// present one sets it, so there is nothing to distinguish.
+fn set<T>(value: Option<T>) -> Patch<T> {
+    match value {
+        Some(value) => Patch::Set(Some(value)),
+        None => Patch::Unset,
+    }
+}
+
+/// Distinguishes the three states a JSON key can be in.
+///
+/// serde's plain `Option<T>` collapses the first two — `{"description": null}` and
+/// `{}` both arrive as `None` — which is why a `PATCH` built on `Option<T>`
+/// cannot clear a text field: there is no spelling that means "set it to
+/// nothing". `Option<Option<T>>` holds all three, and this is what lets an absent
+/// key fall through to the `default` while a `null` key stays a value.
+fn double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Deserialize::deserialize(deserializer).map(Some)
 }
 
 #[cfg(test)]
@@ -206,6 +251,46 @@ mod tests {
         assert_eq!(trim_to_none(Some(" hello ".to_string())), Some("hello".to_string()));
         assert_eq!(trim_to_none(None), None);
     }
+
+    /// The three states a `PATCH` body can put a text field in. Collapsing any two
+    /// of them is the bug: `Unset` must stay distinct from `Set(None)`, or the
+    /// seller cannot delete a description.
+    #[test]
+    fn a_patched_text_field_keeps_absent_and_cleared_apart() {
+        assert_eq!(trim_to_patch(None), Patch::Unset);
+        assert_eq!(trim_to_patch(Some(None)), Patch::Set(None));
+        assert_eq!(trim_to_patch(Some(Some("  ".to_string()))), Patch::Set(None));
+        assert_eq!(trim_to_patch(Some(Some(String::new()))), Patch::Set(None));
+        assert_eq!(
+            trim_to_patch(Some(Some(" Full-grain. ".to_string()))),
+            Patch::Set(Some("Full-grain.".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_field_with_no_empty_state_is_set_or_untouched() {
+        assert_eq!(set(None::<i32>), Patch::Unset);
+        assert_eq!(set(Some(0)), Patch::Set(Some(0)));
+    }
+
+    /// The wire format is the half that cannot be re-derived from the Rust types,
+    /// so it is asserted here rather than trusted: `null` must arrive as
+    /// `Some(None)` and an absent key as `None`.
+    #[test]
+    fn the_wire_distinguishes_a_null_key_from_an_absent_one() {
+        let absent: UpdateProductRequest = serde_json::from_str("{}").expect("empty body");
+        assert_eq!(absent.description, None);
+        assert_eq!(absent.image_url, None);
+
+        let cleared: UpdateProductRequest =
+            serde_json::from_str(r#"{"description": null, "imageUrl": null}"#).expect("cleared");
+        assert_eq!(cleared.description, Some(None));
+        assert_eq!(cleared.image_url, Some(None));
+
+        let valued: UpdateProductRequest =
+            serde_json::from_str(r#"{"description": " hi "}"#).expect("valued");
+        assert_eq!(valued.description, Some(Some(" hi ".to_string())));
+    }
 }
 
 #[cfg(test)]
@@ -216,7 +301,7 @@ mod handler_tests {
     use axum::http::{header, Method, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use tower::ServiceExt;
 
     use crate::app::{router, AppState};
@@ -525,6 +610,68 @@ mod handler_tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(body(response).await["price"], 149.5);
+    }
+
+    /// The bug this route had: a seller deleted a description, got a `200`, and
+    /// the text was still there. All four spellings of "cleared" now clear, and
+    /// the response reports the cleared value rather than the stored one.
+    #[tokio::test]
+    async fn clearing_a_text_field_really_clears_it() {
+        let (app, token, _user) = signed_in().await;
+        let created = create_product(&app, &token).await;
+        let id = created["id"].as_str().expect("id").to_string();
+        let uri = format!("/my-store/products/{id}");
+
+        // `""` and `"   "` are what the shared form submits for a cleared field.
+        for payload in [
+            json!({ "description": "", "imageUrl": "" }),
+            json!({ "description": "   ", "imageUrl": "   " }),
+            json!({ "description": null, "imageUrl": null }),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(call(Method::PATCH, &uri, Some(&token), Some(payload.clone())))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{payload}");
+            let patched = body(response).await;
+            assert_eq!(patched["description"], Value::Null, "{payload}");
+            assert_eq!(patched["imageUrl"], Value::Null, "{payload}");
+        }
+
+        // And it is cleared for a reader, not just in the patch's own answer.
+        let response =
+            app.oneshot(call(Method::GET, &format!("/products/{id}"), None, None)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let detail = body(response).await;
+        assert_eq!(detail["description"], Value::Null);
+        assert_eq!(detail["imageUrl"], Value::Null);
+    }
+
+    /// The other half of the three states, and the one that keeps a `PATCH` a
+    /// `PATCH`: omitting a key must leave the stored value alone.
+    #[tokio::test]
+    async fn an_omitted_field_survives_a_patch_that_clears_the_other_one() {
+        let (app, token, _user) = signed_in().await;
+        let created = create_product(&app, &token).await;
+        let id = created["id"].as_str().expect("id").to_string();
+
+        let response = app
+            .clone()
+            .oneshot(call(
+                Method::PATCH,
+                &format!("/my-store/products/{id}"),
+                Some(&token),
+                Some(json!({ "description": null })),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let patched = body(response).await;
+        assert_eq!(patched["description"], Value::Null);
+        // `imageUrl` was not in the body, so it is untouched — the two states that
+        // must never be confused.
+        assert_eq!(patched["imageUrl"], "https://example.test/bag.png");
     }
 
     #[tokio::test]

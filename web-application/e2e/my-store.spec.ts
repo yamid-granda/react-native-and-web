@@ -44,6 +44,10 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   await page.getByRole("button", { name: "Add product" }).click()
   await expect(page).toHaveURL("/my-store/new")
   await page.getByTestId("product-title").fill(title)
+  // A description to clear later. Editing twice would re-read the product through
+  // a client-side navigation, which is a separate staleness question this spec
+  // does not own — one edit that both renames and clears covers the same ground.
+  await page.getByTestId("product-description").fill("Waxed, not leather.")
   await page.getByTestId("product-price").fill("189")
   await page.getByTestId("product-stock").fill("6")
   await page.getByRole("button", { name: "Create product" }).click()
@@ -72,16 +76,37 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   await expect(page.getByTestId("public-store-screen")).toBeVisible()
   await expect(page.getByText(title)).toBeVisible()
 
-  // Edit.
+  // Edit: rename, and clear the description in the same save.
+  //
+  // Clearing is the regression this covers. A blank field used to be dropped from
+  // the request body, which the server read as "leave it alone" — so the seller
+  // deleted the text, got a successful save, and it stayed on the storefront for
+  // every shopper. Asserted through the real form, because what matters is the
+  // body the form sends, not what the api would accept.
   await page.goto("/my-store")
   await page.getByLabel(`Edit ${title}`).click()
   await expect(page).toHaveURL(/\/my-store\/.+\/edit/)
   await page.getByTestId("product-title").fill(`${title} v2`)
+  await page.getByTestId("product-description").fill("")
   await page.getByRole("button", { name: "Save changes" }).click()
   await expect(page).toHaveURL("/my-store")
   await expect(page.getByText(`${title} v2`)).toBeVisible()
 
+  // And it is gone when the form is read back. This is the same public
+  // `GET /products/{id}` the storefront renders, so "the deleted text still
+  // answers" is exactly what this catches — and `toHaveValue` retries, so it
+  // waits for the refetch rather than racing it.
+  //
+  // Deliberately not asserted through the marketplace search: that filters only
+  // the pages already fetched, and this product sorts last of 1000+, which is a
+  // pagination question this spec does not own.
+  await page.goto("/my-store")
+  await page.getByLabel(`Edit ${title} v2`).click()
+  await expect(page).toHaveURL(/\/my-store\/.+\/edit/)
+  await expect(page.getByTestId("product-description")).toHaveValue("")
+
   // Delete, so the next run starts from the same catalogue.
+  await page.goto("/my-store")
   await page.getByLabel(`Delete ${title} v2`).click()
   await expect(page.getByText(/You have no products yet/)).toBeVisible()
 })

@@ -15,7 +15,14 @@ export type ProductEditorScreenProps = {
   isSubmitting: boolean
   setSubmitting: (value: boolean) => void
   setError: (value: Error | null) => void
-  /** Injected so this screen needs no api layer of its own. */
+  /**
+   * Injected so this screen needs no api layer of its own.
+   *
+   * `Partial` is right for an outside caller that genuinely means to touch one
+   * field, but the form this screen renders submits every field on every save —
+   * a cleared description arrives as `""`, not as an absent key, so the server can
+   * tell "clear it" from "leave it alone".
+   */
   update: (id: string, values: Partial<ProductFormValues>) => Promise<ProductData>
   /** Called after a successful save. */
   onDone: () => void

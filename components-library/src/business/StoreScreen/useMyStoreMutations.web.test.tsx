@@ -74,11 +74,24 @@ function seedWrites(client: QueryClient) {
   return keys
 }
 
+/**
+ * A complete set of form values. `description` and `imageUrl` are required
+ * strings, so a create that omits them is not something the form can produce —
+ * these tests were writing bodies the form never sends.
+ */
+const aProduct: ProductFormValues = {
+  title: "Mug",
+  description: "",
+  price: 18,
+  imageUrl: "",
+  stock: 4,
+}
+
 /** Starts a write without awaiting it, and returns the promise to await later. */
 function actWrite(create: UseMutationResult<ProductData, Error, ProductFormValues, unknown>) {
   let pending: Promise<ProductData> = Promise.resolve(product)
   act(() => {
-    pending = create.mutateAsync({ title: "Mug", price: 18, stock: 4 })
+    pending = create.mutateAsync({ ...aProduct, price: 18 })
   })
   return pending
 }
@@ -117,10 +130,10 @@ describe("useMyStoreMutations", () => {
     const { result, transport } = renderMutations(client)
 
     await act(async () => {
-      await result.current.create.mutateAsync({ title: "Mug", price: 18, stock: 4 })
+      await result.current.create.mutateAsync({ ...aProduct, price: 18 })
     })
 
-    expect(transport.create).toHaveBeenCalledWith({ title: "Mug", price: 18, stock: 4 })
+    expect(transport.create).toHaveBeenCalledWith({ ...aProduct, price: 18 })
     for (const queryKey of keys) {
       expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true)
     }
@@ -157,7 +170,7 @@ describe("useMyStoreMutations", () => {
       return (
         <button
           type="button"
-          onClick={() => store.create.mutate({ title: "Mug", price: 18, stock: 4 })}
+          onClick={() => store.create.mutate({ ...aProduct, price: 18 })}
           disabled={catalogue.isLoading}
         >
           {catalogue.products.length}
@@ -203,7 +216,7 @@ describe("useMyStoreMutations", () => {
 
     await act(async () => {
       await expect(
-        result.current.create.mutateAsync({ title: "Mug", price: 18, stock: 4 }),
+        result.current.create.mutateAsync({ ...aProduct, price: 18 }),
       ).rejects.toThrow("Title must be at most 200 characters")
     })
     await waitFor(() =>
