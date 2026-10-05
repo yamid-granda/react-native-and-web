@@ -10,7 +10,7 @@ use std::time::Duration;
 use api_rs::app::{router, AppState};
 use api_rs::config::Config;
 use api_rs::migrations;
-use api_rs::store::{connect_read_replica, MarketplaceStore, SqlProductStore};
+use api_rs::store::{connect_read_replica, MarketplaceStore, Product, SqlProductStore};
 use chrono::NaiveDateTime;
 use redis::aio::ConnectionManager;
 use serde::Deserialize;
@@ -22,6 +22,8 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::task::JoinHandle;
 
+/// A row of `tests/fixtures/products.json` as the file spells it — the
+/// committed `createdAt` is Prisma's `TIMESTAMP(3)` text, not a `NaiveDateTime`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FixtureProduct {
@@ -38,13 +40,52 @@ struct FixtureProduct {
     owner_id: Option<String>,
 }
 
-/// The seller behind the `prod-owned-1` fixture row. Mirrors the constants in
-/// `tests/fixtures/generate_goldens.py`, which is what writes the byte-compared
-/// goldens these rows have to reproduce.
+/// The fixture rows in the order `LIST_QUERY` returns them — `createdAt` then
+/// `id`, both ascending — as the struct the handlers serialize.
+///
+/// One conversion for both consumers, deliberately: [`seed_fixtures`] and the
+/// byte-compared goldens have to describe the same rows, so neither may hold its
+/// own mapping. `products.json` keeps whatever number spelling a human finds
+/// natural; `price` is an `f64` from here on, and `js_number` decides the wire
+/// form, so `18` and `18.0` cannot become a golden diff.
+///
+/// `store_name` is filled the way the `LEFT JOIN` fills it, from the one fixture
+/// seller: null for an ownerless row, the seller's name for an owned one.
+pub fn fixture_products() -> Vec<Product> {
+    let fixtures: Vec<FixtureProduct> =
+        serde_json::from_str(include_str!("../fixtures/products.json"))
+            .expect("valid product fixture JSON");
+
+    let mut products: Vec<Product> = fixtures
+        .into_iter()
+        .map(|product| {
+            let store_name = product.owner_id.as_ref().map(|_| FIXTURE_STORE_NAME.to_string());
+            Product {
+                id: product.id,
+                title: product.title,
+                description: product.description,
+                price: product.price,
+                currency: product.currency,
+                image_url: product.image_url,
+                stock: product.stock,
+                created_at: parse_timestamp(&product.created_at),
+                owner_id: product.owner_id,
+                store_name,
+            }
+        })
+        .collect();
+
+    products.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+    products
+}
+
+/// The seller behind the `prod-owned-1` fixture row, and the owner every owned
+/// fixture row names. Also the store the byte-compared goldens in
+/// `tests/fixtures/` are built from — see `tests/fixtures/mod.rs`.
 pub const FIXTURE_STORE_ID: &str = "usr_fixture_store";
 pub const FIXTURE_STORE_NAME: &str = "Riverbend Vintage";
 /// Created before any product: `Product.ownerId` references it.
-const FIXTURE_STORE_CREATED_AT: &str = "2026-01-01 00:00:00.000";
+pub const FIXTURE_STORE_CREATED_AT: &str = "2026-01-01 00:00:00.000";
 
 pub struct TestStack {
     pub base_url: String,
@@ -399,10 +440,10 @@ async fn seed_fixtures(pool: &PgPool) {
     .await
     .expect("insert fixture seller");
 
-    let fixtures: Vec<FixtureProduct> =
-        serde_json::from_str(include_str!("../fixtures/products.json"))
-            .expect("valid product fixture JSON");
-    for product in fixtures {
+    // The same rows the goldens in `tests/fixtures/` are derived from, through
+    // the same conversion — so a golden and the database cannot describe
+    // different products.
+    for product in fixture_products() {
         sqlx::query(
             r#"INSERT INTO "Product" ("id", "title", "description", "price", "currency", "imageUrl", "stock", "createdAt", "ownerId") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
         )
@@ -413,7 +454,7 @@ async fn seed_fixtures(pool: &PgPool) {
         .bind(product.currency)
         .bind(product.image_url)
         .bind(product.stock)
-        .bind(parse_timestamp(&product.created_at))
+        .bind(product.created_at)
         .bind(product.owner_id)
         .execute(pool)
         .await
@@ -421,7 +462,9 @@ async fn seed_fixtures(pool: &PgPool) {
     }
 }
 
-fn parse_timestamp(raw: &str) -> NaiveDateTime {
+/// The committed `createdAt` spelling, which is Prisma's `TIMESTAMP(3)` text
+/// rather than chrono output — the same parse the `TIMESTAMP(3)` column needs.
+pub fn parse_timestamp(raw: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S%.3f").expect("fixture timestamp")
 }
 
