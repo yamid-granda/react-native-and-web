@@ -1,6 +1,47 @@
 mod common;
+mod fixtures;
+
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use reqwest::{Client, StatusCode};
+
+/// Where a derived golden lives. `CARGO_MANIFEST_DIR` rather than a relative
+/// path so the tests do not depend on the working directory `cargo test` picks.
+fn golden_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+}
+
+/// The first place two bodies diverge, with a little context either side of it.
+/// A golden is one long line, so `assert_eq!`'s diff on two of them buries the
+/// actual difference in a wall of JSON.
+///
+/// Walked by character rather than by byte so the windows below cannot land
+/// inside a multi-byte character, with the reported offset converted back to
+/// bytes because that is the number you can paste into an editor.
+fn first_difference(left: &str, right: &str) -> String {
+    let left: Vec<char> = left.chars().collect();
+    let right: Vec<char> = right.chars().collect();
+    let at = left
+        .iter()
+        .zip(&right)
+        .position(|(l, r)| l != r)
+        .unwrap_or_else(|| left.len().min(right.len()));
+    let window = |chars: &[char]| {
+        let start = at.saturating_sub(12);
+        let end = (at + 24).min(chars.len());
+        chars[start..end].iter().collect::<String>()
+    };
+
+    format!(
+        "byte {} (committed {} bytes, derived {} bytes)\n  committed: …{}…\n  derived:   …{}…",
+        left[..at].iter().map(|c| c.len_utf8()).sum::<usize>(),
+        left.len(),
+        right.len(),
+        window(&left),
+        window(&right)
+    )
+}
 
 fn normalize_health(mut body: String) -> String {
     let marker = "\"responseTime\":";
@@ -128,4 +169,55 @@ async fn responses_match_committed_golden_fixtures() {
         normalize_health(response.text().await.unwrap()),
         include_str!("fixtures/health-up.json")
     );
+}
+
+/// The seven success goldens must be exactly what the production serializers
+/// produce from `products.json`.
+///
+/// `responses_match_committed_golden_fixtures` proves the *server* agrees with
+/// the committed files. This proves the files are not a hand-edited copy of
+/// whatever the server did last, which is the gap that let a second,
+/// never-executed Python implementation of the contract stand in as the source
+/// of these bytes for so long. Together the two checks mean a field added to
+/// `ProductJson` cannot go missing from a golden, and a golden cannot be edited
+/// to make a failing byte-comparison pass.
+#[test]
+fn the_success_goldens_are_reproducible_from_the_fixture() {
+    for (name, derived) in fixtures::derived_goldens() {
+        let path = golden_path(name);
+        let committed =
+            fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        assert!(
+            committed == derived,
+            "{} no longer matches what the serializers produce — {}",
+            path.display(),
+            first_difference(&committed, &derived)
+        );
+    }
+}
+
+/// Rewrites the derived goldens in place.
+///
+/// Opt-in and `#[ignore]`d because it writes files, and pointed at by
+/// `pnpm --filter @rnw/api-rs test:e2e:update-goldens`. Running it on a
+/// consistent tree rewrites nothing, which is the point: the generator is
+/// reachable from a documented command and idempotent, instead of being a file
+/// in Python that nothing knew how to run.
+///
+/// Run it after changing the contract, then read the diff — the goldens are
+/// still reviewed by hand.
+#[test]
+#[ignore = "writes tests/fixtures/; run it via test:e2e:update-goldens"]
+fn rewrite_the_derived_goldens() {
+    assert_eq!(
+        std::env::var("UPDATE_GOLDENS").as_deref(),
+        Ok("1"),
+        "this test writes tests/fixtures/ — run \
+         `pnpm --filter @rnw/api-rs test:e2e:update-goldens`, which sets UPDATE_GOLDENS=1"
+    );
+
+    for (name, derived) in fixtures::derived_goldens() {
+        let path = golden_path(name);
+        fs::write(&path, derived).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    }
 }

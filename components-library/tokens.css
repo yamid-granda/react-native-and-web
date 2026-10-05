@@ -42,7 +42,7 @@
  * `systemGray4` (1.71:1) — and a form is the one place that weight repeats
  * down the page, so it read as a cage around every field rather than an edge.
  * `border` is therefore for *actions*, which are singular and need to read as
- * actionable: `Button`'s `outline` and `chip` variants. `border-muted` is for
+ * actionable: `Button`'s `secondary` variant. `border-muted` is for
  * *fields*, which are repeated and should stay quiet: `Input`. Both land near
  * 1.7:1 against the fill they enclose, and the two schemes are matched to each
  * other so a form weighs the same in either.
