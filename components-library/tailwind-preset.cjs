@@ -12,7 +12,12 @@ module.exports = {
       // nothing anywhere else may hardcode a control height, so web and native
       // stay on one value without either app restating it. 2.75rem == 44px,
       // the smallest touch target iOS HIG and WCAG both consider comfortable.
-      // `w-control` keeps square (icon) buttons circular at the same size.
+      // `w-control` is the square counterpart, for a button that must be circular
+      // at this same size. It is currently unused: it existed for `Button`'s
+      // `icon` size, which was removed along with the rest of the size variants
+      // (see `.agents/rules/button-variants.md`). It is kept because an icon
+      // button is coming back with the sizes, and the token has to stay in one
+      // place when it does.
       height: {
         control: "2.75rem",
       },
@@ -35,8 +40,8 @@ module.exports = {
         "surface-muted": "rgb(var(--color-surface-muted) / <alpha-value>)",
         // The outline of a control, kept apart from `surface-muted` so that
         // token can stay a plain fill: a border has to clear 3:1 against both
-        // its neighbours (WCAG 1.4.11), a fill does not. `Button`'s outline and
-        // chip variants use this; decorative dividers keep `surface-muted`,
+        // its neighbours (WCAG 1.4.11), a fill does not. `Button`'s secondary
+        // variant uses this; decorative dividers keep `surface-muted`,
         // which 1.4.11 does not cover.
         border: "rgb(var(--color-border) / <alpha-value>)",
         // The quieter edge, for a control that repeats down a form. Clearing

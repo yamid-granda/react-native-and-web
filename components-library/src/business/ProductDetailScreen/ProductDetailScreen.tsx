@@ -90,14 +90,13 @@ export function ProductDetailScreen({
           {product.storeName ? (
             <Button
               label={`Sold by ${product.storeName}`}
-              variant="ghost"
-              size="sm"
+              variant="secondary"
               disabled={!product.storeId || !onOpenStore}
               onPress={() => {
                 if (product.storeId) onOpenStore?.(product.storeId)
               }}
-              // The ghost label is brand-blue, but an unopenable store link has
-              // to read as inert rather than as an invitation.
+              // A store link that can't be opened has to read as inert rather
+              // than as an invitation.
               labelClassName={onOpenStore ? undefined : "text-muted"}
               testID="product-detail-store"
               className={onOpenStore ? "self-start" : undefined}
@@ -118,7 +117,6 @@ export function ProductDetailScreen({
                   ? `Remove ${product.title} from wishlist`
                   : `Add ${product.title} to wishlist`
               }
-              size="icon"
               variant="secondary"
               testID={`wishlist-toggle-${product.id}`}
               onPress={() => toggleWishlistItem(product.id)}

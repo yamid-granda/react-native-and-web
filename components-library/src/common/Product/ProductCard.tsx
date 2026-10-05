@@ -88,7 +88,6 @@ export const ProductCard = memo(function ProductCard({
       </ClassNamePressable>
       <Button
         label={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
-        size="icon"
         variant="secondary"
         testID={`wishlist-toggle-${id}`}
         // The id, not a snapshot of this card. This line used to hand the

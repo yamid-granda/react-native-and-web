@@ -77,7 +77,7 @@ const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
   "common/MainNav/MainNavItem.tsx h-5": "cart/wishlist badge height",
   "common/MainNav/MainNavItem.tsx py-2": "nav item vertical padding",
   "common/Product/ProductCard.tsx h-32": "product image height",
-  "common/Product/ProductCard.tsx py-1": "product card chip padding",
+  "common/Product/ProductCard.tsx py-1": "product card padding",
   "common/Product/Product.web.tsx h-32": "product image height",
 }
 
@@ -194,7 +194,7 @@ function contrastRatio(a: string, b: string): number {
  * Every pair the UI actually puts together, with the floor it has to clear.
  *
  * The WCAG floors are the point: `--color-border` did not exist, and the
- * `border-surface-muted` outline on `Input` and `Button`'s outline/chip variants
+ * `border-surface-muted` outline on `Input` and `Button`'s bordered variant
  * reached only 1.10:1 (light) and 1.19:1 (dark) against the `bg-surface` it was
  * drawn on, so every text field in the app failed 1.4.11 Non-text Contrast while
  * looking correctly wired. The last two floors are not WCAG — no success
@@ -208,7 +208,7 @@ const CONTRAST_FLOORS: { pair: [string, string]; min: number; reason: string }[]
   {
     pair: ["foreground", "surface-muted"],
     min: 7,
-    reason: "body text on a pressed chip or placeholder (1.4.6 AAA)",
+    reason: "body text on a pressed button or placeholder (1.4.6 AAA)",
   },
   { pair: ["muted", "background"], min: 4.5, reason: "secondary text on the canvas (1.4.3 AA)" },
   { pair: ["muted", "surface"], min: 4.5, reason: "secondary text on a card (1.4.3 AA)" },

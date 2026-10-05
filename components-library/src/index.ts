@@ -1,5 +1,5 @@
-export { Button } from "./common/Button/Button"
-export type { ButtonProps, ButtonSize, ButtonVariant } from "./common/Button/Button"
+export { Button, BUTTON_VARIANTS } from "./common/Button/Button"
+export type { ButtonProps, ButtonVariant } from "./common/Button/Button"
 export { toButtonTestId } from "./common/Button/buttonTestId"
 export { Product } from "./common/Product/Product"
 export type { ProductProps } from "./common/Product/Product"

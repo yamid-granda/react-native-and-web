@@ -66,4 +66,5 @@ Run the narrowest relevant checks for a change, then broader checks when practic
 - Prefer clear names and simple code. Add comments only for non-obvious constraints or decisions; put repo-wide explanations in `README.md`.
 - Use Conventional Commits for commit messages. Never commit or push unless explicitly asked; do not perform destructive git operations without explicit approval.
 - Keep shared UI in `components-library`; read `.agents/rules/component-reuse.md` before changing cross-platform UI.
+- `Button` has exactly two variants (`primary`, `secondary`) and no size variants. Use one of them; a new variant or a new size needs a proposal under `improve-proposals/` agreed with the team before implementation. See `.agents/rules/button-variants.md`.
 - See `.agents/rules/` for the full project policies. Before using a task workflow, read its matching skill in `.agents/skills/`; reusable role prompts are in `.agents/agents/`.

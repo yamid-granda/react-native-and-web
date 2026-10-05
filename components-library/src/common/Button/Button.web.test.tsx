@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { Text } from "react-native"
 import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
-import { Button } from "./Button"
+import { Button, BUTTON_VARIANTS } from "./Button"
 
 describe("Button (web, via react-native-web)", () => {
   it("renders the label", () => {
@@ -24,13 +24,13 @@ describe("Button (web, via react-native-web)", () => {
     })
 
     it("collapses punctuation in the label", () => {
-      render(<Button label="Price: Low to High" variant="chip" />)
+      render(<Button label="Price: Low to High" variant="secondary" />)
       expect(screen.getByTestId("price-low-to-high")).toBeInTheDocument()
     })
 
     it("gives every button a testID, icon buttons included", () => {
       render(
-        <Button label="Add to wishlist" size="icon">
+        <Button label="Add to wishlist">
           <HeartIcon size={18} />
         </Button>,
       )
@@ -43,16 +43,11 @@ describe("Button (web, via react-native-web)", () => {
       expect(screen.queryByTestId("remove")).not.toBeInTheDocument()
     })
 
-    it("gives every variant and size a testID", () => {
-      const variants = ["primary", "secondary", "outline", "ghost", "chip"] as const
-      const sizes = ["sm", "md", "icon"] as const
-
-      for (const variant of variants) {
-        for (const size of sizes) {
-          const { unmount } = render(<Button label="Order now" variant={variant} size={size} />)
-          expect(screen.getByTestId("order-now"), `${variant}/${size}`).toBeInTheDocument()
-          unmount()
-        }
+    it("gives every variant a testID", () => {
+      for (const variant of BUTTON_VARIANTS) {
+        const { unmount } = render(<Button label="Order now" variant={variant} />)
+        expect(screen.getByTestId("order-now"), variant).toBeInTheDocument()
+        unmount()
       }
     })
 
@@ -69,13 +64,13 @@ describe("Button (web, via react-native-web)", () => {
     })
 
     it("prefers accessibilityLabel over the label", () => {
-      render(<Button label="Relevance" accessibilityLabel="Sort by Relevance" variant="chip" />)
+      render(<Button label="Relevance" accessibilityLabel="Sort by Relevance" />)
       expect(screen.getByRole("button", { name: "Sort by Relevance" })).toBeInTheDocument()
     })
 
     it("names an icon button after its label, with no text of its own", () => {
       render(
-        <Button label="Close" size="icon">
+        <Button label="Close" variant="secondary">
           <HeartIcon size={18} />
         </Button>,
       )
@@ -112,13 +107,14 @@ describe("Button (web, via react-native-web)", () => {
       expect(screen.getByRole("button", { name: "Go" })).toHaveAttribute("aria-busy", "false")
     })
 
-    it("exposes aria-selected on a chip, and only on a chip", () => {
-      const { rerender } = render(<Button label="Relevance" variant="chip" selected={false} />)
+    it("exposes aria-selected only when the caller opts in with `selected`", () => {
+      const { rerender } = render(<Button label="Relevance" selected={false} />)
       expect(screen.getByRole("button")).toHaveAttribute("aria-selected", "false")
 
-      rerender(<Button label="Relevance" variant="chip" selected />)
+      rerender(<Button label="Relevance" selected />)
       expect(screen.getByRole("button")).toHaveAttribute("aria-selected", "true")
 
+      // An ordinary button must not claim to be part of a selection.
       rerender(<Button label="Relevance" />)
       expect(screen.getByRole("button")).not.toHaveAttribute("aria-selected")
     })
@@ -139,7 +135,7 @@ describe("Button (web, via react-native-web)", () => {
   describe("children", () => {
     it("renders children instead of the label text", () => {
       render(
-        <Button label="Decrease quantity" size="icon">
+        <Button label="Decrease quantity" variant="secondary">
           <Text>-</Text>
         </Button>,
       )
@@ -150,7 +146,7 @@ describe("Button (web, via react-native-web)", () => {
     it("still calls onPress", () => {
       const onPress = vi.fn()
       render(
-        <Button label="Close" size="icon" onPress={onPress}>
+        <Button label="Close" variant="secondary" onPress={onPress}>
           <HeartIcon size={18} />
         </Button>,
       )
@@ -160,7 +156,7 @@ describe("Button (web, via react-native-web)", () => {
 
     it("keeps children while loading, so an icon button never becomes a bare ellipsis", () => {
       render(
-        <Button label="Close" size="icon" loading>
+        <Button label="Close" variant="secondary" loading>
           <HeartIcon size={18} />
         </Button>,
       )

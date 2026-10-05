@@ -102,8 +102,7 @@ export function CheckoutScreen({
             {missingNotice}
             <Button
               label="Go to Cart"
-              variant="ghost"
-              size="sm"
+              variant="secondary"
               className="self-start"
               onPress={() => onGoToCart?.()}
             />

@@ -51,8 +51,7 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
         </ClassNameText>
         <Button
           label="Remove unavailable items"
-          variant="ghost"
-          size="sm"
+          variant="secondary"
           className="self-start"
           onPress={() => missing.forEach(removeItem)}
         />
@@ -94,14 +93,12 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
                 </ClassNameView>
                 <Button
                   label="Add to Cart"
-                  size="sm"
                   testID={`add-to-cart-${product.id}`}
                   onPress={() => addItem(product.id)}
                 />
                 <Button
                   label="Remove"
-                  variant="ghost"
-                  size="sm"
+                  variant="secondary"
                   accessibilityLabel={`Remove ${product.title} from wishlist`}
                   testID={`remove-${product.id}`}
                   onPress={() => removeItem(product.id)}

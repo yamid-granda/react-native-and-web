@@ -61,8 +61,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
             </ClassNameText>
             <Button
               label="Remove unavailable items"
-              variant="ghost"
-              size="sm"
+              variant="secondary"
               className="self-start"
               onPress={() => missing.forEach(removeItem)}
             />
@@ -95,7 +94,6 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                   <ClassNameView className="flex-row items-center gap-2">
                     <Button
                       label={`Decrease ${product.title} quantity`}
-                      size="icon"
                       variant="secondary"
                       onPress={() => decrementQuantity(product.id)}
                     >
@@ -104,7 +102,6 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                     <ClassNameText className="text-sm text-foreground">{quantity}</ClassNameText>
                     <Button
                       label={`Increase ${product.title} quantity`}
-                      size="icon"
                       variant="secondary"
                       onPress={() => incrementQuantity(product.id)}
                     >
@@ -113,8 +110,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                   </ClassNameView>
                   <Button
                     label="Remove"
-                    variant="ghost"
-                    size="sm"
+                    variant="secondary"
                     accessibilityLabel={`Remove ${product.title} from cart`}
                     testID={`remove-${product.id}`}
                     onPress={() => removeItem(product.id)}

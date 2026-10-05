@@ -42,10 +42,13 @@ export function ProductFilterControls({
             <Button
               key={option.value}
               label={option.label}
-              variant="chip"
-              size="sm"
+              // There are only two variants, so the current sort is shown by which
+              // one it uses: `primary` is the filled brand button, `secondary`
+              // everything else. `selected` then only has to announce which is
+              // current.
+              variant={selected ? "primary" : "secondary"}
               selected={selected}
-              // The visible chip text ("Relevance") is a poor standalone name
+              // The visible text ("Relevance") is a poor standalone name
               // for a screen reader, which announces the control's purpose.
               accessibilityLabel={`Sort by ${option.label}`}
               onPress={() => onSortByChange(option.value)}

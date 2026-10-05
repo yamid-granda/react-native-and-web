@@ -320,8 +320,8 @@ the contract port 3001 that both clients default to; Grafana (from
   neighbours under WCAG 1.4.11. Clearing 3:1 is a floor rather than a target,
   though, and aiming straight at it overshoots: it is roughly twice the weight of
   iOS's `systemGray4`, and a form repeats that edge down the whole page. So there
-  are two weights. `border` (3.43:1) is for *actions* — `Button`'s `outline` and
-  `chip` variants, which are singular and need to read as actionable. `border-muted`
+  are two weights. `border` (3.43:1) is for *actions* — `Button`'s `secondary`
+  variant, which is singular and needs to read as actionable. `border-muted`
   (1.77:1, the `systemGray4` weight) is for *fields* — `Input`, which repeats and
   should stay quiet — and is a deliberate, documented deviation from 1.4.11,
   matching what Apple and Material ship for an outlined field. A decorative
@@ -332,13 +332,20 @@ the contract port 3001 that both clients default to; Grafana (from
   legibility fails a test instead of shipping.
 - **Every button is `components-library`'s `Button`, and every button and
   input is one height.** `Button` is the only place a button look is written
-  down: its five variants (`primary`, `secondary`, `outline`, `ghost`,
-  `chip`) and three sizes (`sm`, `md`, `icon`) are exported alongside the
-  component, and its Storybook story renders the full variant × size matrix so
-  a new one can't be added without appearing there. Height isn't a Button
+  down: its two variants — `primary` (filled brand, the one primary
+  call-to-action per view) and `secondary` (bordered, surface-filled, everything
+  else) — are exported alongside the component, as is `BUTTON_VARIANTS`, the
+  approved list. There are deliberately **no size variants**: every button is the
+  one default size, and sizes come back as a proposal rather than as a `size`
+  prop added in passing. A third variant is likewise a proposal, not a feature
+  implementation — see `.agents/rules/button-variants.md`.
+  `Button.variants.web.test.tsx` pins the list, requires each variant to have its
+  own Storybook story, and fails if a `size` prop reappears; the `AllVariants`
+  story renders off `BUTTON_VARIANTS`, so the matrix can't fall behind the union.
+  Height isn't a Button
   decision at all — `tailwind-preset.cjs` defines a `h-control` token
-  (2.75rem/44px, plus a matching `w-control` so icon buttons stay circular),
-  which `Button` and `Input` both apply, and which no component may restate as
+  (2.75rem/44px), which `Button` and `Input` both apply, and which no component
+  may restate as
   a literal `h-*`/`py-*`. The token lives in the shared preset rather than a
   CSS custom property because native can't read one (same reason the semantic
   colors above are `rgb(var(--x))` utilities rather than raw CSS). A few
@@ -351,9 +358,13 @@ the contract port 3001 that both clients default to; Grafana (from
   can't come back. `Button`'s `testID` defaults to `toButtonTestId(label)` —
   lowercase, spaces dashed, other punctuation collapsed (`"Add to Cart"` →
   `add-to-cart`, `"Price: Low to High"` → `price-low-to-high`) — so e2e
-  selectors are predictable from the visible text; icon buttons, which have no
-  text to derive from, and buttons repeated per list row (which need to stay
-  unique for Playwright's strict mode) pass an explicit `testID`.
+  selectors are predictable from the visible text; icon buttons, whose only
+  content is `children` and so have no text to derive from, and buttons repeated
+  per list row (which need to stay unique for Playwright's strict mode) pass an
+  explicit `testID`. A button that toggles between two of the variants passes
+  `selected` to announce which one is current — `selected` paints nothing, so
+  the visible half of "this one is on" is the variant itself, as
+  `ProductFilterControls` does with the current sort.
 - **`web-application`'s Theme toggle can't just call NativeWind's
   `setColorScheme` and trust its `colorScheme` state.** On web that state
   is hardcoded to `"light"` on mount regardless of the real OS preference

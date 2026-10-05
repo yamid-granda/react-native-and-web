@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react"
 import { View } from "react-native"
 import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
 import { Input } from "../Input/Input"
-import { Button, type ButtonSize, type ButtonVariant } from "./Button"
+import { Button, BUTTON_VARIANTS } from "./Button"
 
 const meta: Meta<typeof Button> = {
   title: "common/Button",
@@ -16,26 +16,16 @@ export default meta
 
 type Story = StoryObj<typeof Button>
 
-const VARIANTS: ButtonVariant[] = ["primary", "secondary", "outline", "ghost", "chip"]
-const SIZES: ButtonSize[] = ["sm", "md", "icon"]
-
-// Every variant/size pair, so a newly added one can't slip in undocumented.
+// Every variant at once, driven off `BUTTON_VARIANTS` rather than a list written
+// out here — so adding a variant to the component puts it on screen before it
+// can reach an app. Each one also gets a story of its own below, which
+// `Button.variants.test.ts` enforces.
 export const AllVariants: Story = {
   render: () => (
     <View className="flex-row flex-wrap items-center gap-3">
-      {VARIANTS.flatMap((variant) =>
-        SIZES.map((size) => (
-          <Button
-            key={`${variant}-${size}`}
-            label={size === "icon" ? "Add to wishlist" : `${variant} ${size}`}
-            variant={variant}
-            size={size}
-            selected={variant === "chip" ? true : undefined}
-          >
-            {size === "icon" ? <HeartIcon size={18} className="text-muted" /> : undefined}
-          </Button>
-        )),
-      )}
+      {BUTTON_VARIANTS.map((variant) => (
+        <Button key={variant} label={variant} variant={variant} />
+      ))}
     </View>
   ),
 }
@@ -45,10 +35,7 @@ export const AllVariants: Story = {
 export const HeightMatchesInput: Story = {
   render: () => (
     <View className="gap-2">
-      <View className="flex-row items-center gap-3">
-        <Button label="Default" />
-        <Button label="Small" size="sm" />
-      </View>
+      <Button label="Default" className="self-start" />
       <Input value="" onChangeText={() => {}} accessibilityLabel="Example input" />
     </View>
   ),
@@ -56,18 +43,28 @@ export const HeightMatchesInput: Story = {
 
 export const Default: Story = {}
 
-export const Small: Story = {
-  args: { label: "Add to Cart", size: "sm" },
+export const Primary: Story = {
+  args: { label: "Add to Cart", variant: "primary" },
+}
+
+export const Secondary: Story = {
+  args: { label: "Remove", variant: "secondary" },
 }
 
 export const Disabled: Story = {
   args: { label: "Out of stock", disabled: true },
 }
 
-// Icon buttons have no text to derive a test id from, so they pass one
-// explicitly — see toButtonTestId for the rule the rest of them follow.
+export const Loading: Story = {
+  args: { label: "Save changes", loading: true },
+}
+
+// A button whose visible content is an icon passes `children` and has no text
+// of its own. It still needs a `label`, because that is the accessible name and
+// the default source of its `testID` — see toButtonTestId for the rule the rest
+// of them follow.
 export const Icon: Story = {
-  args: { label: "Add to wishlist", size: "icon", variant: "secondary" },
+  args: { label: "Add to wishlist", variant: "secondary" },
   render: (args) => (
     <Button {...args}>
       <HeartIcon size={18} className="text-muted" />
@@ -75,8 +72,11 @@ export const Icon: Story = {
   ),
 }
 
-// A chip's test id comes from its label with punctuation collapsed into dashes
-// — this one's is "price-low-to-high".
-export const Chip: Story = {
-  args: { label: "Price: Low to High", variant: "chip", size: "sm", selected: true },
+// `selected` announces which button of a set is current and paints nothing, so
+// the visible half of "this one is on" is the variant — here the current sort is
+// `primary` and its siblings are `secondary`. `ProductFilterControls` is the
+// real caller. The label also shows the `testID` rule: punctuation collapses
+// into single dashes, so this one's is "price-low-to-high".
+export const Selected: Story = {
+  args: { label: "Price: Low to High", variant: "primary", selected: true },
 }
