@@ -151,6 +151,7 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
 
           <Button
             label={isSignUp ? "Create store" : "Sign in"}
+            testId="auth-submit"
             onPress={submit}
             loading={isSubmitting}
           />
@@ -160,6 +161,7 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
           </ClassNameText>
           <Button
             label={isSignUp ? "Sign in instead" : "Create a store"}
+            testId="auth-switch-mode"
             onPress={() => switchMode(isSignUp ? "sign-in" : "sign-up")}
             className="bg-surface-muted active:bg-surface-muted"
           />

@@ -23,7 +23,12 @@ export const Default: Story = {
       const [visible, setVisible] = useState(true)
       return (
         <ClassNameView className="gap-4 p-6">
-          <Button label="Open Drawer" onPress={() => setVisible(true)} className="self-start" />
+          <Button
+            label="Open Drawer"
+            testId="drawer-open"
+            onPress={() => setVisible(true)}
+            className="self-start"
+          />
           <Drawer visible={visible} onClose={() => setVisible(false)}>
             <ClassNameText className="text-lg font-semibold text-foreground">
               Added to cart
@@ -31,7 +36,12 @@ export const Default: Story = {
             <ClassNameText className="text-muted">
               Wireless Headphones has been added to your cart.
             </ClassNameText>
-            <Button label="Go to Cart" onPress={() => setVisible(false)} className="mt-2" />
+            <Button
+              label="Go to Cart"
+              testId="drawer-go-to-cart"
+              onPress={() => setVisible(false)}
+              className="mt-2"
+            />
           </Drawer>
         </ClassNameView>
       )

@@ -85,6 +85,7 @@ export function CheckoutScreen({
             </ClassNameText>
             <Button
               label="Continue Shopping"
+              testId="checkout-continue-shopping"
               className="self-start"
               onPress={() => onContinueShopping?.()}
             />
@@ -102,6 +103,7 @@ export function CheckoutScreen({
             {missingNotice}
             <Button
               label="Go to Cart"
+              testId="checkout-go-to-cart"
               variant="ghost"
               size="sm"
               className="self-start"
@@ -134,7 +136,12 @@ export function CheckoutScreen({
             <ClassNameText className="text-lg font-bold text-brand">
               Total: {formatPrice(getCartTotalPrice(lineItems))}
             </ClassNameText>
-            <Button label="Place Order" className="self-start" onPress={placeOrder} />
+            <Button
+              label="Place Order"
+              testId="checkout-place-order"
+              className="self-start"
+              onPress={placeOrder}
+            />
           </>
         )}
       </ClassNameView>

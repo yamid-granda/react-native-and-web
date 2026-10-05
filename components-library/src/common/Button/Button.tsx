@@ -1,7 +1,6 @@
 import type { ComponentType, ReactNode } from "react"
 import { Pressable, Text, type PressableProps, type TextProps } from "react-native"
 import { cn } from "../../utils/cn"
-import { toButtonTestId } from "./buttonTestId"
 
 // nativewind's className typing doesn't cover PressableProps and doesn't
 // merge reliably across workspace packages (README), so cast locally.
@@ -76,9 +75,8 @@ const chipUnselectedStyle: ButtonStyle = {
 
 export type ButtonProps = {
   /**
-   * The button's visible text, its accessible name, and — unless `testID` is
-   * given — the source of its `testID`. Required even for icon buttons so every
-   * button in the app is addressable by a predictable test id.
+   * The button's visible text and its accessible name. Required even for icon
+   * buttons, so every button in the app says what it is.
    */
   label: string
   /**
@@ -110,8 +108,12 @@ export type ButtonProps = {
   selected?: boolean
   /** Overrides `label` as the accessible name when the visible text is a poor one. */
   accessibilityLabel?: string
-  /** Overrides the label-derived `testID`; use to keep list-row buttons unique. */
-  testID?: string
+  /**
+   * This button's test id, forwarded to the platform's `testID`. Required and
+   * never derived from `label` — see the README's "Architecture boundaries" for
+   * why a derived id is not usable.
+   */
+  testId: string
   className?: string
   labelClassName?: string
 }
@@ -126,7 +128,7 @@ export function Button({
   loading,
   selected,
   accessibilityLabel,
-  testID,
+  testId,
   className,
   labelClassName,
 }: ButtonProps) {
@@ -142,9 +144,7 @@ export function Button({
 
   return (
     <ClassNamePressable
-      // Derived from `label` rather than from the rendered text, so a button
-      // keeps the same test id while `loading` swaps the label for "…".
-      testID={testID ?? toButtonTestId(label)}
+      testID={testId}
       accessibilityRole="button"
       // The visible label becomes "…" while loading, which would leave a screen
       // reader with nothing to announce — so the name is carried explicitly and

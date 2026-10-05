@@ -148,11 +148,17 @@ export function ProductFormScreen({
 
         <Button
           label={submitLabel ?? (isEditing ? "Save changes" : "Create product")}
+          testId="product-form-submit"
           onPress={submit}
           loading={isSubmitting}
         />
         {onCancel ? (
-          <Button label="Cancel" onPress={onCancel} className="bg-surface-muted" />
+          <Button
+            label="Cancel"
+            testId="product-form-cancel"
+            onPress={onCancel}
+            className="bg-surface-muted"
+          />
         ) : null}
       </ClassNameView>
     </ClassNameScrollView>

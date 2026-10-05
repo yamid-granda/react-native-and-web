@@ -348,12 +348,19 @@ the contract port 3001 that both clients default to; Grafana (from
   toggle must stay a sibling `<button>`, not a child one), the `Drawer`
   overlay click-catcher, and the dev-only `IconsGallery` preview card. A test
   fails if anything else sets `accessibilityRole`, so a hand-rolled button
-  can't come back. `Button`'s `testID` defaults to `toButtonTestId(label)` —
-  lowercase, spaces dashed, other punctuation collapsed (`"Add to Cart"` →
-  `add-to-cart`, `"Price: Low to High"` → `price-low-to-high`) — so e2e
-  selectors are predictable from the visible text; icon buttons, which have no
-  text to derive from, and buttons repeated per list row (which need to stay
-  unique for Playwright's strict mode) pass an explicit `testID`.
+  can't come back. `Button`'s `testId` is required and is never derived from
+  `label`, which a `toButtonTestId(label)` helper used to do: a derived id moves
+  whenever the words on screen move, so rewording a button, `loading` swapping
+  its label for "…", a label carrying a product title, or a counter ("Pressed 3
+  times") each drag a selector out from under the tests using it — and making
+  the prop mandatory is also what forces a button repeated per list row to be
+  unique, which Playwright's strict mode requires anyway. Ids are kebab-case and
+  screen-scoped (`cart-checkout`, `checkout-place-order`, `sort-price-asc`,
+  `store-edit-${id}`), so one route's button can't be mistaken for another's,
+  and icon buttons are no exception (`drawer-close`, `wishlist-toggle-${id}`)
+  since they are the ones most likely to be untargetable. The prop is spelled
+  `testId`, not RN's `testID`, because it is `Button`'s own prop that happens to
+  be forwarded to the platform's `testID`.
 - **`web-application`'s Theme toggle can't just call NativeWind's
   `setColorScheme` and trust its `colorScheme` state.** On web that state
   is hardcoded to `"light"` on mount regardless of the real OS preference

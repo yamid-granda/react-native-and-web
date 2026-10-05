@@ -90,7 +90,7 @@ export const ProductCard = memo(function ProductCard({
         label={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
         size="icon"
         variant="secondary"
-        testID={`wishlist-toggle-${id}`}
+        testId={`wishlist-toggle-${id}`}
         // The id, not a snapshot of this card. This line used to hand the
         // wishlist a hand-built `ProductData` that silently dropped `storeId` /
         // `storeName`, so wishlisting from a card and wishlisting from the detail
