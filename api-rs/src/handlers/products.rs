@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use axum::body::Bytes;
 use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use chrono::NaiveDateTime;
 use serde::Serialize;
+use tokio::sync::OwnedMutexGuard;
 
 use crate::app::AppState;
 use crate::cache::{self, HitSource, Kind};
@@ -235,8 +238,8 @@ pub async fn detail(
 /// A cap, not a validation error: the callers are client stores whose size this
 /// service does not control, and answering the first N is more useful than
 /// refusing the whole cart. 50 is roughly five screens' worth of a cart plus a
-/// recently-viewed rail, and it bounds the request at 50 indexed primary-key
-/// lookups however long the query string gets.
+/// recently-viewed rail, and it bounds the request at one statement over at most
+/// 50 indexed primary-key lookups however long the query string gets.
 const MAX_LOOKUP_IDS: usize = 50;
 
 /// The requested ids, de-duplicated, first-seen order, capped.
@@ -275,33 +278,71 @@ pub async fn by_ids(State(state): State<AppState>, request: Request) -> Result<R
     // rather than re-serialized, so a row served here is byte-identical to what
     // `GET /products/{id}` serves for the same id — one cache entry, one
     // serialization, and no second shape to drift when `ProductJson` changes.
-    let mut bodies: Vec<String> = Vec::with_capacity(ids.len());
+    //
+    // Two passes, because the two concerns have different shapes. Every cache
+    // decision is per-id and stays that way, so the first pass walks the ids in
+    // caller order and resolves whatever is already cached. What is left over
+    // leaves in a single batched statement — one query, one pool acquisition for
+    // the whole set, which is the guarantee `useProductLookup.ts` documents and
+    // the one `find_by_id`-per-id could not keep.
+    let mut resolved: Vec<Option<String>> = vec![None; ids.len()];
     let mut missing: Vec<String> = Vec::new();
+    let mut wanted: Vec<usize> = Vec::new();
+    // Held across the batched read and the writes below, not released per
+    // iteration. Ids are de-duplicated by `parse_lookup_ids`, so every guard here
+    // is a distinct key and a request never waits on itself.
+    let mut _fill: Vec<OwnedMutexGuard<()>> = Vec::new();
 
-    for id in &ids {
+    for (index, id) in ids.iter().enumerate() {
         let key = cache::detail_key(id);
 
         if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
-            bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+            resolved[index] = Some(String::from_utf8_lossy(&bytes).into_owned());
             continue;
         }
 
         // Same two-phase check as `detail`: the first screen of a cold cart is
-        // exactly the burst the flight exists to collapse.
+        // exactly the burst the flight exists to collapse. A second request for
+        // the same id waits on the guard below and then finds the entry this one
+        // wrote, instead of racing a store call it does not need.
         let flight = state.cache.flights().for_key(Kind::Detail, &key).await;
-        let _fill = flight.lock().await;
+        let guard = flight.owned_lock().await;
         if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
-            bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+            resolved[index] = Some(String::from_utf8_lossy(&bytes).into_owned());
             continue;
         }
 
-        match state.store.find_by_id(id).await? {
+        _fill.push(guard);
+        wanted.push(index);
+    }
+
+    // One statement for the whole set. `find_by_ids` promises no order, so the
+    // result is keyed by id and each id is placed by the index it already has —
+    // first-seen order is the response order, and the caller zips `items` back
+    // onto its own list.
+    let fetched = if wanted.is_empty() {
+        HashMap::new()
+    } else {
+        let batch: Vec<String> = wanted.iter().map(|index| ids[*index].clone()).collect();
+        state
+            .store
+            .find_by_ids(&batch)
+            .await?
+            .into_iter()
+            .map(|product| (product.id.clone(), product))
+            .collect()
+    };
+
+    for index in wanted {
+        let id = &ids[index];
+        let key = cache::detail_key(id);
+        match fetched.get(id) {
             Some(product) => {
-                let bytes = serde_json::to_vec(&ProductJson::from(product))?;
+                let bytes = serde_json::to_vec(&ProductJson::from(product.clone()))?;
                 // Written under the detail key so the next lookup *and* the
                 // detail route share one entry rather than filling it twice.
                 state.cache.set(Kind::Detail, &key, Bytes::copy_from_slice(&bytes)).await;
-                bodies.push(String::from_utf8_lossy(&bytes).into_owned());
+                resolved[index] = Some(String::from_utf8_lossy(&bytes).into_owned());
             }
             // Not an error: a deleted product is the answer this route exists to
             // give. It also deliberately leaves no cache entry, so a seller who
@@ -309,6 +350,8 @@ pub async fn by_ids(State(state): State<AppState>, request: Request) -> Result<R
             None => missing.push(id.clone()),
         }
     }
+
+    let bodies: Vec<String> = resolved.into_iter().flatten().collect();
 
     // Built by hand rather than through `ProductsByIdsJson`, because `items` is
     // already-serialized JSON. Ids go through `serde_json::to_string` so a
@@ -602,6 +645,10 @@ mod tests {
         list_calls: Arc<AtomicUsize>,
         count_calls: Arc<AtomicUsize>,
         find_calls: Arc<AtomicUsize>,
+        /// Separate from `find_calls` on purpose: the claim being pinned is that
+        /// one *batch* is one store call, which a counter that also moved for
+        /// each singular read could not distinguish from the shape it replaced.
+        batch_calls: Arc<AtomicUsize>,
         delay: Duration,
     }
 
@@ -612,6 +659,7 @@ mod tests {
                 list_calls: Arc::new(AtomicUsize::new(0)),
                 count_calls: Arc::new(AtomicUsize::new(0)),
                 find_calls: Arc::new(AtomicUsize::new(0)),
+                batch_calls: Arc::new(AtomicUsize::new(0)),
                 delay: Duration::from_millis(30),
             }
         }
@@ -644,6 +692,15 @@ mod tests {
             self.find_calls.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(self.delay).await;
             self.inner.find_by_id(id).await
+        }
+
+        async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
+            self.batch_calls.fetch_add(1, Ordering::SeqCst);
+            // The delay is what the per-id loop used to pay N times over. Kept
+            // per call, not per id, because that is the shape now under test: one
+            // round trip for the whole set.
+            tokio::time::sleep(self.delay).await;
+            self.inner.find_by_ids(ids).await
         }
 
         async fn ping(&self) -> Result<(), StoreError> {
@@ -1077,9 +1134,14 @@ mod tests {
     /// A repeated batch must not re-query: the ids it resolves are the same
     /// detail entries the detail route fills, so the second read is a cache hit
     /// and the mixed batch fills each of them once.
+    ///
+    /// Counted in batches, not singular lookups. The claim here is that the cache
+    /// collapsed the repeat — two requests, one fill — and one fill is one batch
+    /// call, so this is `2` and was never going to be anything else.
     #[tokio::test]
     async fn a_repeated_batch_is_served_from_the_detail_cache() {
         let (store, _inner) = counting_store(200);
+        let batch_calls = Arc::clone(&store.batch_calls);
         let find_calls = Arc::clone(&store.find_calls);
         let app = router(counting_state(store));
 
@@ -1090,7 +1152,84 @@ mod tests {
             assert_eq!(body_of(response).await["items"].as_array().unwrap().len(), 2);
         }
 
-        assert_eq!(find_calls.load(Ordering::SeqCst), 2, "two ids, two lookups, not four");
+        assert_eq!(batch_calls.load(Ordering::SeqCst), 1, "two requests, one batch, not two");
+        assert_eq!(find_calls.load(Ordering::SeqCst), 0, "the batch never fans out to find_by_id");
+    }
+
+    /// The one the suite had no way to say: a cold batch of *n* ids is **one**
+    /// store call, not *n*.
+    ///
+    /// This is the assertion that makes the doc comment in
+    /// `useProductLookup.ts` checkable rather than aspirational. It fails at `n`
+    /// against the per-id loop it replaces, so it cannot pass by accident if the
+    /// batching is undone later.
+    #[tokio::test]
+    async fn a_cold_batch_of_n_ids_is_one_store_call() {
+        const IDS: usize = 12;
+        let (store, _inner) = counting_store(200);
+        let batch_calls = Arc::clone(&store.batch_calls);
+        let find_calls = Arc::clone(&store.find_calls);
+        let app = router(counting_state(store));
+
+        let query: Vec<String> = (0..IDS).map(|index| format!("prod-{index}")).collect();
+        let response =
+            app.oneshot(get(&format!("/products/by-ids?ids={}", query.join(",")))).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_of(response).await;
+        assert_eq!(body["items"].as_array().unwrap().len(), IDS, "every id resolved");
+        assert_eq!(body["missing"], serde_json::json!([]));
+
+        assert_eq!(batch_calls.load(Ordering::SeqCst), 1, "{IDS} ids, one batched query");
+        assert_eq!(find_calls.load(Ordering::SeqCst), 0, "and no singular reads behind it");
+    }
+
+    /// A *partly* warm batch still asks once — for only the ids that missed.
+    ///
+    /// The one-query claim is about a request, not about a store method, so a
+    /// batch that has cached some of its ids must not fall back to a query per
+    /// remaining id. This is the shape a real second screen of a cart has: some
+    /// entries fresh, the rest cold.
+    #[tokio::test]
+    async fn a_warm_batch_queries_only_the_ids_it_is_missing() {
+        let (store, _inner) = counting_store(200);
+        let batch_calls = Arc::clone(&store.batch_calls);
+        let app = router(counting_state(store));
+
+        let cold =
+            app.clone().oneshot(get("/products/by-ids?ids=prod-1,prod-2,prod-3")).await.unwrap();
+        assert_eq!(cold.status(), StatusCode::OK);
+        assert_eq!(batch_calls.load(Ordering::SeqCst), 1, "three cold ids, one query");
+
+        let mixed =
+            app.oneshot(get("/products/by-ids?ids=prod-1,prod-2,prod-9,prod-10")).await.unwrap();
+        assert_eq!(mixed.status(), StatusCode::OK);
+        let body = body_of(mixed).await;
+        assert_eq!(
+            body["items"].as_array().unwrap().len(),
+            4,
+            "the cached pair plus the two new ids"
+        );
+
+        assert_eq!(batch_calls.load(Ordering::SeqCst), 2, "one more query, for the two new ids");
+    }
+
+    /// First-seen order is the response order, and `= ANY($1)` does not preserve
+    /// it. The reversed case is the one that matters: an id order that happens to
+    /// match insertion order would pass against a shuffled result.
+    #[tokio::test]
+    async fn a_batch_answers_in_the_order_the_caller_asked() {
+        let app = router(lookup_state());
+
+        let response =
+            app.clone().oneshot(get("/products/by-ids?ids=prod-2,deleted-1,prod-1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_of(response).await;
+        let items = body["items"].as_array().unwrap();
+        assert_eq!(items[0]["id"], "prod-2", "the caller's order, not the store's");
+        assert_eq!(items[1]["id"], "prod-1");
+        assert_eq!(body["missing"], serde_json::json!(["deleted-1"]));
     }
 
     /// The ids are echoed into the body, so a crafted query has to survive being

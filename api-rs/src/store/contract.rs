@@ -19,7 +19,7 @@ use std::future::Future;
 
 use chrono::NaiveDateTime;
 
-use super::products::{NewProduct, Patch, ProductPatch, StoreError, PAGE_SIZE};
+use super::products::{NewProduct, Patch, Product, ProductPatch, StoreError, PAGE_SIZE};
 use super::MarketplaceStore;
 
 /// The sellers the suite registers. Deliberately unlike the e2e fixtures, so a
@@ -43,6 +43,11 @@ const LIFECYCLE_OWNER_STORE_NAME: &str = "Lifecycle Contract Shop";
 const ORDERING_OWNER_ID: &str = "usr_store_contract_ordering";
 const ORDERING_OWNER_EMAIL: &str = "store-contract-ordering@rnw.test";
 const ORDERING_OWNER_STORE_NAME: &str = "Ordering Contract Shop";
+/// A fourth seller, for the batch-read assertion, so the three rows it compares
+/// are exactly the three it created rather than a slice of the seeded catalogue.
+const BATCH_OWNER_ID: &str = "usr_store_contract_batch";
+const BATCH_OWNER_EMAIL: &str = "store-contract-batch@rnw.test";
+const BATCH_OWNER_STORE_NAME: &str = "Batch Contract Shop";
 
 /// Ids chosen so byte order and a locale collation *cannot* agree. Every pair
 /// differs only in case, and case is the one thing the two rules order
@@ -100,6 +105,7 @@ where
 
     listing_windows_state_one_answer(store).await;
     the_tiebreaker_is_byte_order(store, seed_rows).await;
+    a_batch_read_is_the_singular_read_repeated(store).await;
     a_cross_owner_row_is_invisible_not_forbidden(store).await;
     a_patch_distinguishes_absent_from_cleared(store).await;
     a_store_name_is_the_sellers_current_one(store, rename_seller).await;
@@ -215,6 +221,75 @@ where
     assert!(
         page.iter().all(|product| product.created_at == shared),
         "every seeded row shares one createdAt, so id alone decided the order"
+    );
+}
+
+/// `find_by_ids` is the singular read repeated, with the ids it cannot answer
+/// simply absent.
+///
+/// This is the assertion that makes the batch safe to swap in, and it is here
+/// rather than in a handler test because the two implementations could otherwise
+/// disagree about it: the double filters a `Vec` and Postgres runs
+/// `WHERE p."id" = ANY($1)`, and only the second one can be wrong in the way that
+/// matters — an `ANY` binding that matched nothing, matched everything, or
+/// returned a placeholder for a missing id. The handler cannot catch any of
+/// those, because it reconstructs `missing` from the ids it asked for.
+///
+/// Order is deliberately *not* asserted. `= ANY` does not preserve argument
+/// order and the double has no reason to; rebuilding first-seen order is the
+/// handler's job, and it is asserted there.
+async fn a_batch_read_is_the_singular_read_repeated<S: MarketplaceStore + ?Sized>(store: &S) {
+    // Its own seller, so the three rows are exactly the ones this assertion
+    // created and nothing inherited from the catalogue the harness seeds.
+    store
+        .create_user(new_user(BATCH_OWNER_ID, BATCH_OWNER_EMAIL, BATCH_OWNER_STORE_NAME))
+        .await
+        .expect("register the batch seller");
+
+    let mut created: Vec<String> = Vec::new();
+    for index in 0..3 {
+        let product = store
+            .create(BATCH_OWNER_ID, new_product(&format!("Batch Mug {index}")))
+            .await
+            .expect("create a batched row");
+        created.push(product.id);
+    }
+
+    let mut requested = created.clone();
+    requested.push("prd_never_existed".to_string());
+    let batch = store.find_by_ids(&requested).await.expect("read the batch");
+
+    let mut expected: Vec<Product> = Vec::new();
+    for id in &created {
+        expected.push(store.find_by_id(id).await.expect("singular read").expect("the row exists"));
+    }
+
+    assert_eq!(
+        batch.len(),
+        created.len(),
+        "an id that does not exist is absent from the batch, not an error or a placeholder"
+    );
+    let mut batched_ids: Vec<&str> = batch.iter().map(|product| product.id.as_str()).collect();
+    let mut singular_ids: Vec<&str> = expected.iter().map(|product| product.id.as_str()).collect();
+    batched_ids.sort_unstable();
+    singular_ids.sort_unstable();
+    assert_eq!(batched_ids, singular_ids, "the batch is exactly the singular reads");
+
+    // Compared field by field, because "the same ids" is weaker than "the same
+    // rows": a batch query that skipped the `LEFT JOIN "User"`, say, would return
+    // the right ids with a null store name, and the id comparison would pass.
+    for product in &batch {
+        let singular = expected.iter().find(|other| other.id == product.id).expect("a known id");
+        assert_eq!(
+            product.store_name, singular.store_name,
+            "a batched row carries the same joined seller row as a singular one"
+        );
+        assert_eq!(product.price, singular.price, "and the same values");
+    }
+
+    assert!(
+        store.find_by_ids(&[]).await.expect("an empty batch is not an error").is_empty(),
+        "an empty id list is an empty result"
     );
 }
 
