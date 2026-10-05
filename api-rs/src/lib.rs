@@ -4,6 +4,7 @@ pub mod cache;
 pub mod config;
 pub mod error;
 pub mod handlers;
+pub mod metrics_names;
 pub mod middleware;
 pub mod migrations;
 pub mod seed;

@@ -339,7 +339,7 @@ limiter is worth a failed request.**
 | Pool saturated | Acquire timeout after 2 s → 500, wait visible as a metric | 500 | `ApiRsPoolAcquireLatency` |
 | Concurrency saturated | 503 before work starts | Graceful refusal | `ApiRsLoadShed` |
 | rps window exceeded | 429 | Graceful refusal | None by design — expected client behaviour, so it lives on the dashboard (`http_rate_limited_total`) instead of paging |
-| Login throttle window exceeded | 429 on `/auth/login`, `/auth/register` | Graceful refusal, marketplace unaffected | `auth_login_total{result="invalid"}` |
+| Login throttle window exceeded | 429 on `/auth/login`, `/auth/register` | Graceful refusal, marketplace unaffected | `auth_login_total{result="invalid"}` on `api-red.json` |
 | Valkey's generation `INCR` fails | The write still retires *this* instance's pages; other instances keep the old namespace until they refresh | One instance briefly serves a pre-write page | `cache_l2_errors_total{op="incr-generation"}` |
 | Metrics recorder not installed | `/metrics` returns 503; the service is otherwise unaffected | n/a | startup `eprintln` |
 | Traced exporter unavailable | Tracing falls back to JSON logs only | n/a | `eprintln` |
@@ -381,6 +381,17 @@ build. Both are wired: the same Prometheus scrape config runs locally and
 against Grafana Cloud, and k6 thresholds fail the process rather than producing
 a chart to squint at.
 
+**The metric names themselves are a contract, and they have one owner.**
+`src/metrics_names.rs` lists every series `/metrics` can emit and the label keys
+each one carries. Its tests compare that list against `src/` in both directions,
+against the PromQL in `monitoring/grafana/dashboards/api-red.json` and
+`monitoring/rules.yml`, and against the `describe_*` list in `telemetry.rs`. That
+is what makes a rename a red test rather than a dead alert: renaming the `status`
+label on `http_requests_total` would otherwise leave `ApiRsHighErrorRate`
+matching nothing, with no error in either language. The six series nothing reads
+are an allowlist with a reason each, so new instrumentation is invisible to
+operators by default rather than by accident.
+
 ```mermaid
 flowchart TB
     subgraph inst["api-rs instance · :3001"]
@@ -409,6 +420,7 @@ Verification layers, cheapest first:
 | Layer | Command | What it proves |
 |---|---|---|
 | Unit | `cargo test --lib` | Pagination math, JS coercion, ETag logic, error key order, limiter verdicts, window bucketing/TTL/boundary, both limiter fail-open arms, the tracking cap and proxy-header trust |
+| Contract | `cargo test --lib` | The metrics contract (`src/metrics_names.rs`): every emitted series, label key, description and `monitoring/` query is declared and matches, and `/metrics` renders `# HELP` for a described series and a zero-valued login counter |
 | Contract | `cargo test --test parity` | Twelve responses byte-identical to committed goldens (`responseTime` normalized); the seven success bodies are also regenerated from the production serializers in `tests/fixtures/mod.rs`, so a golden cannot drift from the code that produces it |
 | E2E | `cargo test --test e2e_products` | Real HTTP against throwaway Postgres 17 + Valkey 8: page boundaries, 429s, cache hits, degraded `/health` with the DB down, fail-open with Valkey absent, read-replica routing |
 | E2E | `cargo test --test e2e_auth` | Real HTTP for the credential endpoints: concurrent registration resolves to one seller, only the token hash is stored, logout revokes immediately, the login throttle is scoped and fail-open |
@@ -489,7 +501,8 @@ A reading order that follows the request path:
 | `src/auth/password.rs`, `src/auth/token.rs` | argon2id helpers, and why session tokens use SHA-256 rather than a KDF |
 | `src/middleware/session.rs` | The `Bearer` extractor, and why four failures produce one answer |
 | `src/handlers/auth.rs`, `my_store.rs`, `stores.rs` | The credential endpoints, the seller's CRUD, the public storefront |
-| `src/telemetry.rs` | Metrics/logging/traces bootstrap and the 5 s samplers |
+| `src/telemetry.rs` | Metrics/logging/traces bootstrap, the per-series `# HELP` text, and the 5 s samplers |
+| `src/metrics_names.rs` | The owner of every metric name and label key, and the parity tests that keep `src/`, `telemetry.rs` and `monitoring/` from drifting apart |
 | `src/error.rs` | Error shapes, weak ETag, 304 handling |
 | `tests/`, `benches/` | The verification contract; `tests/fixtures/` is the golden set, derived in `tests/fixtures/mod.rs` |
 
