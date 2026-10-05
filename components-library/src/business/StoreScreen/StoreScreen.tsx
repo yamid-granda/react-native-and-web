@@ -84,7 +84,7 @@ export function StoreScreen({
                   variant="ghost"
                   size="sm"
                   accessibilityLabel={`Edit ${product.title}`}
-                  testID={`store-edit-${product.id}`}
+                  testId={`store-edit-${product.id}`}
                   onPress={() => onEdit(product.id)}
                 />
                 <Button
@@ -92,7 +92,7 @@ export function StoreScreen({
                   variant="ghost"
                   size="sm"
                   accessibilityLabel={`Delete ${product.title}`}
-                  testID={`store-delete-${product.id}`}
+                  testId={`store-delete-${product.id}`}
                   disabled={isMutating}
                   onPress={() => onDelete(product.id)}
                 />
@@ -101,7 +101,12 @@ export function StoreScreen({
           </ClassNameView>
         ) : null}
 
-        <Button label="Add product" onPress={onCreate} disabled={isMutating} />
+        <Button
+          label="Add product"
+          testId="store-add-product"
+          onPress={onCreate}
+          disabled={isMutating}
+        />
       </ClassNameView>
     </ClassNameScrollView>
   )

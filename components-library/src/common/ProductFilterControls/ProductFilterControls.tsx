@@ -42,6 +42,7 @@ export function ProductFilterControls({
             <Button
               key={option.value}
               label={option.label}
+              testId={`sort-${option.value}`}
               variant="chip"
               size="sm"
               selected={selected}

@@ -99,13 +99,14 @@ export function ProductDetailScreen({
               // The ghost label is brand-blue, but an unopenable store link has
               // to read as inert rather than as an invitation.
               labelClassName={onOpenStore ? undefined : "text-muted"}
-              testID="product-detail-store"
+              testId="product-detail-store"
               className={onOpenStore ? "self-start" : undefined}
             />
           ) : null}
           <ClassNameView className="flex-row items-center gap-3">
             <Button
               label={product.stock === 0 ? "Out of stock" : "Add to Cart"}
+              testId="product-detail-add-to-cart"
               disabled={product.stock === 0}
               onPress={() => {
                 addItem(product.id)
@@ -120,7 +121,7 @@ export function ProductDetailScreen({
               }
               size="icon"
               variant="secondary"
-              testID={`wishlist-toggle-${product.id}`}
+              testId={`wishlist-toggle-${product.id}`}
               onPress={() => toggleWishlistItem(product.id)}
             >
               <HeartIcon filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
@@ -135,6 +136,7 @@ export function ProductDetailScreen({
         </ClassNameText>
         <Button
           label="Go to Cart"
+          testId="product-detail-go-to-cart"
           onPress={() => {
             setIsCartDrawerOpen(false)
             onGoToCart?.()

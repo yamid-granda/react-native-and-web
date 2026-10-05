@@ -61,6 +61,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
             </ClassNameText>
             <Button
               label="Remove unavailable items"
+              testId="cart-remove-unavailable"
               variant="ghost"
               size="sm"
               className="self-start"
@@ -95,6 +96,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                   <ClassNameView className="flex-row items-center gap-2">
                     <Button
                       label={`Decrease ${product.title} quantity`}
+                      testId={`cart-decrease-${product.id}`}
                       size="icon"
                       variant="secondary"
                       onPress={() => decrementQuantity(product.id)}
@@ -104,6 +106,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                     <ClassNameText className="text-sm text-foreground">{quantity}</ClassNameText>
                     <Button
                       label={`Increase ${product.title} quantity`}
+                      testId={`cart-increase-${product.id}`}
                       size="icon"
                       variant="secondary"
                       onPress={() => incrementQuantity(product.id)}
@@ -116,7 +119,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                     variant="ghost"
                     size="sm"
                     accessibilityLabel={`Remove ${product.title} from cart`}
-                    testID={`remove-${product.id}`}
+                    testId={`cart-remove-${product.id}`}
                     onPress={() => removeItem(product.id)}
                   />
                 </ClassNameView>
@@ -127,6 +130,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
             </ClassNameText>
             <Button
               label="Proceed to Checkout"
+              testId="cart-checkout"
               className="self-start"
               onPress={() => onCheckout?.()}
             />

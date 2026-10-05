@@ -45,7 +45,8 @@ export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
         This screen is the exact same @rnw/components-library component, rendered by the Next.js web
         app (via react-native-web) and the Expo app.
       </Text>
-      <Button label={`Pressed ${count} times`} onPress={increment} />
+      {/* The label counts up, so the test id must not. */}
+      <Button label={`Pressed ${count} times`} testId="home-counter" onPress={increment} />
 
       {/* The entry point for My Store, rather than a fifth bottom-nav tab: the bar
           is already four items plus a theme slot, and mobile-application's
