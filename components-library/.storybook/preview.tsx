@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { Preview } from "@storybook/react"
 import "../global.css"
 
-// Matches --color-background in tokens.css (zinc-50 / zinc-950).
-const APP_LIGHT_BACKGROUND = "#fafafa"
+// Matches --color-background in tokens.css (zinc-100 / zinc-950).
+const APP_LIGHT_BACKGROUND = "#f4f4f5"
 const APP_DARK_BACKGROUND = "#09090b"
 
 /**

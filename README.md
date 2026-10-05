@@ -285,7 +285,7 @@ the contract port 3001 that both clients default to; Grafana (from
   warning about "Root").
 - **Dark mode is driven by CSS variables, not `dark:` classes.**
   `tailwind-preset.cjs` maps semantic color names (`background`,
-  `foreground`, `muted`, `surface`, `surface-muted`) to
+  `foreground`, `muted`, `surface`, `surface-muted`, `border`, `border-muted`) to
   `rgb(var(--color-x) / <alpha-value>)`; components use those names
   (`bg-surface`, `text-muted`, ...) instead of pairing a light utility with
   a `dark:` variant. The values live in exactly one place,
@@ -308,6 +308,28 @@ the contract port 3001 that both clients default to; Grafana (from
   importing `tokens.css` or restates a `--color-*` value. One-off colors that
   don't change with the scheme (e.g. `bg-brand`) stay as plain Tailwind
   utilities.
+- **The neutral ramp is an elevation ladder, and `border` is not `surface-muted`.**
+  `background` → `surface` → `surface-muted` is a hierarchy where each step has
+  to stay visible against the one below it: a card is `#ffffff` on a `#f4f4f5`
+  canvas in light, and `#202024` on a `#09090b` canvas in dark (1.10:1 / 1.23:1).
+  Shadows can't be relied on for this — `ProductCard` uses `shadow-sm`, which is
+  near-invisible against a near-black canvas — so the fill carries elevation in
+  both schemes. `border` exists because `surface-muted` used to be the outline of
+  a control *and* the fill of a pressed state *and* the placeholder behind a
+  missing image, and only the first of those has to clear 3:1 against both its
+  neighbours under WCAG 1.4.11. Clearing 3:1 is a floor rather than a target,
+  though, and aiming straight at it overshoots: it is roughly twice the weight of
+  iOS's `systemGray4`, and a form repeats that edge down the whole page. So there
+  are two weights. `border` (3.43:1) is for *actions* — `Button`'s `outline` and
+  `chip` variants, which are singular and need to read as actionable. `border-muted`
+  (1.77:1, the `systemGray4` weight) is for *fields* — `Input`, which repeats and
+  should stay quiet — and is a deliberate, documented deviation from 1.4.11,
+  matching what Apple and Material ship for an outlined field. A decorative
+  separator such as `BottomNav`'s top divider keeps `surface-muted`, since 1.4.11
+  covers boundaries needed to identify a control, not hairlines.
+  `tokens.parity.test.ts` asserts every step of the ladder, both border weights,
+  and every text/background pair in both schemes, so a ramp change that breaks
+  legibility fails a test instead of shipping.
 - **Every button is `components-library`'s `Button`, and every button and
   input is one height.** `Button` is the only place a button look is written
   down: its five variants (`primary`, `secondary`, `outline`, `ghost`,
