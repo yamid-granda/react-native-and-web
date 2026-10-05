@@ -504,7 +504,9 @@ A reading order that follows the request path:
 | `src/telemetry.rs` | Metrics/logging/traces bootstrap, the per-series `# HELP` text, and the 5 s samplers |
 | `src/metrics_names.rs` | The owner of every metric name and label key, and the parity tests that keep `src/`, `telemetry.rs` and `monitoring/` from drifting apart |
 | `src/error.rs` | Error shapes, weak ETag, 304 handling |
+| `src/seed.rs` | The demo seller, and the `db:seed-fixtures` products derived from `fixtures/products.json` rather than spelled out again |
 | `tests/`, `benches/` | The verification contract; `tests/fixtures/` is the golden set, derived in `tests/fixtures/mod.rs` |
+| `fixtures/products.json` | The one fixture catalogue, read by `src/seed.rs` and by the E2E harness so both databases describe the same products |
 
 ## 11. Trade-offs, stated plainly
 
