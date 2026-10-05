@@ -11,6 +11,7 @@
     "typecheck": "cargo check --all-targets",
     "test": "cargo test --lib",
     "test:e2e": "cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity",
+    "test:e2e:update-goldens": "UPDATE_GOLDENS=1 cargo test --test parity -- --ignored",
     "test:all": "pnpm test && pnpm test:e2e",
     "coverage": "sh scripts/coverage.sh",
     "bench": "cargo bench",

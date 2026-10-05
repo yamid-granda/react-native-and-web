@@ -1,5 +1,5 @@
--- Gives a product an optional seller. Nullable so the seeded catalogue (and
--- tests/fixtures/seed.sql) stays ownerless and keeps working unchanged.
+-- Gives a product an optional seller. Nullable so the seeded catalogue stays
+-- ownerless and keeps working unchanged.
 --
 -- ON DELETE SET NULL, not CASCADE: a deleted seller must not silently delete
 -- products other people may already have in a cart, a wishlist, or — once the

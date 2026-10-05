@@ -23,11 +23,11 @@ use crate::store::PAGE_SIZE;
 
 #[derive(Serialize)]
 pub struct StoreJson {
-    id: String,
+    pub id: String,
     #[serde(rename = "storeName")]
-    store_name: String,
+    pub store_name: String,
     #[serde(rename = "createdAt", serialize_with = "prisma_datetime")]
-    created_at: chrono::NaiveDateTime,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 pub async fn detail(
