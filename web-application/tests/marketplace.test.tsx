@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import MarketplacePage from "../app/marketplace/page"
 import { fetchProducts } from "../lib/api"
 
+// `lib/api` is a re-export of the shared client (`createApi` in
+// `@rnw/components-library`/api/transport), but the module path and every export
+// name are unchanged, so this automock still intercepts all the call sites. The
+// transport behind it is covered in components-library/src/api/transport.test.ts.
 vi.mock("../lib/api")
 vi.mock("solito/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }))
 

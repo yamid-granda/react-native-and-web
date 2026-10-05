@@ -149,8 +149,8 @@
           "refId": "A"
         },
         {
-          "expr": "sum(rate(rate_limit_errors_total[1m]))",
-          "legendFormat": "rate-limit errors",
+          "expr": "sum by (op) (rate(rate_limit_errors_total[1m]))",
+          "legendFormat": "rate-limit {{op}} errors",
           "refId": "B"
         }
       ],

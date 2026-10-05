@@ -52,7 +52,7 @@ const variantStyle: Record<ButtonVariant, ButtonStyle> = {
     label: "text-foreground",
   },
   outline: {
-    container: "rounded-lg border border-surface-muted bg-surface active:bg-surface-muted",
+    container: "rounded-lg border border-border bg-surface active:bg-surface-muted",
     label: "text-foreground",
   },
   ghost: {
@@ -70,7 +70,7 @@ const chipSelectedStyle: ButtonStyle = {
 }
 
 const chipUnselectedStyle: ButtonStyle = {
-  container: "border-surface-muted bg-surface",
+  container: "border-border bg-surface",
   label: "text-muted",
 }
 

@@ -1,10 +1,9 @@
 import { createJSONStorage, type StateStorage } from "zustand/middleware"
 
-// react-native-web's MainNav renders a plain <a href>, which Next.js doesn't
-// intercept for client-side routing — navigating to /cart is a full page reload,
-// which would otherwise wipe an in-memory-only store. Persist to localStorage on
-// web; React Native has no localStorage, but its navigation never reloads the JS
-// runtime, so an in-memory fallback there is enough.
+// Web persists so a browser reload does not drop the cart, the wishlist, the
+// recently-viewed rail or the seller's session. React Native has no
+// `localStorage`, so native persists to an in-memory `Map` and accepts that a JS
+// reload drops it.
 //
 // One module, because this block was duplicated verbatim in three stores and a
 // fourth copy is what "follow the existing pattern" produces. See
@@ -21,23 +20,44 @@ const inMemoryFallback: StateStorage = {
   },
 }
 
+/**
+ * `localStorage` is the durable store; `memoryStorage` is the copy that
+ * survives the page's lifetime when the durable one refuses a write.
+ *
+ * Read through, write through, clear both — one rule for all three methods. The
+ * asymmetry this replaces was: writes fell back to the `Map`, reads never looked
+ * there, and `removeItem` was the only method that knew the `Map` existed. So a
+ * refused write was stored somewhere nothing read back, and a storage-blocked
+ * browser lost the cart and the session on every reload.
+ *
+ * The `Map` is bounded by the number of persisted stores, and neither copy is
+ * authoritative on its own: `localStorage` decides across sessions, the `Map`
+ * decides within one.
+ */
 const webStorage: StateStorage = {
   getItem: (name) => {
     try {
-      return typeof localStorage === "undefined" ? null : localStorage.getItem(name)
+      return typeof localStorage === "undefined"
+        ? (memoryStorage.get(name) ?? null)
+        : (localStorage.getItem(name) ?? memoryStorage.get(name) ?? null)
     } catch {
       // Safari in private mode, and any browser with storage blocked by policy.
-      // A cart is worth an in-memory copy; failing to read it must not throw
-      // during the first render.
-      return null
+      // Reads can be refused outright, so the in-memory copy is the only place
+      // left to look — and failing to read must not throw during first render.
+      return memoryStorage.get(name) ?? null
     }
   },
   setItem: (name, value) => {
+    // The `Map` is written unconditionally, so a value that `localStorage`
+    // refuses is still readable for the page's lifetime instead of being
+    // dropped until something overwrites the key.
+    memoryStorage.set(name, value)
     try {
       localStorage.setItem(name, value)
     } catch {
-      // A full quota must degrade to in-memory, not crash a click handler.
-      memoryStorage.set(name, value)
+      // A full quota degrades to the in-memory copy rather than crashing a
+      // click handler. `getItem` reads that copy, so this is a demotion to
+      // session-lifetime storage, not a silent loss.
     }
   },
   removeItem: (name) => {
@@ -46,6 +66,8 @@ const webStorage: StateStorage = {
     } catch {
       // Same reasoning as setItem.
     }
+    // Unconditional, and deliberately outside the `try`: a removal has to clear
+    // both copies, so that neither can resurrect the value afterwards.
     memoryStorage.delete(name)
   },
 }

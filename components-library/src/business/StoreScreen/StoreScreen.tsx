@@ -32,9 +32,9 @@ export type StoreScreenProps = {
  * My Store: the seller's own product list.
  *
  * A sibling of `CartScreen` and `WishlistScreen` — props in, no fetching here.
- * The reason is the same for all three: components-library has no api layer and
- * no router, so a screen that reached for either would need one of them injected
- * per platform, and the alternative (a near-copy per app) is worse.
+ * The reason is the same for all three: this package has no router, so a screen
+ * that reached for one would need it injected per platform, and the alternative
+ * (a near-copy per app) is worse.
  */
 export function StoreScreen({
   storeName,
