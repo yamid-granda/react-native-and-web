@@ -174,6 +174,106 @@ function channelsToHex(channels: string): string {
     .join("")}`
 }
 
+/** sRGB relative luminance, per WCAG 2.x. */
+function relativeLuminance(hex: string): number {
+  const channel = (offset: number) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+/** WCAG 2.x contrast ratio between two hex colors. */
+function contrastRatio(a: string, b: string): number {
+  const first = relativeLuminance(a)
+  const second = relativeLuminance(b)
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+}
+
+/**
+ * Every pair the UI actually puts together, with the floor it has to clear.
+ *
+ * The WCAG floors are the point: `--color-border` did not exist, and the
+ * `border-surface-muted` outline on `Input` and `Button`'s outline/chip variants
+ * reached only 1.10:1 (light) and 1.19:1 (dark) against the `bg-surface` it was
+ * drawn on, so every text field in the app failed 1.4.11 Non-text Contrast while
+ * looking correctly wired. The last two floors are not WCAG — no success
+ * criterion covers "does this card read as raised" — but the surface ramp is
+ * exactly what regressed there, invisible in review and obvious to users, so it
+ * is pinned too.
+ */
+const CONTRAST_FLOORS: { pair: [string, string]; min: number; reason: string }[] = [
+  { pair: ["foreground", "background"], min: 7, reason: "body text on the canvas (1.4.6 AAA)" },
+  { pair: ["foreground", "surface"], min: 7, reason: "body text on a card (1.4.6 AAA)" },
+  {
+    pair: ["foreground", "surface-muted"],
+    min: 7,
+    reason: "body text on a pressed chip or placeholder (1.4.6 AAA)",
+  },
+  { pair: ["muted", "background"], min: 4.5, reason: "secondary text on the canvas (1.4.3 AA)" },
+  { pair: ["muted", "surface"], min: 4.5, reason: "secondary text on a card (1.4.3 AA)" },
+  {
+    pair: ["muted", "surface-muted"],
+    min: 4.5,
+    reason: "secondary text on a pressed state (1.4.3 AA)",
+  },
+  {
+    pair: ["border", "surface"],
+    min: 3,
+    reason: "a control's outline against its own fill (1.4.11)",
+  },
+  {
+    pair: ["border", "background"],
+    min: 3,
+    reason: "the same outline against the canvas beside it (1.4.11)",
+  },
+  // The next two are below 1.4.11's 3:1 **on purpose**, and this is the place
+  // that says so. `border-muted` is the field edge, and a form repeats it down
+  // the page: at 3.4:1 it measured about twice iOS's systemGray4 (1.71:1) and
+  // read as a cage around every field, heavier than the cards it sits on. 1.5:1
+  // is a visibility floor, not an accessibility claim — Material's outlined field
+  // is in the same range. `Input` is the only consumer, and if a field ever does
+  // have to clear 3:1 the fix is `border`, one class name away.
+  {
+    pair: ["border-muted", "surface"],
+    min: 1.5,
+    reason: "a field's edge against its own fill — deliberately sub-1.4.11, see above",
+  },
+  {
+    pair: ["border-muted", "background"],
+    min: 1.5,
+    reason: "the same field edge against the canvas — deliberately sub-1.4.11, see above",
+  },
+  {
+    pair: ["surface", "background"],
+    min: 1.08,
+    reason: "a raised surface has to be visible off the canvas",
+  },
+  {
+    pair: ["surface-muted", "surface"],
+    min: 1.08,
+    reason: "a recessed fill has to be visible off the surface holding it",
+  },
+]
+
+function expectFloorsClear(schemeName: string, tokens: Map<string, string>) {
+  for (const { pair, min, reason } of CONTRAST_FLOORS) {
+    const from = pair[0]
+    const to = pair[1]
+    const fromChannels = tokens.get(from)
+    const toChannels = tokens.get(to)
+    if (fromChannels === undefined || toChannels === undefined) {
+      throw new Error(`${schemeName} is missing ${fromChannels === undefined ? from : to}`)
+    }
+
+    const ratio = contrastRatio(channelsToHex(fromChannels), channelsToHex(toChannels))
+    expect(
+      ratio,
+      `${schemeName}: ${from} ${channelsToHex(fromChannels)} on ${to} ${channelsToHex(toChannels)} needs ${min}:1 — ${reason}`,
+    ).toBeGreaterThanOrEqual(min)
+  }
+}
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name)
@@ -233,6 +333,8 @@ describe("design tokens", () => {
 
     expect([...light.keys()].sort()).toEqual([
       "background",
+      "border",
+      "border-muted",
       "foreground",
       "muted",
       "surface",
@@ -330,5 +432,18 @@ describe("design tokens", () => {
     for (const allowed of Object.keys(CONTROL_HEIGHT_EXCEPTIONS)) {
       expect([...present], allowed).toContain(allowed)
     }
+  })
+})
+
+describe("palette contrast", () => {
+  it("clears every text, boundary and elevation floor in light mode", () => {
+    expectFloorsClear("light", scheme(tokenBlocks(), [":root", ":root.light"]))
+  })
+
+  it("clears every text, boundary and elevation floor in dark mode", () => {
+    expectFloorsClear(
+      "dark",
+      scheme(tokenBlocks(), ["@media (prefers-color-scheme: dark) :root", ":root.dark"]),
+    )
   })
 })

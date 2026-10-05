@@ -62,7 +62,7 @@ export function Input({
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        "gap-2 rounded-lg border border-surface-muted bg-surface px-3",
+        "gap-2 rounded-lg border border-border-muted bg-surface px-3",
         // A one-line input is the shared control height (h-control,
         // tailwind-preset.cjs — the same token Button uses) so inputs and
         // buttons line up. A multiline one has to grow, so it gets padding

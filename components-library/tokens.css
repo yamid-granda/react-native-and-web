@@ -1,12 +1,67 @@
 /*
  * The owner of the design tokens' values.
  *
- * `tailwind-preset.cjs` maps five semantic color names to
+ * `tailwind-preset.cjs` maps six semantic color names to
  * `rgb(var(--color-x) / <alpha-value>)`, but the values those variables resolve
  * to are declared here and nowhere else. Every consumer's stylesheet imports
  * this file instead of restating the palette, so "where do I change the brand's
  * dark background?" has one answer, and `tokens.parity.test.ts` fails if one of
  * them stops importing it.
+ *
+ * ## The surface ramp, and why `border` is its own token
+ *
+ * The neutral ramp is an elevation ladder, and each step has to be visible
+ * against the one below it or nothing reads as raised:
+ *
+ * | role            | light     | dark      | contrast against the layer below |
+ * | --------------- | --------- | --------- | -------------------------------- |
+ * | `background`    | `#f4f4f5` | `#09090b` | the canvas, nothing below it     |
+ * | `surface`       | `#ffffff` | `#202024` | 1.10:1 light, 1.23:1 dark        |
+ * | `surface-muted` | `#eaeaec` | `#2e2e34` | 1.20:1 / 1.20:1 vs `surface`    |
+ * | `border`        | `#8a8a92` | `#71717a` | 3.43:1 / 3.36:1 vs `surface`    |
+ * | `border-muted`  | `#c2c2c9` | `#45454d` | 1.77:1 / 1.71:1 vs `surface`    |
+ *
+ * Light mode raises elevation by going *lighter* (a near-white card on a real
+ * grey canvas); dark mode raises it by going lighter off near-black, which is
+ * also why a shadow can't carry elevation there — a dark shadow on a dark
+ * canvas is invisible, so the fill has to do the work.
+ *
+ * `--color-border` exists because `surface-muted` was doing three jobs at once:
+ * the outline of a control, the fill of a pressed state, and the placeholder
+ * behind a missing image. Those want different values. An outline has to clear
+ * 3:1 against *both* neighbours under WCAG 1.4.11 Non-text Contrast, and the old
+ * `border-surface-muted` managed 1.10:1 (light) / 1.19:1 (dark) against its own
+ * `bg-surface` — so every `Input` and outline button failed it while looking
+ * correctly wired. `border` clears 3:1 against both neighbours in both schemes;
+ * `surface-muted` stays free to be a plain fill.
+ *
+ * ## Why there are two border weights
+ *
+ * Clearing 3:1 is a floor, not a target, and aiming straight at it overshoots.
+ * `#8a8a92` measures 3.43:1 on white — about *twice* the weight of iOS's
+ * `systemGray4` (1.71:1) — and a form is the one place that weight repeats
+ * down the page, so it read as a cage around every field rather than an edge.
+ * `border` is therefore for *actions*, which are singular and need to read as
+ * actionable: `Button`'s `outline` and `chip` variants. `border-muted` is for
+ * *fields*, which are repeated and should stay quiet: `Input`. Both land near
+ * 1.7:1 against the fill they enclose, and the two schemes are matched to each
+ * other so a form weighs the same in either.
+ *
+ * The honest cost: a field edge at 1.77:1 does **not** satisfy 1.4.11's 3:1, so
+ * `border-muted` is a deliberate, documented deviation rather than an oversight,
+ * and `tokens.parity.test.ts` says so in the assertion that covers it. It is the
+ * same trade Apple and Material make — Material's outlined field is roughly
+ * 1.5:1. If a field ever has to clear 3:1, use `border`; the fix is one class
+ * name away. Nothing in the app depends on telling a field from a card by its
+ * outline alone, because a field is also the only thing on the page with a
+ * white-on-canvas fill *and* a single-line label inside it.
+ *
+ * Two floors are asserted by `tokens.parity.test.ts`, because both used to be
+ * missed by eye: text never drops below AA (4.5:1) on any of the three neutral
+ * layers, and each neutral layer stays at least 1.08:1 off the one below it.
+ * Note `muted` is darker than zinc-500 in light mode *because* the canvas
+ * darkened — secondary text sits directly on `background`, and zinc-500 on
+ * zinc-100 is 4.40:1, just under AA.
  *
  * ## Why the OS block is a bare `:root`
  *
@@ -47,11 +102,13 @@
  * typechecked.
  */
 :root {
-  --color-background: 250 250 250; /* zinc-50 */
+  --color-background: 244 244 245; /* zinc-100 */
   --color-foreground: 24 24 27; /* zinc-900 */
-  --color-muted: 113 113 122; /* zinc-500 */
+  --color-muted: 104 104 113; /* zinc-500, darkened one step: AA on the canvas below */
   --color-surface: 255 255 255; /* white */
-  --color-surface-muted: 244 244 245; /* zinc-100 */
+  --color-surface-muted: 234 234 236; /* between zinc-100 and zinc-200 */
+  --color-border: 138 138 146; /* >=3:1 on white *and* on the canvas (WCAG 1.4.11) */
+  --color-border-muted: 194 194 201; /* systemGray4 weight: a quiet field edge */
 }
 
 /* OS-driven default. */
@@ -60,19 +117,23 @@
     --color-background: 9 9 11; /* zinc-950 */
     --color-foreground: 250 250 250; /* zinc-50 */
     --color-muted: 161 161 170; /* zinc-400 */
-    --color-surface: 24 24 27; /* zinc-900 */
-    --color-surface-muted: 39 39 42; /* zinc-800 */
+    --color-surface: 32 32 36; /* between zinc-900 and zinc-800 */
+    --color-surface-muted: 46 46 52; /* between zinc-800 and zinc-700 */
+    --color-border: 113 113 122; /* zinc-500, >=3:1 on surface *and* canvas */
+    --color-border-muted: 69 69 77; /* between zinc-700 and zinc-800, same weight as light */
   }
 }
 
 /* An explicit "light" pick (web's Theme button, Storybook's toolbar). Outranks
    the OS block above on specificity, so it wins even when the OS prefers dark. */
 :root.light {
-  --color-background: 250 250 250; /* zinc-50 */
+  --color-background: 244 244 245; /* zinc-100 */
   --color-foreground: 24 24 27; /* zinc-900 */
-  --color-muted: 113 113 122; /* zinc-500 */
+  --color-muted: 104 104 113; /* zinc-500, darkened one step: AA on the canvas below */
   --color-surface: 255 255 255; /* white */
-  --color-surface-muted: 244 244 245; /* zinc-100 */
+  --color-surface-muted: 234 234 236; /* between zinc-100 and zinc-200 */
+  --color-border: 138 138 146; /* >=3:1 on white *and* on the canvas (WCAG 1.4.11) */
+  --color-border-muted: 194 194 201; /* systemGray4 weight: a quiet field edge */
 }
 
 /* An explicit "dark" pick. Declared last so it wins over `.light` if both are
@@ -81,6 +142,8 @@
   --color-background: 9 9 11; /* zinc-950 */
   --color-foreground: 250 250 250; /* zinc-50 */
   --color-muted: 161 161 170; /* zinc-400 */
-  --color-surface: 24 24 27; /* zinc-900 */
-  --color-surface-muted: 39 39 42; /* zinc-800 */
+  --color-surface: 32 32 36; /* between zinc-900 and zinc-800 */
+  --color-surface-muted: 46 46 52; /* between zinc-800 and zinc-700 */
+  --color-border: 113 113 122; /* zinc-500, >=3:1 on surface *and* canvas */
+  --color-border-muted: 69 69 77; /* between zinc-700 and zinc-800, same weight as light */
 }
