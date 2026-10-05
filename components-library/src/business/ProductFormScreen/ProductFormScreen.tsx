@@ -8,8 +8,7 @@ import {
   type ViewProps,
 } from "react-native"
 import { Button } from "../../common/Button/Button"
-import { Input } from "../../common/Input/Input"
-import { Label } from "../../common/Label/Label"
+import { FormField } from "../../common/FormField/FormField"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -89,60 +88,52 @@ export function ProductFormScreen({
           {isEditing ? "Edit product" : "Add product"}
         </ClassNameText>
 
-        <ClassNameView className="gap-1">
-          <Label htmlFor="product-title">Title</Label>
-          <Input
-            inputTestID="product-title"
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Leather Weekender Bag"
-          />
-        </ClassNameView>
+        <FormField
+          label="Title"
+          inputTestID="product-title"
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Leather Weekender Bag"
+        />
 
-        <ClassNameView className="gap-1">
-          <Label htmlFor="product-description">Description</Label>
-          <Input
-            inputTestID="product-description"
-            multiline
-            value={description}
-            onChangeText={setDescription}
-            placeholder="What should a shopper know about it?"
-          />
-        </ClassNameView>
+        <FormField
+          label="Description"
+          inputTestID="product-description"
+          multiline
+          value={description}
+          onChangeText={setDescription}
+          placeholder="What should a shopper know about it?"
+        />
 
         <ClassNameView className="flex-row gap-3">
-          <ClassNameView className="flex-1 gap-1">
-            <Label htmlFor="product-price">Price</Label>
-            <Input
-              inputTestID="product-price"
-              value={price}
-              onChangeText={setPrice}
-              placeholder="24.99"
-              keyboardType="decimal-pad"
-            />
-          </ClassNameView>
-          <ClassNameView className="flex-1 gap-1">
-            <Label htmlFor="product-stock">Stock</Label>
-            <Input
-              inputTestID="product-stock"
-              value={stock}
-              onChangeText={setStock}
-              placeholder="0"
-              keyboardType="number-pad"
-            />
-          </ClassNameView>
-        </ClassNameView>
-
-        <ClassNameView className="gap-1">
-          <Label htmlFor="product-image-url">Image URL</Label>
-          <Input
-            inputTestID="product-image-url"
-            value={imageUrl}
-            onChangeText={setImageUrl}
-            placeholder="https://…"
-            autoCapitalize="none"
+          <FormField
+            className="flex-1"
+            label="Price"
+            inputTestID="product-price"
+            value={price}
+            onChangeText={setPrice}
+            placeholder="24.99"
+            keyboardType="decimal-pad"
+          />
+          <FormField
+            className="flex-1"
+            label="Stock"
+            inputTestID="product-stock"
+            value={stock}
+            onChangeText={setStock}
+            placeholder="0"
+            keyboardType="number-pad"
           />
         </ClassNameView>
+
+        <FormField
+          label="Image URL"
+          inputTestID="product-image-url"
+          value={imageUrl}
+          onChangeText={setImageUrl}
+          placeholder="https://…"
+          autoCapitalize="none"
+        />
 
         {problem ? (
           <ClassNameText testID="product-form-error" className="text-sm text-brand">

@@ -1,7 +1,7 @@
 import type { ComponentType } from "react"
 import { Text, View, type TextProps, type ViewProps } from "react-native"
 import { Button } from "../Button/Button"
-import { Input } from "../Input/Input"
+import { FormField } from "../FormField/FormField"
 import type { PriceRange, SortOption } from "../../business/ProductListScreen/useProductSearch"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -57,27 +57,30 @@ export function ProductFilterControls({
           )
         })}
       </ClassNameView>
-      <ClassNameView className="flex-row items-center gap-2">
-        <Input
+      {/* `items-end` and not `items-center`: the two columns are taller than the
+          dash by exactly the caption, and the dash belongs beside the boxes it
+          separates rather than beside the pair of captions. */}
+      <ClassNameView className="flex-row items-end gap-2">
+        <FormField
+          className="flex-1"
+          label="Minimum price"
           value={priceRange.min !== undefined ? String(priceRange.min) : ""}
           onChangeText={(text) =>
             onPriceRangeChange({ ...priceRange, min: parseOptionalNumber(text) })
           }
           placeholder="Min price"
-          accessibilityLabel="Minimum price"
           keyboardType="numeric"
-          className="flex-1"
         />
-        <ClassNameText className="text-muted">–</ClassNameText>
-        <Input
+        <ClassNameText className="mb-3 text-muted">–</ClassNameText>
+        <FormField
+          className="flex-1"
+          label="Maximum price"
           value={priceRange.max !== undefined ? String(priceRange.max) : ""}
           onChangeText={(text) =>
             onPriceRangeChange({ ...priceRange, max: parseOptionalNumber(text) })
           }
           placeholder="Max price"
-          accessibilityLabel="Maximum price"
           keyboardType="numeric"
-          className="flex-1"
         />
       </ClassNameView>
     </ClassNameView>

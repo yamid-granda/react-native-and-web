@@ -10,8 +10,7 @@ import {
 } from "react-native"
 import type { ComponentProps, ComponentType } from "react"
 import { Button } from "../../common/Button/Button"
-import { Input } from "../../common/Input/Input"
-import { Label } from "../../common/Label/Label"
+import { FormField } from "../../common/FormField/FormField"
 import { useSessionStore } from "./useSessionStore"
 import type { AuthSession } from "../../types/Store"
 
@@ -105,42 +104,36 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
             ) : null}
           </ClassNameView>
 
-          <ClassNameView className="gap-1">
-            <Label htmlFor="auth-email">Email</Label>
-            <Input
-              inputTestID="auth-email"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="seller@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-            />
-          </ClassNameView>
+          <FormField
+            label="Email"
+            inputTestID="auth-email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="seller@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+          />
 
-          <ClassNameView className="gap-1">
-            <Label htmlFor="auth-password">Password</Label>
-            <Input
-              inputTestID="auth-password"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="At least 8 characters"
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete={isSignUp ? "new-password" : "current-password"}
-            />
-          </ClassNameView>
+          <FormField
+            label="Password"
+            inputTestID="auth-password"
+            value={password}
+            onChangeText={setPassword}
+            placeholder="At least 8 characters"
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete={isSignUp ? "new-password" : "current-password"}
+          />
 
           {isSignUp ? (
-            <ClassNameView className="gap-1">
-              <Label htmlFor="auth-store-name">Store name</Label>
-              <Input
-                inputTestID="auth-store-name"
-                value={storeName}
-                onChangeText={setStoreName}
-                placeholder="Riverbend Vintage"
-              />
-            </ClassNameView>
+            <FormField
+              label="Store name"
+              inputTestID="auth-store-name"
+              value={storeName}
+              onChangeText={setStoreName}
+              placeholder="Riverbend Vintage"
+            />
           ) : null}
 
           {error ? (

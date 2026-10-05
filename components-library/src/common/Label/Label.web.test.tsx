@@ -14,8 +14,16 @@ describe("Label (web, via react-native-web)", () => {
     expect(screen.queryByText("Email")).not.toBeInTheDocument()
   })
 
-  it("names the field it belongs to", () => {
-    render(<Label htmlFor="auth-email">Email</Label>)
-    expect(screen.getByText("Email")).toHaveAttribute("aria-label", "Email label")
+  /// This component used to carry a test named "names the field it belongs to"
+  /// that asserted the caption's own `aria-label` instead — there was no field
+  /// in the render, and the string it checked ("Email label") appears nowhere on
+  /// screen. The association is `FormField`'s to make and is asserted there.
+  /// What is left for `Label` is that it stays out of the accessibility
+  /// labelling business: an `aria-label` here would name the caption and leave
+  /// the field anonymous.
+  it("carries no accessible name of its own", () => {
+    render(<Label>Email</Label>)
+    expect(screen.getByText("Email")).not.toHaveAttribute("aria-label")
+    expect(screen.getByText("Email")).not.toHaveAttribute("role")
   })
 })

@@ -3,7 +3,7 @@ import { useState } from "react"
 import { View } from "react-native"
 import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
 import { Input } from "./Input"
-import { Label } from "../Label/Label"
+import { FormField } from "../FormField/FormField"
 
 const meta: Meta<typeof Input> = {
   title: "common/Input",
@@ -28,8 +28,10 @@ export const WithPrependIcon: Story = {
 }
 
 /**
- * The `multiline` + `Label` pairing a product form needs. `inputTestID` is what
- * makes the fields individually addressable — the wrapper's own testID is taken.
+ * The `multiline` field a product form needs. `FormField` is what a captioned
+ * field takes — this story shows the bare `Input` underneath it, because that is
+ * the layer `multiline` lives on. `inputTestID` is what makes the fields
+ * individually addressable — the wrapper's own testID is taken.
  */
 export const Multiline: Story = {
   render: () => {
@@ -37,8 +39,8 @@ export const Multiline: Story = {
       const [description, setDescription] = useState("")
       return (
         <View className="w-72 gap-2 p-6">
-          <Label htmlFor="description">Description</Label>
-          <Input
+          <FormField
+            label="Description"
             inputTestID="description"
             multiline
             value={description}
