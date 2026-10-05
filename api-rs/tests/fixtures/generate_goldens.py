@@ -54,6 +54,10 @@ def write(name, value):
     (HERE / name).write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
 
 
+# Mirrors `COLLATE "C"` in LIST_QUERY/LIST_OWNED_QUERY: Python compares strings
+# by codepoint, which for these ids is byte order. Every fixture id is lowercase
+# ASCII, so this agrees with a locale collation too — the goldens alone cannot
+# tell the two apart, which is why store/contract.rs pins the tiebreaker directly.
 ordered = sorted(products, key=lambda p: (p["createdAt"], p["id"]))
 write(
     "products-page-1.json",

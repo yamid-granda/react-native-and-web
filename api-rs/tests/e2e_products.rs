@@ -16,12 +16,14 @@ use api_rs::store::SqlProductStore;
 async fn the_store_contract_holds_for_postgres() {
     let stack = common::TestStack::start(false, |_| {}).await;
     let store = SqlProductStore::new(stack.pool.clone());
-    api_rs::store::contract::assert_store_contract(&store, |owner_id, new_name| {
+    let for_renaming = stack.pool.clone();
+    let for_seeding = stack.pool.clone();
+    api_rs::store::contract::assert_store_contract(&store, move |owner_id, new_name| {
         // Owned, not borrowed: the contract takes one future type, so the
         // closure's arguments cannot be captured by reference.
         let owner_id = owner_id.to_string();
         let new_name = new_name.to_string();
-        let pool = stack.pool.clone();
+        let pool = for_renaming.clone();
         async move {
             // No store method renames a seller, which is why the contract takes
             // the rename as an argument: production has no such call either.
@@ -31,6 +33,29 @@ async fn the_store_contract_holds_for_postgres() {
                 .execute(&pool)
                 .await
                 .expect("rename the contract's seller");
+        }
+    }, move |owner_id, ids, created_at| {
+        let owner_id = owner_id.to_string();
+        let ids: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+        let pool = for_seeding.clone();
+        async move {
+            // Rows with a chosen id sharing one timestamp. INSERT rather than
+            // `create`, which mints the id from the CSPRNG and lets the column
+            // default stamp the clock — and a tie on createdAt is the only
+            // shape in which the list tiebreaker decides anything.
+            for id in ids {
+                sqlx::query(
+                    r#"INSERT INTO "Product" ("id", "title", "price", "stock", "createdAt", "ownerId")
+                       VALUES ($1, $2, 5.0, 3, $3, $4)"#,
+                )
+                .bind(id.clone())
+                .bind(format!("Product {id}"))
+                .bind(created_at)
+                .bind(&owner_id)
+                .execute(&pool)
+                .await
+                .expect("seed a row with a chosen id");
+            }
         }
     })
     .await;

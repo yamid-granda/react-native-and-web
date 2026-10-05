@@ -17,6 +17,8 @@
 
 use std::future::Future;
 
+use chrono::NaiveDateTime;
+
 use super::products::{NewProduct, Patch, ProductPatch, StoreError, PAGE_SIZE};
 use super::MarketplaceStore;
 
@@ -35,6 +37,32 @@ const RENAMED_STORE_NAME: &str = "Contract Shop Renamed";
 const LIFECYCLE_OWNER_ID: &str = "usr_store_contract_lifecycle";
 const LIFECYCLE_OWNER_EMAIL: &str = "store-contract-lifecycle@rnw.test";
 const LIFECYCLE_OWNER_STORE_NAME: &str = "Lifecycle Contract Shop";
+/// A seller of its own for the ordering assertion, so the page it reads back is
+/// exactly the rows that assertion put there and nothing inherited from the
+/// assertions above.
+const ORDERING_OWNER_ID: &str = "usr_store_contract_ordering";
+const ORDERING_OWNER_EMAIL: &str = "store-contract-ordering@rnw.test";
+const ORDERING_OWNER_STORE_NAME: &str = "Ordering Contract Shop";
+
+/// Ids chosen so byte order and a locale collation *cannot* agree. Every pair
+/// differs only in case, and case is the one thing the two rules order
+/// oppositely: `A` is 0x41 and `a` is 0x61, so byte order puts every uppercase
+/// id ahead of every lowercase one, while glibc and ICU collations fold case and
+/// then put the lowercase form first.
+///
+/// `generate_product_id` mints exactly this shape — base64 over CSPRNG bytes,
+/// alphabet `A-Z a-z 0-9 - _` — so this is production's id set rather than an
+/// artificial one. Every fixture id is lowercase ASCII, which is the other half
+/// of why this has never bitten: byte order and a locale collation happen to
+/// agree on that set.
+const MIXED_CASE_IDS: [&str; 6] =
+    ["prd_aaa", "prd_bbb", "prd_ccc", "prd_Aaa", "prd_Bbb", "prd_Ccc"];
+
+/// The `createdAt` all six share, older than any row a harness seeds. Sharing
+/// one timestamp is what makes the tiebreaker load-bearing rather than
+/// decorative — it decides the page split only when rows tie, and ties are the
+/// normal case for a bulk-seeded catalogue.
+const SHARED_CREATED_AT: &str = "2020-01-01 00:00:00.000";
 
 /// Run every store-layer assertion against `store`.
 ///
@@ -44,11 +72,21 @@ const LIFECYCLE_OWNER_STORE_NAME: &str = "Lifecycle Contract Shop";
 /// precisely the invariant being tested, and precisely the one that cannot be
 /// reached without an out-of-band edit. Each harness supplies that edit: SQL for
 /// Postgres, the map behind it for the double.
-pub async fn assert_store_contract<S, F, Fut>(store: &S, rename_seller: F)
+///
+/// `seed_rows` is the same kind of escape hatch, for a second reason. `create`
+/// mints the id from the CSPRNG and stamps the clock, so the suite cannot make
+/// two rows tie on `createdAt` — and a tie is the only situation in which the
+/// `id` half of the ordering contract decides anything at all. Asserting an
+/// ordering the harness cannot construct would be asserting nothing, which is
+/// how the previous version of this suite left the one invariant both stores are
+/// documented to share unchecked.
+pub async fn assert_store_contract<S, F, Fut, G, Gfut>(store: &S, rename_seller: F, seed_rows: G)
 where
     S: MarketplaceStore + ?Sized,
     F: FnOnce(&str, &str) -> Fut,
     Fut: Future<Output = ()>,
+    G: FnOnce(&str, &[&str], NaiveDateTime) -> Gfut,
+    Gfut: Future<Output = ()>,
 {
     // `ping` is a real query, not a constant. Asserted here because every other
     // assertion below would pass against a store that cannot fail anything.
@@ -61,6 +99,7 @@ where
     register_the_contract_sellers(store).await;
 
     listing_windows_state_one_answer(store).await;
+    the_tiebreaker_is_byte_order(store, seed_rows).await;
     a_cross_owner_row_is_invisible_not_forbidden(store).await;
     a_patch_distinguishes_absent_from_cleared(store).await;
     a_store_name_is_the_sellers_current_one(store, rename_seller).await;
@@ -124,6 +163,58 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
     assert!(
         store.list_page(0, -1).await.is_err(),
         "a negative limit is refused, not read as unlimited"
+    );
+}
+
+/// The list order is a *total* order, and this is the assertion that says so.
+///
+/// `createdAt` is `TIMESTAMP(3)` and seeds insert in bulk, so most rows in any
+/// real catalogue share a timestamp and the `id` tiebreaker decides which of
+/// them lands on page 1. Every other assertion in this file compares a page
+/// against itself, so each implementation was only ever checked against its own
+/// ordering: both a byte-order implementation and a locale-collation one pass
+/// every test in the suite while disagreeing about page 1. That is the hole.
+///
+/// `MIXED_CASE_IDS` is what gives the assertion teeth. Byte order and
+/// `en_US`/ICU put the six ids in opposite sequences, so an unpinned
+/// `ORDER BY p."id" ASC` fails here against Postgres while the double — which
+/// uses `String: Ord` — cannot. Asserting it in the suite that runs against both
+/// is the only place the disagreement can be caught.
+async fn the_tiebreaker_is_byte_order<S, G, Gfut>(store: &S, seed_rows: G)
+where
+    S: MarketplaceStore + ?Sized,
+    G: FnOnce(&str, &[&str], NaiveDateTime) -> Gfut,
+    Gfut: Future<Output = ()>,
+{
+    store
+        .create_user(new_user(ORDERING_OWNER_ID, ORDERING_OWNER_EMAIL, ORDERING_OWNER_STORE_NAME))
+        .await
+        .expect("register the ordering seller");
+
+    let shared = NaiveDateTime::parse_from_str(SHARED_CREATED_AT, "%Y-%m-%d %H:%M:%S%.3f")
+        .expect("the shared timestamp");
+    seed_rows(ORDERING_OWNER_ID, &MIXED_CASE_IDS, shared).await;
+
+    let page = store
+        .list_page_for_owner(ORDERING_OWNER_ID, 0, PAGE_SIZE)
+        .await
+        .expect("the ordering seller's page");
+
+    // Restated rather than re-derived: the expectation is byte order, spelled
+    // out, so a reader can see which of the two candidate rules this pins
+    // without reading `sort_by_contract`. `C` is what makes Postgres agree —
+    // see `migrations/20261004210000_pin_product_id_collation`.
+    let expected = ["prd_Aaa", "prd_Bbb", "prd_Ccc", "prd_aaa", "prd_bbb", "prd_ccc"];
+    let ids: Vec<&str> = page.iter().map(|product| product.id.as_str()).collect();
+    assert_eq!(ids, expected, "the id tiebreaker is byte order, for both stores");
+
+    // And the half that makes it a tiebreaker rather than a coincidence: the
+    // rows really do share one timestamp, so the order above was decided by
+    // `id` alone. Without this the assertion above would also pass if
+    // `createdAt` happened to separate them.
+    assert!(
+        page.iter().all(|product| product.created_at == shared),
+        "every seeded row shares one createdAt, so id alone decided the order"
     );
 }
 
