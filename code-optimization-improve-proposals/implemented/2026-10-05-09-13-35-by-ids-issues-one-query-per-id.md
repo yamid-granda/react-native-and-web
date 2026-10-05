@@ -427,6 +427,20 @@ de-duplicates: every guard in the vector is a distinct key, so a request never
 waits on itself. That is stated at the declaration, because it is a precondition
 rather than a coincidence.
 
+**Held in key order, and that is a second precondition, not a style choice.**
+Taking the fills in the caller's order is a deadlock: the request holds the locks
+it has already taken while it waits for the next one, so two batches over the
+same ids in opposite orders — `ids=b,a` and `ids=a,b` — each wait for the lock
+the other is holding and neither ever reaches the statement. Production reaches
+it exactly where this change is meant to help most, on a cold cart: every id
+misses L1 there, and the `l2.get` that sits between two acquisitions is a Valkey
+round trip that yields between them. Sorting the misses by key before taking any
+fill gives every request the same sequence, and no cycle can form in it. The
+response is still assembled in caller order — `wanted` is sorted back by index
+before the statement — so the wire contract is untouched. Pinned by
+`opposing_batch_orders_do_not_wait_on_each_other` in `handlers/products.rs`, which
+pauses time so a regression fails the suite instead of hanging it.
+
 ### Step 3 — the contract assertion
 
 `a_batch_read_is_the_singular_read_repeated` added to the sequence in

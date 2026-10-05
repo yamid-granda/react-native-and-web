@@ -288,23 +288,42 @@ pub async fn by_ids(State(state): State<AppState>, request: Request) -> Result<R
     let mut resolved: Vec<Option<String>> = vec![None; ids.len()];
     let mut missing: Vec<String> = Vec::new();
     let mut wanted: Vec<usize> = Vec::new();
-    // Held across the batched read and the writes below, not released per
-    // iteration. Ids are de-duplicated by `parse_lookup_ids`, so every guard here
-    // is a distinct key and a request never waits on itself.
+    // Held across the batched read and the writes below, not released per id.
     let mut _fill: Vec<OwnedMutexGuard<()>> = Vec::new();
+    // The ids that missed, each with the key it missed on.
+    let mut misses: Vec<(String, usize)> = Vec::new();
 
+    // First pass: the cache read, in caller order. Whatever is already cached is
+    // resolved here and never reaches the store.
     for (index, id) in ids.iter().enumerate() {
         let key = cache::detail_key(id);
 
         if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
             resolved[index] = Some(String::from_utf8_lossy(&bytes).into_owned());
-            continue;
+        } else {
+            misses.push((key, index));
         }
+    }
 
-        // Same two-phase check as `detail`: the first screen of a cold cart is
-        // exactly the burst the flight exists to collapse. A second request for
-        // the same id waits on the guard below and then finds the entry this one
-        // wrote, instead of racing a store call it does not need.
+    // Second pass: the same two-phase check `detail` does, in one global order
+    // rather than the caller's. The first screen of a cold cart is exactly the
+    // burst the flight exists to collapse, so a second request for the same id
+    // waits here and then finds the entry this one wrote, instead of racing a
+    // store call it does not need.
+    //
+    // Taking the fills in key order is load-bearing, not cosmetic. Holding a *set*
+    // of them is only safe if every request takes them in the same order: in the
+    // caller's order a request holds the locks it has already taken while it
+    // waits for the next one, so two requests over the same ids in opposite
+    // orders — `ids=b,a` and `ids=a,b` — each wait for the lock the other is
+    // holding and neither ever reaches the statement. Sorting by key gives every
+    // request the same sequence, and no cycle can form in it — so this ordering is
+    // the safety argument, not a detail to be tidied back into caller order.
+    //
+    // Ids are de-duplicated by `parse_lookup_ids`, so the keys are distinct and a
+    // request never queues on itself.
+    misses.sort_unstable();
+    for (key, index) in misses {
         let flight = state.cache.flights().for_key(Kind::Detail, &key).await;
         let guard = flight.owned_lock().await;
         if let Some((bytes, _source)) = state.cache.get(Kind::Detail, &key).await {
@@ -315,6 +334,12 @@ pub async fn by_ids(State(state): State<AppState>, request: Request) -> Result<R
         _fill.push(guard);
         wanted.push(index);
     }
+
+    // The fills were taken in key order; the response is in the caller's. `wanted`
+    // holds first-seen positions, and `parse_lookup_ids` de-duplicates, so they are
+    // distinct — sorting restores caller order for both the batch and `missing`,
+    // which the wire contract depends on.
+    wanted.sort_unstable();
 
     // One statement for the whole set. `find_by_ids` promises no order, so the
     // result is keyed by id and each id is placed by the index it already has —
@@ -1230,6 +1255,44 @@ mod tests {
         assert_eq!(items[0]["id"], "prod-2", "the caller's order, not the store's");
         assert_eq!(items[1]["id"], "prod-1");
         assert_eq!(body["missing"], serde_json::json!(["deleted-1"]));
+    }
+
+    /// Concurrent batches over one id set, in rotated orders, all complete.
+    ///
+    /// A batch holds a fill guard per missed id across one statement, so a request
+    /// holds several of the singleflight locks at once — which is only safe because
+    /// it takes them in one global (key) order. Taken in the caller's order instead,
+    /// two batches wanting the same keys in different relative orders each wait for
+    /// the lock the other is holding, and neither reaches the store. That is a real
+    /// production hazard and this is *not* the test that catches it: the handler's
+    /// only await between two acquisitions is `cache.get`, and these runs carry no
+    /// L2, so nothing yields there and the cycle cannot form in-process. The
+    /// ordering comment at the acquisition site is the actual defence.
+    ///
+    /// What this does pin is the surrounding contract: six simultaneous batches over
+    /// one key set all finish, all answer 200, and none is starved by the guards its
+    /// neighbours are holding. Time is paused so a regression that *does* stall
+    /// advances the clock into the timeout and fails here instead of hanging the run.
+    #[tokio::test(start_paused = true)]
+    async fn concurrent_batches_over_one_id_set_all_complete() {
+        let (store, _inner) = counting_store(200);
+        let app = router(counting_state(store));
+
+        // One id set, six rotations of it: any two that are not rotations of one
+        // another want the same keys in different relative orders.
+        let ids: Vec<String> = (1..=6).map(|index| format!("prod-{index}")).collect();
+        let mut uris: Vec<String> = Vec::new();
+        for shift in 0..ids.len() {
+            let mut rotated = ids.clone();
+            rotated.rotate_left(shift);
+            uris.push(format!("/products/by-ids?ids={}", rotated.join(",")));
+        }
+
+        let statuses = tokio::time::timeout(Duration::from_millis(500), get_all(app, &uris))
+            .await
+            .expect("batches over one id set in rotated orders must not starve each other's fills");
+
+        assert!(statuses.iter().all(|status| *status == StatusCode::OK), "{statuses:?}");
     }
 
     /// The ids are echoed into the body, so a crafted query has to survive being
