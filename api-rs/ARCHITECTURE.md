@@ -95,7 +95,7 @@ flowchart TB
 
 | Capability | Answers | Implemented in |
 |---|---|---|
-| **C1 Contract fidelity** | X8 | `serde_js.rs`, `prisma_offset` in `handlers/products.rs`, `error.rs`, golden fixtures in `tests/fixtures/` |
+| **C1 Contract fidelity** | X8 | `serde_js.rs`, `prisma_offset` in `handlers/products.rs`, `error.rs`, golden fixtures in `tests/fixtures/` — derived from those same serializers in `tests/fixtures/mod.rs` |
 | **C8 Identity** | — | `auth/token.rs` (opaque tokens, SHA-256 at rest), `auth/password.rs` (argon2id on `spawn_blocking`), `middleware/session.rs` (`FromRequestParts`), `handlers/auth.rs` |
 | **C2 Tiered read cache** | X2, X3, X5 | `cache/mod.rs`, `cache/l1.rs` (moka), `cache/l2.rs` (Valkey) |
 | **C3 Edge-ready responses** | X3 | `Cache-Control` + weak ETag/`If-None-Match` → 304 in `error.rs`; `X-Cache` marker |
@@ -129,7 +129,7 @@ flowchart LR
     end
 
     subgraph proof["Proof"]
-        p["tests/parity.rs<br/>byte-compares 6 responses<br/>against committed goldens"]
+        p["tests/parity.rs<br/>byte-compares 12 responses<br/>against committed goldens"]
     end
 
     n1 --> r1 --> proof
@@ -403,7 +403,7 @@ Verification layers, cheapest first:
 | Layer | Command | What it proves |
 |---|---|---|
 | Unit | `cargo test --lib` | Pagination math, JS coercion, ETag logic, error key order, limiter verdicts, window bucketing/TTL/boundary, both limiter fail-open arms, the tracking cap and proxy-header trust |
-| Contract | `cargo test --test parity` | Six responses byte-identical to committed goldens (`responseTime` normalized) |
+| Contract | `cargo test --test parity` | Twelve responses byte-identical to committed goldens (`responseTime` normalized); the seven success bodies are also regenerated from the production serializers in `tests/fixtures/mod.rs`, so a golden cannot drift from the code that produces it |
 | E2E | `cargo test --test e2e_products` | Real HTTP against throwaway Postgres 17 + Valkey 8: page boundaries, 429s, cache hits, degraded `/health` with the DB down, fail-open with Valkey absent, read-replica routing |
 | E2E | `cargo test --test e2e_auth` | Real HTTP for the credential endpoints: concurrent registration resolves to one seller, only the token hash is stored, logout revokes immediately, the login throttle is scoped and fail-open |
 | E2E | `cargo test --test e2e_my_store` | Real HTTP for the write path: read-your-writes for the seller, `404` not `403` across sellers, a warm cache retired by a write on both this instance and another, `ON DELETE SET NULL` |
@@ -485,7 +485,7 @@ A reading order that follows the request path:
 | `src/handlers/auth.rs`, `my_store.rs`, `stores.rs` | The credential endpoints, the seller's CRUD, the public storefront |
 | `src/telemetry.rs` | Metrics/logging/traces bootstrap and the 5 s samplers |
 | `src/error.rs` | Error shapes, weak ETag, 304 handling |
-| `tests/`, `benches/` | The verification contract; `tests/fixtures/` is the golden set |
+| `tests/`, `benches/` | The verification contract; `tests/fixtures/` is the golden set, derived in `tests/fixtures/mod.rs` |
 
 ## 11. Trade-offs, stated plainly
 
