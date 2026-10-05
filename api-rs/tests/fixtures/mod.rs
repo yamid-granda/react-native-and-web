@@ -7,6 +7,11 @@
 //! number spelling was therefore spelled twice, and only the Rust spelling was
 //! exercised.
 //!
+//! The rows themselves come from `api-rs/fixtures/products.json`, which is also
+//! what `src/seed.rs` reads — one catalogue, so the database a browser drives and
+//! the database these goldens were generated from cannot describe different
+//! products.
+//!
 //! These builders replace it. Each one builds its body from the struct the
 //! handler actually serializes, so key order, `js_number` and `prisma_datetime`
 //! cannot drift from the code that produces them, and `parse_page` supplies the

@@ -22,7 +22,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::task::JoinHandle;
 
-/// A row of `tests/fixtures/products.json` as the file spells it — the
+/// A row of `fixtures/products.json` as the file spells it — the
 /// committed `createdAt` is Prisma's `TIMESTAMP(3)` text, not a `NaiveDateTime`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,7 +53,7 @@ struct FixtureProduct {
 /// seller: null for an ownerless row, the seller's name for an owned one.
 pub fn fixture_products() -> Vec<Product> {
     let fixtures: Vec<FixtureProduct> =
-        serde_json::from_str(include_str!("../fixtures/products.json"))
+        serde_json::from_str(include_str!("../../fixtures/products.json"))
             .expect("valid product fixture JSON");
 
     let mut products: Vec<Product> = fixtures
@@ -86,8 +86,14 @@ pub fn fixture_products() -> Vec<Product> {
 /// The seller behind the `prod-owned-1` fixture row, and the owner every owned
 /// fixture row names. Also the store the byte-compared goldens in
 /// `tests/fixtures/` are built from — see `tests/fixtures/mod.rs`.
+///
+/// A *different seller* from `seed::DEMO_SELLER_ID`, and deliberately so: the
+/// harness creates this one at runtime so it has a password hash nobody can log
+/// in with, while `db:seed` creates one a developer can. Only the display name is
+/// shared, and it has one owner in the library rather than a `const` of the same
+/// string here.
 pub const FIXTURE_STORE_ID: &str = "usr_fixture_store";
-pub const FIXTURE_STORE_NAME: &str = "Riverbend Vintage";
+pub const FIXTURE_STORE_NAME: &str = api_rs::seed::DEMO_STORE_NAME;
 /// Created before any product: `Product.ownerId` references it.
 pub const FIXTURE_STORE_CREATED_AT: &str = "2026-01-01 00:00:00.000";
 

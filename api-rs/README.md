@@ -51,7 +51,10 @@ Register a store through the UI, or log in as `seller@rnw.test` /
 `rnw-demo-password`, and add products to get real data to click.
 
 The e2e fixture products live behind their own commands, so a test run can have
-them without a developer's database keeping them:
+them without a developer's database keeping them. Their values come from the
+canonical catalogue `api-rs/fixtures/products.json` — the same file the hermetic
+E2E harness seeds and the byte-compared goldens are derived from — and
+`db:seed-fixtures` writes its `prod-*` subset of it:
 
 | Command | Writes |
 | --- | --- |

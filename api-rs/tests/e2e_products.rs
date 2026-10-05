@@ -79,6 +79,8 @@ async fn product_read_contract_and_pagination_boundaries() {
     assert_eq!(page_one["page"], 1);
     assert_eq!(page_one["limit"], 20);
     // 26 fixtures: the 25 seeded rows plus prod-owned-1, the one with a seller.
+    // The catalogue is `api-rs/fixtures/products.json` — all 26 of them, where
+    // `db:seed-fixtures` writes the nine `prod-*` rows the frontend specs target.
     assert_eq!(page_one["total"], 26);
     assert_eq!(page_one["hasNextPage"], true);
     assert_eq!(page_one["items"][0]["id"], "prod-1");
