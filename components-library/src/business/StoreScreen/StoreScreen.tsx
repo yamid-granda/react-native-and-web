@@ -81,16 +81,14 @@ export function StoreScreen({
                 </ClassNameView>
                 <Button
                   label="Edit"
-                  variant="ghost"
-                  size="sm"
+                  variant="secondary"
                   accessibilityLabel={`Edit ${product.title}`}
                   testId={`store-edit-${product.id}`}
                   onPress={() => onEdit(product.id)}
                 />
                 <Button
                   label="Delete"
-                  variant="ghost"
-                  size="sm"
+                  variant="secondary"
                   accessibilityLabel={`Delete ${product.title}`}
                   testId={`store-delete-${product.id}`}
                   disabled={isMutating}

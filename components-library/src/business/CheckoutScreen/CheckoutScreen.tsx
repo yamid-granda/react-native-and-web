@@ -104,8 +104,7 @@ export function CheckoutScreen({
             <Button
               label="Go to Cart"
               testId="checkout-go-to-cart"
-              variant="ghost"
-              size="sm"
+              variant="secondary"
               className="self-start"
               onPress={() => onGoToCart?.()}
             />

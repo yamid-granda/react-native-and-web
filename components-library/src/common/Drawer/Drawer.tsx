@@ -37,8 +37,7 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
           <Button
             label="Close"
             testId="drawer-close"
-            size="icon"
-            variant="ghost"
+            variant="secondary"
             onPress={onClose}
             className="absolute right-4 top-4"
           >
