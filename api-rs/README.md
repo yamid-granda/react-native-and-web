@@ -44,6 +44,27 @@ database is a single command. If `cargo-watch` is installed the dev script
 watches sources; otherwise it runs `cargo run` once. Running Cargo directly in
 `api-rs/` uses the same default unless `api-rs/.env` sets `PORT`.
 
+`db:seed` writes one demo seller and **no products**, on purpose: the marketplace
+is meant to hold only what sellers create through the app, so a fresh `pnpm dev`
+shows the (already implemented) empty state rather than a fabricated catalogue.
+Register a store through the UI, or log in as `seller@rnw.test` /
+`rnw-demo-password`, and add products to get real data to click.
+
+The e2e fixture products live behind their own commands, so a test run can have
+them without a developer's database keeping them:
+
+| Command | Writes |
+| --- | --- |
+| `db:seed` | the demo seller |
+| `db:seed-fixtures` | the demo seller **and** the fixed products `prod-1`…`prod-8`, `prod-owned-1` |
+| `db:clear-fixtures` | deletes exactly those fixture products, leaving sellers and anything created through the API alone |
+
+`web-application/e2e/global-setup.ts` and `mobile-application/e2e/global-setup.js`
+call `db:seed-fixtures` before a run and their teardown counterparts call
+`db:clear-fixtures` after it, so a run leaves the database as it found it.
+`clear-fixtures` is idempotent — a run killed mid-flight is cleaned up by the
+next one.
+
 `api-rs dev` serves port 3001, the contract port both clients default to, so it
 is part of the root `pnpm dev` task. Grafana stays on 3002.
 
@@ -144,8 +165,24 @@ psql "$DATABASE_URL" -c 'SELECT current_database(), inet_server_port();'
 lsof -nP -iTCP:5432 -sTCP:LISTEN    # a second listener on the loopback port wins
 ```
 
-`db:seed` is idempotent — fixture rows are upserted and generated rows are left
-alone on conflict — so re-running it never duplicates data.
+`db:seed` is idempotent — every row it writes is a fixture, upserted, so
+re-running it never duplicates data. It generates nothing and it deletes nothing:
+the catalogue is what sellers create, plus `db:seed-fixtures` when a test run
+asks for it.
+
+### An existing database keeps whatever it already had
+
+Because no seed command deletes, a database seeded before this split still holds
+its old rows — the 1,000 generated `prod-gen-*` products, and whatever the
+Prisma-era seed left behind. `db:clear-fixtures` removes the *fixture* products
+only, so it will not touch those; they are rows in a table no command owns any
+more. To get the empty marketplace, recreate the database (`docker compose down
+-v`, with the caveats above) and run `db:migrate && db:seed`. To see what is
+actually in there first:
+
+```bash
+psql "$DATABASE_URL" -c 'SELECT count(*) FROM "Product";'
+```
 
 ## Environment
 
@@ -153,7 +190,6 @@ alone on conflict — so re-running it never duplicates data.
 |---|---:|---|
 | `DATABASE_URL` | local Postgres URL | Postgres connection, read by the server and by `api-rs-db`. Prisma-only query params such as `schema=public` are stripped so URLs carried over from the old Prisma setup still parse. |
 | `DATABASE_READ_URL` | unset | Optional read replica for product reads. Unset keeps every query on the primary; an unreachable replica also degrades to the primary. `/health` always pings the primary. |
-| `SEED_COUNT` | `1000` | Generated products for `db:seed`; used by the k6 load tests (`SEED_COUNT=50000`). Must be a non-negative integer. |
 | `VALKEY_URL` | `redis://127.0.0.1:6379` | L2 cache + shared rate limits. Set `off` to disable. |
 | `PORT` | `3001` | Listen port. |
 | `DB_MAX_CONNECTIONS` | `10` | Per-instance sqlx pool cap for the primary. Budget the sum across replicas against Postgres. |
@@ -266,9 +302,11 @@ details:
   `/my-store/products` is never entered into `CacheTier` at all.
 
 `db:seed` creates one demo seller (`seller@rnw.test` / `rnw-demo-password`,
-store `Riverbend Vintage`) with one owned product, so the storefront paths are
-exercisable locally. **No session is ever seeded** — a seeded token would be a
-live credential in every developer's database.
+store `Riverbend Vintage`) and no products, so there is a way to log in and act as
+a real seller without seeding a catalogue. `db:seed-fixtures` adds one owned
+product for that seller, for a test run that needs the storefront paths.
+**No session is ever seeded** — a seeded token would be a live credential in every
+developer's database.
 
 Login is throttled per client IP on its own 60-second window
 (`AUTH_LOGIN_ATTEMPTS_PER_MIN`), separately from the general requests-per-second
@@ -281,7 +319,7 @@ observable.
 
 ```bash
 pnpm test                # cargo test --lib  — unit tests
-pnpm test:e2e            # cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity
+pnpm test:e2e            # cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity --test seed
 pnpm test:all            # both of the above, in order (needs Docker)
 pnpm lint                # cargo fmt --check && cargo clippy --all-targets -- -D warnings
 pnpm typecheck           # cargo check --all-targets

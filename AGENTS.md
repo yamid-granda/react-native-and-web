@@ -7,7 +7,7 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - `components-library/src/common/` — reusable UI components; `src/business/` — shared screens and state; `src/icons/` — icons.
 - `web-application/` — Next.js App Router app and Playwright end-to-end tests. Read its `AGENTS.md` before changing web code.
 - `mobile-application/src/app/` — Expo Router routes and layouts; keep non-route code outside `src/app/`. Read its `AGENTS.md` before changing mobile code.
-- `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/migrations/` — the schema (sqlx migrations); `api-rs/src/seed.rs` and `api-rs-db` — dev data. api-rs is Rust-only and owns all of it; see its `README.md`.
+- `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/migrations/` — the schema (sqlx migrations); `api-rs/src/seed.rs` and `api-rs-db` — the demo seller (`db:seed`) and the e2e fixture products (`db:seed-fixtures`/`db:clear-fixtures`). api-rs is Rust-only and owns all of it; see its `README.md`.
 - `improve-proposals/` — feature proposals and implemented proposal records.
 
 ## Architecture and implementation

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test"
 
-// Assumes api-rs is already running and seeded, same precondition as
-// e2e/marketplace.spec.ts.
+// Assumes api-rs is already running, same precondition as
+// e2e/marketplace.spec.ts — including the fixtures that e2e/global-setup.ts
+// seeds for the run.
 test("placing an order clears the cart and shows a confirmation", async ({ page }) => {
   await page.goto("/marketplace/prod-1")
   await page.getByText("Add to Cart").click()

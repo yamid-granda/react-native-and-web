@@ -6,13 +6,13 @@ form shown below if you prefer not to install k6). These thresholds are
 pass/fail SLO gates; measured baselines are intentionally marked pending
 until the scenarios have been run on a known machine.
 
-## Local stack and 50k-product seed
+## Local stack
 
 ```bash
 docker compose up -d postgres valkey prometheus grafana
 cp api-rs/.env.example api-rs/.env
 pnpm --filter @rnw/api-rs db:migrate
-SEED_COUNT=50000 pnpm --filter @rnw/api-rs db:seed
+pnpm --filter @rnw/api-rs db:seed
 pnpm --filter @rnw/api-rs dev
 ```
 
@@ -26,8 +26,16 @@ Prometheus scrapes 3001 — so the default target needs no changes. To measure a
 different port, pass the matching `BASE_URL` and point
 `monitoring/prometheus.yml` at the port under test.
 
-The default `PAGE_COUNT=2500` covers 50k products at 20 products per page.
-Override `BASE_URL`, `PAGE_COUNT`, `CLIENT_IPS`, or `K6_*` options as needed.
+`db:seed` writes the demo seller and no products, so a freshly seeded database has
+an **empty** marketplace; `db:seed-fixtures` adds nine fixture products, which is
+still a single page and far too small to measure a list query against. The
+scenarios below randomise over `PAGE_COUNT` pages, so populate the catalogue you
+intend to measure — by creating products through the app, by inserting rows
+directly, or with `db:seed-fixtures` for a smoke run — and set `PAGE_COUNT` to the
+number of pages it actually has (`pages × 20`). A run that walks past the last
+page is measuring empty responses. Note that the measured numbers below were taken
+against 50k- and 200k-row catalogues, so anything smaller is not comparable to
+them.
 
 ## Scenarios
 
@@ -52,9 +60,9 @@ the scenario before the 60-second L2 TTL expires. Record whether Cloudflare
 is enabled separately; local runs measure origin only.
 
 Requests use random pages to avoid benchmarking a single hot item. Set
-`PAGE_COUNT=50` to test a small, fully warm catalog; leave it at 2500 for the
-50k seed. k6 thresholds fail the process on SLO breaches so they can gate CI
-or a release job.
+`PAGE_COUNT` to the number of pages your catalogue has — `1` after a plain
+`db:seed-fixtures`, `2500` for a 50k catalogue. k6 thresholds fail the process on
+SLO breaches so they can gate CI or a release job.
 
 The scenarios send a synthetic `CF-Connecting-IP` per request (`CLIENT_IPS`,
 default 500) so the per-IP limiter does not turn the run into a wall of 429s
@@ -107,7 +115,8 @@ Reproduce with:
 
 ```bash
 docker run -d --name idxcheck -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=t postgres:17-alpine
-# apply api-rs/migrations/ (`pnpm --filter @rnw/api-rs db:migrate`), seed 200k rows, then:
+# apply api-rs/migrations/ (`pnpm --filter @rnw/api-rs db:migrate`), insert 200k
+# rows directly (`db:seed` generates no catalogue), then:
 #   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY without the index>
 #   CREATE INDEX "Product_createdAt_id_idx" ON "Product"("createdAt", "id");
 #   EXPLAIN (ANALYZE, BUFFERS) <LIST_QUERY>
@@ -138,7 +147,8 @@ This is a per-instance effect by design — cross-instance warming is Valkey's
 job. `cache_singleflight_leader_total` against `cache_singleflight_follower_total`
 is how you confirm it is doing its job in a given deployment.
 
-To reproduce, start the stack, seed, run the release binary with
+To reproduce, start the stack, populate the catalogue the run measured, run the
+release binary with
 `PER_IP_CONCURRENCY_LIMIT=4096 RATE_LIMIT_PER_IP_RPS=0`, flush Valkey, then hit
 one page with N threads released from a barrier. A process-per-request driver
 (`xargs -P`) does *not* work: spawn skew means late requests hit the already

@@ -407,6 +407,7 @@ Verification layers, cheapest first:
 | E2E | `cargo test --test e2e_products` | Real HTTP against throwaway Postgres 17 + Valkey 8: page boundaries, 429s, cache hits, degraded `/health` with the DB down, fail-open with Valkey absent, read-replica routing |
 | E2E | `cargo test --test e2e_auth` | Real HTTP for the credential endpoints: concurrent registration resolves to one seller, only the token hash is stored, logout revokes immediately, the login throttle is scoped and fail-open |
 | E2E | `cargo test --test e2e_my_store` | Real HTTP for the write path: read-your-writes for the seller, `404` not `403` across sellers, a warm cache retired by a write on both this instance and another, `ON DELETE SET NULL` |
+| E2E | `cargo test --test seed` | The dev/test split against a real database: `db:seed` writes the seller and no products, `seed-fixtures` adds the e2e fixtures idempotently, and `clear-fixtures` removes exactly those and leaves a created product alone |
 | Micro | `cargo bench` | Criterion: list-page cache miss over 50k rows, list hit, detail hit |
 | Load | `k6 run load-tests/k6/spike.js` | Origin behaviour under 100 → 5 000 rps; SLO thresholds fail the run |
 | Coverage | `pnpm --filter @rnw/api-rs coverage` | 80 % line gate over unit + E2E |
@@ -471,7 +472,7 @@ A reading order that follows the request path:
 | `src/main.rs` | Bootstrap order, bounded pool, optional Valkey, graceful shutdown |
 | `src/config.rs` | Every knob and its default — the service's real policy surface |
 | `src/migrations.rs` | The embedded migrator; the single owner of the schema |
-| `src/seed.rs` | Fixture and generated rows, chunked inserts, `SEED_COUNT` |
+| `src/seed.rs` | The demo seller `db:seed` writes, and the e2e fixture products `seed-fixtures` adds and `clear-fixtures` removes |
 | `src/app.rs` | `AppState`, the router, middleware order, RED metrics, the 404 fallback |
 | `src/middleware/rate_limit.rs` | Shedding and limiting, IP resolution, the fail-open decisions |
 | `src/cache/` | Read-through tiering, TTLs, key format, fail-open everywhere; `singleflight.rs` is the stampede guard |
