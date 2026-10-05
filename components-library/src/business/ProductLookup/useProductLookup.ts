@@ -51,9 +51,13 @@ export function productLookupKey(ids: string[]) {
  * moved. Spelled out here rather than left to be rediscovered.
  *
  * **One query, not N.** The fetcher takes the whole list because the API has a
- * batched endpoint for it (`GET /products/by-ids`); fanning out to
- * `GET /products/{id}` per id would be N requests for an N-item cart, and would
- * make a cart with ten lines unusable on a slow connection.
+ * batched endpoint for it (`GET /products/by-ids`), and the server resolves the
+ * whole set in one query as well as one request; fanning out to
+ * `GET /products/{id}` per id would be N requests *and* N queries for an N-item
+ * cart, and would make a cart with ten lines unusable on a slow connection. The
+ * guarantee is the store's, not just the transport's: nothing about it survives
+ * a client-side change to this hook, so the shortest way to resolve several ids
+ * is still to ask for them all at once.
  *
  * **No offline story.** If the lookup fails, `error` is set and the caller says
  * so. It does not fall back to anything remembered, because there is nothing

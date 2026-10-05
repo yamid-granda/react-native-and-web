@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
 
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::{Mutex, MutexGuard, OwnedMutexGuard};
 
 use super::Kind;
 
@@ -86,11 +86,36 @@ impl Flight {
     pub async fn lock(&self) -> MutexGuard<'_, ()> {
         let started = Instant::now();
         let guard = self.lock.lock().await;
+        Self::record_wait(started);
+        guard
+    }
+
+    /// The same lock, owned rather than borrowed.
+    ///
+    /// [`Self::lock`] ties the guard to the `Flight` that handed it out, which
+    /// is right for a caller that fills one key and releases it. A caller that
+    /// has to hold a whole *set* of fills open at once — `GET /products/by-ids`
+    /// resolves the ids it missed under one batched statement, so it must stay
+    /// the leader for every one of them while that statement runs — cannot keep
+    /// a borrowed guard per key: the `Flight`s would have to outlive the guards
+    /// and the borrow would pin them in place.
+    ///
+    /// The returned guard owns its `Arc`, so it is `'static` and can be moved
+    /// into any collection. It keeps the metric above, and it is the same mutex:
+    /// a guard from `lock` and one from `owned_lock` exclude each other exactly
+    /// as two of either do.
+    pub async fn owned_lock(&self) -> OwnedMutexGuard<()> {
+        let started = Instant::now();
+        let guard = Arc::clone(&self.lock).lock_owned().await;
+        Self::record_wait(started);
+        guard
+    }
+
+    fn record_wait(started: Instant) {
         // Follower wait time, i.e. how long a collapsed request was kept
         // waiting on the leader's store call.
         metrics::histogram!("cache_singleflight_wait_seconds")
             .record(started.elapsed().as_secs_f64());
-        guard
     }
 }
 
@@ -254,6 +279,53 @@ mod tests {
 
         let flight = singleflight.for_key(Kind::List, "k").await;
         assert!(tokio::time::timeout(Duration::from_millis(100), flight.lock()).await.is_ok());
+    }
+
+    /// `owned_lock` is the same lock, not a second one: a guard taken through it
+    /// has to exclude a guard taken through `lock`, or the batching that needs it
+    /// would race the singleflight it replaced.
+    #[tokio::test]
+    async fn an_owned_guard_excludes_a_borrowed_one() {
+        let singleflight = Singleflight::default();
+        let flight = Arc::new(singleflight.for_key(Kind::Detail, "k").await);
+        let owned = flight.owned_lock().await;
+
+        let mut follower = {
+            let flight = Arc::clone(&flight);
+            tokio::spawn(async move {
+                let borrowed = flight.lock().await;
+                drop(borrowed);
+            })
+        };
+
+        // The follower is queued, not through: it cannot get in while `owned` is
+        // held. Dropping is what hands it on.
+        assert!(tokio::time::timeout(Duration::from_millis(50), &mut follower).await.is_err());
+        drop(owned);
+        assert!(tokio::time::timeout(Duration::from_millis(100), follower).await.unwrap().is_ok());
+    }
+
+    /// A set of owned guards can be held at once, which is the whole reason the
+    /// method exists: one request that resolved several ids keeps every one of
+    /// them locked for the length of a single batched statement.
+    #[tokio::test]
+    async fn many_owned_guards_can_be_held_at_once() {
+        let singleflight = Singleflight::default();
+        let keys = ["a", "b", "c", "d", "e"];
+
+        let mut guards = Vec::new();
+        for key in keys {
+            let flight = singleflight.for_key(Kind::Detail, key).await;
+            guards.push(flight.owned_lock().await);
+        }
+
+        assert_eq!(guards.len(), keys.len());
+        // Still exclusive while all of them are held, and released on drop.
+        let probe = singleflight.for_key(Kind::Detail, "c").await;
+        assert!(tokio::time::timeout(Duration::from_millis(50), probe.lock()).await.is_err());
+        drop(guards);
+        let probe = singleflight.for_key(Kind::Detail, "c").await;
+        assert!(tokio::time::timeout(Duration::from_millis(100), probe.lock()).await.is_ok());
     }
 
     #[tokio::test]

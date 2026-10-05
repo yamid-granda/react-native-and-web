@@ -45,6 +45,10 @@ impl ProductStore for DelegatingStore {
         self.0.find_by_id(id).await
     }
 
+    async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
+        self.0.find_by_ids(ids).await
+    }
+
     async fn list_page_for_owner(
         &self,
         owner_id: &str,

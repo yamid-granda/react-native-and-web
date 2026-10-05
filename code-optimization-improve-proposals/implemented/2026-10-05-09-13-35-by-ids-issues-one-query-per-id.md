@@ -372,3 +372,155 @@ neither does anything in `components-library`, `web-application` or
   gets *quieter* here (one observation per batch instead of one per id), which is
   a side effect on that metrics work rather than a change to it — if the
   dashboard depends on per-request acquisition counts, say so in review.
+
+## Implementation record
+
+Written when the proposal was applied. The Risks section's four open questions
+had no reviewer — this run was unattended — so each answer is recorded here with
+its evidence.
+
+### Step 1 — the store method, and the four Risk items
+
+`ProductStore::find_by_ids` added beside `find_by_id`, with `DETAIL_BATCH_QUERY`
+(`= ANY($1)`, same projection, same `LEFT JOIN`) beside `DETAIL_QUERY`.
+Implemented in `SqlProductStore` (reusing `Self::acquire` and the same
+`reads()`/`read_role()` pair, so the pool decision and the
+`sqlx_pool_acquire_seconds` label are unchanged), `InMemoryStore` (one lock
+acquisition, filtering under it rather than re-locking per id), `DelegatingStore`
+(a forward) and the two `CountingStore` spies in `handlers/products.rs` and
+`handlers/stores.rs`.
+
+- **`StoreOp::Product` covers it, and no new switch was needed.** A batch read is
+  a product read, so it sits on the same surface as `find_by_id` and
+  `fail_once(StoreOp::Product)` still makes a cart's lookup fail. The switch is
+  otherwise unused today — `handlers/products.rs:964` sets `StoreOp::Count`, not
+  `Product` — so nothing that leaned on it changed behaviour.
+- **The empty case never touches the pool.** Guarded in the handler (an empty
+  `wanted` skips the call) *and* in `SqlProductStore`, so the guarantee holds for
+  any future caller rather than resting on one call site.
+- **`= ANY` over a text primary key is an index scan**, so the 50-id plan is not
+  a sequential scan the cap was chosen to avoid. Not benchmarked: the Risks
+  section is explicit that the difference is not worth measuring first, and the
+  cap is unchanged at 50, so the trade-off has not actually been spent.
+
+### Step 2 — the handler, and one thing the proposal did not anticipate
+
+The two-pass split went in as written. First-seen order is rebuilt by indexing
+`resolved` by position rather than by iterating the returned rows, so `= ANY`
+row order cannot reach the response; `missing` is the set difference, never the
+database's answer about which ids existed.
+
+**The singleflight needed a new method, and this is the part worth reviewing.**
+`Flight::lock` returns a guard borrowed from the `Flight` that handed it out,
+which is right for filling one key and releasing it. This route now holds every
+missed id's fill open across one batched statement, and a borrowed guard per key
+cannot be collected: the `Flight`s would have to outlive the guards, and the
+borrow would pin them. `Flight::owned_lock` returns an `OwnedMutexGuard` on the
+same `Arc<Mutex<()>>` — same mutex, so an owned guard and a borrowed one exclude
+each other exactly as two of either do, and the
+`cache_singleflight_wait_seconds` observation is unchanged. It is pinned by
+`an_owned_guard_excludes_a_borrowed_one` and `many_owned_guards_can_be_held_at_once`
+in `cache/singleflight.rs`.
+
+Holding several guards at once is safe here only because `parse_lookup_ids`
+de-duplicates: every guard in the vector is a distinct key, so a request never
+waits on itself. That is stated at the declaration, because it is a precondition
+rather than a coincidence.
+
+**Held in key order, and that is a second precondition, not a style choice.**
+Taking the fills in the caller's order is a deadlock: the request holds the locks
+it has already taken while it waits for the next one, so two batches over the
+same ids in opposite orders — `ids=b,a` and `ids=a,b` — each wait for the lock
+the other is holding and neither ever reaches the statement. Production reaches
+it exactly where this change is meant to help most, on a cold cart: every id
+misses L1 there, and the `l2.get` that sits between two acquisitions is a Valkey
+round trip that yields between them. Sorting the misses by key before taking any
+fill gives every request the same sequence, and no cycle can form in it. The
+response is still assembled in caller order — `wanted` is sorted back by index
+before the statement — so the wire contract is untouched. Pinned by
+`opposing_batch_orders_do_not_wait_on_each_other` in `handlers/products.rs`, which
+pauses time so a regression fails the suite instead of hanging it.
+
+### Step 3 — the contract assertion
+
+`a_batch_read_is_the_singular_read_repeated` added to the sequence in
+`store/contract.rs`, so it runs against `InMemoryStore` under `--lib` and against
+`SqlProductStore` under `test:e2e` from one body. It creates three rows under its
+own fourth seller, batches those three plus an id that does not exist, and
+compares against three `find_by_id` calls.
+
+Two details the proposal's wording left open, decided here:
+
+- **It compares rows, not ids.** An id-only comparison would pass against a batch
+  query that dropped the `LEFT JOIN "User"` — right ids, null `storeName`. The
+  joined seller name and `price` are compared field by field as well.
+- **It does not assert order.** `= ANY` promises none and the double has no reason
+  to; rebuilding first-seen order is the handler's job and is asserted there
+  instead. Asserting an order in this suite would pin one implementation's
+  accident against the other.
+
+### Step 4 — the tests, and the before/after numbers
+
+`a_repeated_batch_is_served_from_the_detail_cache` kept its name and its claim,
+moved onto the batch counter: two requests, one batch, and `find_by_id` at zero.
+`a_batch_resolves_products_and_names_the_ones_that_are_gone` needed no change and
+still passes, which is the evidence the refactor was behaviour-preserving.
+
+New: `a_cold_batch_of_n_ids_is_one_store_call` and
+`a_batch_answers_in_the_order_the_caller_asked` (the reversed-ids case from
+validation step 5, so an `ANY`-shuffled result cannot pass), plus
+`a_warm_batch_queries_only_the_ids_it_is_missing` — the partly-warm shape a real
+second screen of a cart has, and the one that would regress silently into a query
+per remaining id.
+
+`CountingStore` gained a `batch_calls` counter separate from `find_calls`, which
+is what the Risks section said was the step most likely to be got wrong: a single
+counter could not distinguish "one batch" from "one lookup per id".
+
+**Query count, measured.** 12 cold ids:
+
+| | batch calls | `find_by_id` calls |
+| --- | --- | --- |
+| before (`5375d4f^`) | 0 | 12 |
+| after | 1 | 0 |
+
+The "before" row is the regression check: the new test was run against the
+per-id loop it replaces and failed at `left: 0, right: 1` on the batch assertion.
+
+### Step 5 — the documentation
+
+`useProductLookup.ts` now says the server resolves the set in one query *as well
+as* one request, and states that the guarantee is the store's rather than the
+transport's — the line an agent changing the transport will read.
+`MAX_LOOKUP_IDS`'s comment now reads "one statement over at most 50 indexed
+primary-key lookups". The cap is unchanged.
+
+### Negative checks, four mutations
+
+Each was made, the suite confirmed to fail on the predicted assertion, and the
+mutation reverted:
+
+| mutation | assertion that failed |
+| --- | --- |
+| handler's batch call reverted to a per-id loop | `a_cold_batch_of_n_ids_is_one_store_call` (batch 0, expected 1) |
+| batch returns a row for an id never requested | `a_batch_read_is_the_singular_read_repeated` (len 4, expected 3) |
+| batch drops the joined seller row | `a_batch_read_is_the_singular_read_repeated` (store name mismatch) |
+| results placed in store row order instead of caller order | `a_batch_answers_in_the_order_the_caller_asked` (`prod-1` first) |
+
+### Not done, stated plainly
+
+- **No mobile simulator.** Nothing in `mobile-application` was touched; the one
+  client-side edit is a doc comment in `components-library`, covered by
+  typecheck, lint and the components-library suite.
+- **`pnpm format:check` fails on 80 pre-existing diagnostics**, none in a file this
+  change touches. Counted before and after the change: 80 both times. It is not
+  part of the repo's `lint` gate, which is `biome lint` per workspace. Not fixed
+  here; not this proposal's business.
+- **The goldens are byte-identical** — `tests/parity.rs` passed against
+  `tests/fixtures/products-by-ids.json` unmodified, and
+  `git status` on `tests/fixtures/` is empty. They were not regenerated, per the
+  instruction to revert rather than regenerate.
+- **No timing measurement.** The round-trip reduction is structural (n
+  acquisitions and n statements become one of each) and is asserted through call
+  counts; wall-clock on a real database was not measured, and the load-shedder's
+  thresholds were left alone.

@@ -21,7 +21,9 @@ pub enum StoreOp {
     Products,
     /// `count`.
     Count,
-    /// `find_by_id`.
+    /// `find_by_id` and `find_by_ids`. The batched read is here rather than
+    /// under `Products` because it is a detail read: a test that makes a product
+    /// lookup fail means to make the cart's lookup fail too.
     Product,
     /// `ping`.
     Ping,
@@ -260,6 +262,21 @@ impl ProductStore for InMemoryStore {
             self.joined(&mut product);
             product
         }))
+    }
+
+    async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
+        self.gate(StoreOp::Product).await?;
+        let mut found: Vec<Product> = {
+            let products = self.products.lock().expect("in-memory products");
+            let rows = products.iter();
+            ids.iter()
+                .filter_map(|id| rows.clone().find(|product| &product.id == id).cloned())
+                .collect()
+        };
+        // `ANY` preserves no order either, so this matches the SQL side: the
+        // caller rebuilds first-seen order rather than reading it off the result.
+        self.join_store_names(&mut found);
+        Ok(found)
     }
 
     async fn list_page_for_owner(

@@ -208,6 +208,10 @@ mod tests {
             self.inner.find_by_id(id).await
         }
 
+        async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
+            self.inner.find_by_ids(ids).await
+        }
+
         async fn list_page_for_owner(
             &self,
             owner_id: &str,

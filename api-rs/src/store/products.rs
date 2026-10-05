@@ -150,6 +150,11 @@ pub trait ProductStore: Send + Sync + 'static {
     /// `COUNT(*)` over the whole catalog — the `total` the envelope requires.
     async fn count(&self) -> Result<i64, StoreError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError>;
+    /// The rows for `ids`, in an unspecified order, with no entry for an id that
+    /// does not exist. The batched form of [`Self::find_by_id`]: one statement
+    /// and one pool acquisition for the whole set, which is what
+    /// `GET /products/by-ids` needs and what `find_by_id`-per-id cannot give it.
+    async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError>;
     /// The seller's own rows, for `GET /my-store/products`. Always the primary:
     /// a seller must see their own writes, so a lagged read here is a bug rather
     /// than a trade-off.
@@ -278,6 +283,15 @@ const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price"
 // ends in a quote.
 const COUNT_QUERY: &str = "SELECT COUNT(*) FROM \"Product\"";
 const DETAIL_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = $1"#;
+/// `DETAIL_QUERY` with one predicate instead of N: the same projection and the
+/// same `LEFT JOIN`, so a row is byte-identical to what the singular query
+/// returns. `= ANY($1)` is the repo's batching idiom (`seed.rs`), and it is an
+/// index scan over the primary key just as `= $1` is — the planner sees one
+/// predicate rather than N.
+///
+/// Order is not promised and must not be relied on: `ANY` does not preserve
+/// argument order, so the caller reconstructs first-seen order itself.
+const DETAIL_BATCH_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = ANY($1)"#;
 
 /// The owner-scoped twin of `LIST_QUERY`, backed by
 /// `Product_ownerId_createdAt_id_idx`: equality on `ownerId`, then the same
@@ -561,6 +575,16 @@ impl ProductStore for SqlProductStore {
         let row: Option<ProductRow> =
             sqlx::query_as(DETAIL_QUERY).bind(id).fetch_optional(&mut *connection).await?;
         Ok(row.map(Product::from))
+    }
+
+    async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut connection = Self::acquire(self.reads(), self.read_role()).await?;
+        let rows: Vec<ProductRow> =
+            sqlx::query_as(DETAIL_BATCH_QUERY).bind(ids).fetch_all(&mut *connection).await?;
+        Ok(rows.into_iter().map(Product::from).collect())
     }
 
     async fn list_page_for_owner(
