@@ -75,6 +75,10 @@ pub fn fixture_products() -> Vec<Product> {
         })
         .collect();
 
+    // Mirrors `COLLATE "C"` in LIST_QUERY/LIST_OWNED_QUERY: `String: Ord` is byte
+    // order. Every fixture id is lowercase ASCII, so this agrees with a locale
+    // collation too — the goldens alone cannot tell the two apart, which is why
+    // store/contract.rs pins the tiebreaker directly.
     products.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
     products
 }
