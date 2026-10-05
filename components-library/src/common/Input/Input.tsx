@@ -53,8 +53,10 @@ export function Input({
 
   return (
     // accessible={false}: this Pressable is a mouse/touch convenience for
-    // the TextInput it wraps, not a distinct control — screen readers
-    // should land on the (labeled) TextInput itself, not stop here too.
+    // the TextInput it wraps, not a distinct control — screen readers should
+    // land on the TextInput itself, not stop here too. `Input` does not name
+    // that field; `FormField` pairs a caption with an `accessibilityLabel`, so
+    // a bare `Input` is a field with no accessible name.
     <ClassNamePressable
       testID="input-container"
       accessible={false}

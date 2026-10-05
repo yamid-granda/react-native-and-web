@@ -39,7 +39,7 @@ function stripComments(source: string): string {
 
 // Matches the JSX spelling (`accessibilityRole="button"`), the object-literal
 // one (`accessibilityRole: "button" as const`) and a JSX expression container,
-// but not other roles — Label legitimately sets `accessibilityRole="text"`.
+// but not other roles — a caption or a heading is not a button either.
 const BUTTON_ROLE = /accessibilityRole[=:]\s*(?:\{\s*)?["']button["']/
 
 describe("Button centralization", () => {
