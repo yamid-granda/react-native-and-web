@@ -15,6 +15,11 @@ use sqlx::{FromRow, PgPool, Postgres};
 /// The ordering tuple is not free: it is backed by
 /// `Product_createdAt_id_idx` (`@@index([createdAt, id])`). Without that index
 /// Postgres sorts the whole table for every page before `LIMIT` can apply.
+///
+/// The tiebreaker is pinned to byte order by an explicit `COLLATE "C"` on both
+/// sides — the query and the index — so it agrees with `InMemoryStore` and the
+/// golden generator instead of with whatever collation the cluster was
+/// initialised with.
 pub const PAGE_SIZE: i64 = 20;
 
 /// Title cap for a seller-created product. Long enough for a real title,
@@ -254,7 +259,19 @@ impl From<ProductRow> for Product {
 /// The `LEFT JOIN` is what puts the seller on a public product. It is a LEFT
 /// join, not an inner one, precisely because seeded rows have no owner: an
 /// inner join would silently drop most of the catalogue.
-const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" ORDER BY p."createdAt" ASC, p."id" ASC LIMIT $1 OFFSET $2"#;
+///
+/// `p."id" COLLATE "C"` is what makes the tiebreaker mean the same thing here as
+/// it does in `InMemoryStore`. "id" is TEXT and production ids are mixed case, so
+/// an unpinned `p."id" ASC` is resolved in the cluster's default collation,
+/// where "a" sorts before "A" — the opposite of `String: Ord`, which is what
+/// `sort_by_contract` uses. "C" is byte order, so both sides agree by
+/// construction instead of by coincidence of the operator's locale.
+///
+/// The index has to carry the same collation or the ORDER BY stops being
+/// index-satisfiable and every page full-sorts: see
+/// `migrations/20261004210000_pin_product_id_collation`. The `COLLATE` clause
+/// and that migration are one change — neither is safe alone.
+const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
 // Not a raw string: this one *ends* in a `"`, and in `r#"…"#` that quote would
 // pair with the `#` and become the terminator — leaving the identifier
 // unclosed. The two queries above get away with `r#"…"#` only because neither
@@ -264,8 +281,10 @@ const DETAIL_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."pric
 
 /// The owner-scoped twin of `LIST_QUERY`, backed by
 /// `Product_ownerId_createdAt_id_idx`: equality on `ownerId`, then the same
-/// ordering tuple, so it is an index range scan that stops at `LIMIT`.
-const LIST_OWNED_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."ownerId" = $1 ORDER BY p."createdAt" ASC, p."id" ASC LIMIT $2 OFFSET $3"#;
+/// ordering tuple, so it is an index range scan that stops at `LIMIT`. The
+/// `COLLATE "C"` is the same pinning as above, and its index carries the same
+/// collation.
+const LIST_OWNED_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."ownerId" = $1 ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $2 OFFSET $3"#;
 const COUNT_OWNED_QUERY: &str = "SELECT COUNT(*) FROM \"Product\" WHERE \"ownerId\" = $1";
 const DETAIL_OWNED_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = $1 AND p."ownerId" = $2"#;
 

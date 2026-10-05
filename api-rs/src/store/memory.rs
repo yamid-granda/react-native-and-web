@@ -207,9 +207,30 @@ impl InMemoryStore {
     pub(super) fn sessions(&self) -> &Mutex<HashMap<String, Session>> {
         &self.sessions
     }
+
+    /// The raw catalogue, for the harness edits the traits cannot express.
+    /// `create` mints the id from the CSPRNG and stamps the clock, so a row
+    /// with a *chosen* id sharing a `createdAt` with another row — the only
+    /// shape in which the list tiebreaker decides anything — is unreachable
+    /// through `ProductStore`. `#[cfg(test)]` only: the contract harness is the
+    /// sole caller, and `store::contract` is where that arrangement is written
+    /// down.
+    #[cfg(test)]
+    pub(super) fn products(&self) -> &Mutex<Vec<Product>> {
+        &self.products
+    }
 }
 
 /// `createdAt ASC, id ASC` — the ordering every product query shares.
+///
+/// The `id` half is `String: Ord`, i.e. byte order, and that is now guaranteed
+/// rather than coincidental: `LIST_QUERY` and `LIST_OWNED_QUERY` pin the same
+/// rule with `p."id" COLLATE "C" ASC`, and
+/// `migrations/20261004210000_pin_product_id_collation` rebuilds both list
+/// indexes to carry that collation so the clause stays index-satisfiable. Before
+/// that, the two only agreed for ids where byte order and the cluster's default
+/// collation happen to coincide — which is every lowercase-ASCII fixture and none
+/// of the mixed-case ids `generate_product_id` actually mints.
 fn sort_by_contract(products: &mut [Product]) {
     products.sort_by(|a, b| (&a.created_at, &a.id).cmp(&(&b.created_at, &b.id)));
 }
@@ -637,26 +658,55 @@ mod tests {
     #[tokio::test]
     async fn the_store_contract_holds_for_the_double() {
         let store = InMemoryStore::new(vec![seed("prod-fixture", 1)]);
-        let handle = store.clone();
-        assert_store_contract(&store, move |owner_id, new_name| {
-            // Owned, not borrowed: the contract takes one future type, so the
-            // closure's arguments cannot be captured by reference.
-            let owner_id = owner_id.to_string();
-            let new_name = new_name.to_string();
-            let handle = handle.clone();
-            async move {
-                // The rename the store has no method for, which is exactly the
-                // situation production is in too.
-                handle
-                    .users()
-                    .lock()
-                    .expect("in-memory users")
-                    .get_mut(&owner_id)
-                    .expect("the contract's own seller")
-                    .user
-                    .store_name = new_name;
-            }
-        })
+        // One clone per harness hook: both closures are `move`, so a single
+        // `handle` could not be captured twice.
+        let for_rename = store.clone();
+        let for_seeding = store.clone();
+        assert_store_contract(
+            &store,
+            move |owner_id, new_name| {
+                // Owned, not borrowed: the contract takes one future type, so the
+                // closure's arguments cannot be captured by reference.
+                let owner_id = owner_id.to_string();
+                let new_name = new_name.to_string();
+                let handle = for_rename.clone();
+                async move {
+                    // The rename the store has no method for, which is exactly the
+                    // situation production is in too.
+                    handle
+                        .users()
+                        .lock()
+                        .expect("in-memory users")
+                        .get_mut(&owner_id)
+                        .expect("the contract's own seller")
+                        .user
+                        .store_name = new_name;
+                }
+            },
+            move |owner_id, ids, created_at| {
+                let owner_id = owner_id.to_string();
+                let ids: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+                let handle = for_seeding.clone();
+                async move {
+                    // Rows with a chosen id sharing one timestamp. `create` mints
+                    // the id and stamps the clock, so this is the only way the
+                    // suite can produce the shape the tiebreaker exists for.
+                    let mut products = handle.products().lock().expect("in-memory products");
+                    products.extend(ids.into_iter().map(|id| Product {
+                        title: format!("Product {id}"),
+                        id,
+                        description: None,
+                        price: 5.0,
+                        currency: "USD".to_string(),
+                        image_url: None,
+                        stock: 3,
+                        created_at,
+                        owner_id: Some(owner_id.clone()),
+                        store_name: None,
+                    }));
+                }
+            },
+        )
         .await;
     }
 }

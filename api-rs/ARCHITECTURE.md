@@ -204,9 +204,15 @@ Design points that matter:
   `total` is the field a newly created product changes most visibly, and a
   retired entry there is the one a shopper would actually notice. Fail-open like
   every other cache read; a real store error still produces the same 500.
-- **The list sort is indexed.** `@@index([createdAt, id])` matches the ordering
-  tuple exactly, so a page is an index scan that stops at `LIMIT` instead of a
-  full sort. Measured in `load-tests/README.md`.
+- **The list sort is indexed, and collation-pinned.**
+  `@@index([createdAt, id])` matches the ordering tuple exactly, so a page is an
+  index scan that stops at `LIMIT` instead of a full sort. Measured in
+  `load-tests/README.md`. Both indexes and both `ORDER BY` clauses carry an
+  explicit `id COLLATE "C"` — they have to, because a collation mismatch between
+  the two silently costs the index scan. That pins the tiebreaker to byte order,
+  which is what `InMemoryStore` and the golden generator already used; without it
+  `id` (a `TEXT` primary key holding mixed-case base64) was being ordered by
+  whatever collation the cluster was initialised with.
 - **Only L2 misses reach Postgres**, and the pool is bounded
   (`DB_MAX_CONNECTIONS=10`, 2 s acquire timeout) with the acquire wait recorded
   as `sqlx_pool_acquire_seconds` — the earliest visible sign of X4 developing.
