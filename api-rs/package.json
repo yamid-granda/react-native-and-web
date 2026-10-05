@@ -10,11 +10,13 @@
     "lint": "cargo fmt --check && cargo clippy --all-targets -- -D warnings",
     "typecheck": "cargo check --all-targets",
     "test": "cargo test --lib",
-    "test:e2e": "cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity",
+    "test:e2e": "cargo test --test e2e_products --test e2e_auth --test e2e_my_store --test parity --test seed",
     "test:all": "pnpm test && pnpm test:e2e",
     "coverage": "sh scripts/coverage.sh",
     "bench": "cargo bench",
     "db:migrate": "cargo run --bin api-rs-db -- migrate",
-    "db:seed": "cargo run --bin api-rs-db -- seed"
+    "db:seed": "cargo run --bin api-rs-db -- seed",
+    "db:seed-fixtures": "cargo run --bin api-rs-db -- seed-fixtures",
+    "db:clear-fixtures": "cargo run --bin api-rs-db -- clear-fixtures"
   }
 }

@@ -7,6 +7,8 @@ use sqlx::postgres::PgPoolOptions;
 ///
 ///     cargo run --bin api-rs-db -- migrate
 ///     cargo run --bin api-rs-db -- seed
+///     cargo run --bin api-rs-db -- seed-fixtures
+///     cargo run --bin api-rs-db -- clear-fixtures
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = dotenvy::dotenv();
@@ -31,12 +33,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("schema up to date ({} migrations)", migrations::MIGRATOR.iter().count());
         }
         "seed" => {
-            let count = seed::seed_count_from_env()?;
             migrations::run(&pool).await?;
-            seed::run(&pool, count).await?;
+            seed::run(&pool).await?;
             println!(
-                "seeded {} fixture rows (one seller, one owned product) and {count} generated products",
+                "seeded {} demo seller and no products; the marketplace fills up as sellers create them",
+                seed::seller_count(),
+            );
+        }
+        "seed-fixtures" => {
+            migrations::run(&pool).await?;
+            seed::seed_fixtures(&pool).await?;
+            println!(
+                "seeded {} fixture rows (one seller, one owned product); run \
+                 clear-fixtures when the test run is done",
                 seed::fixture_count(),
+            );
+        }
+        "clear-fixtures" => {
+            let removed = seed::clear_fixtures(&pool).await?;
+            println!(
+                "removed {removed} fixture products; sellers and created products are untouched"
             );
         }
         other => return Err(format!("unknown command {other:?}\n\n{}", usage()).into()),
@@ -47,5 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn usage() -> String {
-    "usage: api-rs-db <migrate|seed>\n  migrate  apply pending migrations\n  seed     migrate, then seed SEED_COUNT products (default 1000)".to_string()
+    concat!(
+        "usage: api-rs-db <migrate|seed|seed-fixtures|clear-fixtures>\n",
+        "  migrate          apply pending migrations\n",
+        "  seed             migrate, then upsert the demo seller — no products\n",
+        "  seed-fixtures    migrate, then upsert the demo seller and the e2e fixture products\n",
+        "  clear-fixtures   delete the e2e fixture products again",
+    )
+    .to_string()
 }

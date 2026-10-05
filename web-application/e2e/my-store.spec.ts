@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test"
 
-// Assumes api-rs is already running and seeded (docker compose up +
-// pnpm --filter @rnw/api-rs db:migrate + db:seed).
+// Assumes api-rs is already running (docker compose up). The fixture products
+// are seeded and cleared by e2e/global-setup.ts.
 //
-// This spec mutates the shared dev database. The product it creates is deleted
-// again at the end; the *seller* row is not, because there is no
+// This spec mutates the shared dev database. The products it creates are deleted
+// again at the end; the *seller* rows are not, because there is no
 // delete-account endpoint — that is deliberate (it is what proves
 // `ON DELETE SET NULL`), and the email is unique per run so nothing collides.
 //
@@ -58,8 +58,8 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   // It is in the shared marketplace, and it says who sells it.
   //
   // Searched for rather than scrolled to: the list is `createdAt ASC`, so a
-  // product created *now* sorts last — on page three of a freshly seeded
-  // catalogue. Searching is also what a shopper would actually do.
+  // product created *now* sorts last, behind the seeded fixtures. Searching is
+  // also what a shopper would actually do.
   await page.goto("/marketplace")
   await page.getByLabel("Search products").fill(title)
   // By role, not by text: the title `Text` is inside the card's Pressable, and

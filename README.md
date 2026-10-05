@@ -211,6 +211,13 @@ the contract port 3001 that both clients default to; Grafana (from
 - **`api-rs-db` is not shipped in the container.** The Dockerfile builds
   `--bin api-rs` only, so migrations run from a checkout (`cargo run --bin
   api-rs-db`) rather than from inside a deployed instance.
+- **`db:seed` writes no products, and that is deliberate.** The dev marketplace
+  holds only what sellers create through the app; the demo seller exists so you
+  can log in and be one. The fixed products the Playwright and Detox specs click
+  (`prod-1`) live behind `db:seed-fixtures`, which those suites' global-setup and
+  global-teardown hooks pair so a run leaves the database as it found it. Don't
+  fold fixture products back into `db:seed` — that is what puts fake catalogue
+  rows in a developer's marketplace.
 - **Detox's test runner is Jest**, isolated in `mobile-application/e2e/`,
   and never mixed with the rest of the repo's Vitest tasks (`turbo run
   test`). This is a hard Detox constraint, not a deviation from "Vitest for

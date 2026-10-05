@@ -1,7 +1,7 @@
 import { by, device, element, expect } from "detox"
 
-// Assumes api-rs is already running and seeded (docker compose up +
-// pnpm --filter @rnw/api-rs db:migrate + db:seed). Requires a native build and a
+// Assumes api-rs is already running (docker compose up). The fixture products
+// are seeded and cleared by e2e/global-setup.js. Requires a native build and a
 // simulator: `pnpm prebuild` then `pnpm test:e2e:build` (see the repo README).
 //
 // Detox's by.text() does exact matches and has no regex, so every string here is
