@@ -199,38 +199,60 @@ impl CacheTier {
         }
         if let Some(l2) = &self.l2 {
             if let Some(bytes) = l2.get(kind, key).await {
-                self.l1.insert(kind, key.to_string(), bytes.clone()).await;
+                // Not `self.l1.insert`, and this is the reason the seam below
+                // exists rather than a check inline in `set`: the shared tier is
+                // writable by every instance in the fleet, so an L2 hit can hand
+                // back a body this instance would never have written — a rolling
+                // deploy past a pre-bound instance is enough, and so is anything
+                // still inside `L2_TTL_SECS` from before the bound shipped.
+                self.fill_l1(kind, key, bytes.clone()).await;
                 return Some((bytes, HitSource::L2));
             }
         }
         None
     }
 
-    /// The one seam where anything enters a cache, so it is also where the size
-    /// of an entry is decided.
+    /// The one seam where anything enters L1, so it is also where the size of an
+    /// entry is decided. Both routes in — a fill from the handler and an L2 hit
+    /// repopulating a cold tier — go through here, so neither can be the one that
+    /// forgets the ceiling.
     ///
-    /// An oversized body is refused per tier rather than stored and evicted
-    /// later: a 40 MB value in an LRU evicts the entire hot set to make room for
-    /// itself, and the same value in Valkey competes with the rate-limit keys
-    /// that hold load shedding up. Refusing is fail-open in the same direction as
-    /// every other failure here — the response is already serialized in the
-    /// handler, so the caller is unaffected and the next request re-renders the
-    /// page from Postgres.
+    /// An oversized body is refused rather than stored and evicted later: a 40 MB
+    /// value in an LRU evicts the entire hot set to make room for itself.
+    /// Refusing is fail-open in the same direction as every other failure here —
+    /// both callers are already holding the bytes, so the caller is unaffected
+    /// and the next request re-renders the page from Postgres.
     ///
     /// The size of what is *stored* is recorded, not the size of what was
     /// offered: the histogram describes the cache's contents, and the refusal
-    /// counters describe the gap between them.
-    pub async fn set(&self, kind: Kind, key: &str, bytes: Bytes) {
-        // Measured once for both tiers, so the two refusals below cannot drift
-        // apart and start disagreeing about what "oversized" means.
-        let oversized = bytes.len() > self.max_value_bytes;
-        if oversized {
+    /// counter describes the gap between them.
+    async fn fill_l1(&self, kind: Kind, key: &str, bytes: Bytes) {
+        if self.is_oversized(&bytes) {
             metrics::counter!("cache_l1_oversize_total", "kind" => kind.as_str()).increment(1);
-        } else {
-            metrics::histogram!("cache_entry_size_bytes", "kind" => kind.as_str())
-                .record(bytes.len() as f64);
-            self.l1.insert(kind, key.to_string(), bytes.clone()).await;
+            return;
         }
+        metrics::histogram!("cache_entry_size_bytes", "kind" => kind.as_str())
+            .record(bytes.len() as f64);
+        self.l1.insert(kind, key.to_string(), bytes).await;
+    }
+
+    /// The one ceiling, asked in one place. [`Self::set`] needs it for the L2
+    /// decision and [`Self::fill_l1`] for the L1 one, and the two must not be
+    /// able to drift apart and start disagreeing about what "oversized" means.
+    fn is_oversized(&self, bytes: &Bytes) -> bool {
+        bytes.len() > self.max_value_bytes
+    }
+
+    /// Writes a body to both tiers.
+    ///
+    /// The L1 half is applied by [`Self::fill_l1`] and the L2 half here, because
+    /// the tiers refuse for different reasons — an LRU evicts its neighbours,
+    /// while the shared store competes with the `api-rs:rl:*` rate-limit keys
+    /// that hold load shedding up — even though both measure against the same
+    /// `max_value_bytes`.
+    pub async fn set(&self, kind: Kind, key: &str, bytes: Bytes) {
+        let oversized = self.is_oversized(&bytes);
+        self.fill_l1(kind, key, bytes.clone()).await;
         if let Some(l2) = &self.l2 {
             if oversized {
                 metrics::counter!("cache_l2_oversize_total", "kind" => kind.as_str()).increment(1);
@@ -296,6 +318,34 @@ mod tests {
             assert!(
                 cache.get(kind, "exact").await.is_some(),
                 "{kind:?} refused a body at the limit"
+            );
+        }
+    }
+
+    /// The same bound, asked of the seam itself rather than through `set`, because
+    /// `get` reaches L1 by a second route: an L2 hit repopulating a cold tier. The
+    /// shared tier is writable by every instance in the fleet, so that route can
+    /// be handed a body this instance would refuse to write — a rolling deploy
+    /// past a pre-bound instance, or anything still inside `L2_TTL_SECS` from
+    /// before the bound shipped. Exercising it through `get` needs a live Valkey
+    /// (`L2Cache` holds a concrete `ConnectionManager` with no test seam), so the
+    /// seam is pinned directly: `get` calling it unconditionally is what this is
+    /// defending, and a `l1.insert` reintroduced on that path would pass every
+    /// test here.
+    #[tokio::test]
+    async fn the_seam_refuses_an_oversized_body_whoever_offers_it() {
+        let limit = 1024;
+        let cache = tier_limited_to(limit);
+        for kind in [Kind::List, Kind::Detail] {
+            cache.fill_l1(kind, "big", Bytes::from(vec![b'x'; limit + 1])).await;
+            assert!(
+                cache.get(kind, "big").await.is_none(),
+                "{kind:?} the seam stored an oversized body"
+            );
+            cache.fill_l1(kind, "exact", Bytes::from(vec![b'x'; limit])).await;
+            assert!(
+                cache.get(kind, "exact").await.is_some(),
+                "{kind:?} the seam refused the limit itself"
             );
         }
     }

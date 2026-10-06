@@ -192,7 +192,9 @@ Design points that matter:
 - **The memory bound has two halves, because one cannot see what it is storing.**
   `L1_MAX_ENTRIES` counts entries — a 400-byte page and a 40 MB one both cost
   "1 of 50,000" — so `L1_MAX_VALUE_BYTES` is what bounds the size of each entry
-  (`cache/mod.rs::set`). A body over the ceiling is **refused, not stored**:
+  (`cache/mod.rs::fill_l1`, which both routes into L1 go through — a handler fill
+  and an L2 hit repopulating a cold tier). A body over the ceiling is **refused,
+  not stored**:
   storing it would let one oversized value evict the hot set around it, and in
   the shared tier the same value competes with the `api-rs:rl:*` rate-limit keys
   that hold load shedding up. Refusing is fail-open like every other cache
