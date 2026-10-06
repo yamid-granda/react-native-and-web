@@ -161,9 +161,17 @@ Three implementations, all mechanical forwards or filters:
 - **`InMemoryStore`** — filter-and-collect beside `find_by_id`
   (`api-rs/src/store/memory.rs:250`), one lock acquisition, not N.
 - **`DelegatingStore`** — a four-line forward beside the existing one
-  (`api-rs/src/store/delegating.rs:44-46`). The two `CountingStore` spies
-  (`handlers/products.rs:631`, `handlers/stores.rs:198`) forward it for free
-  through their `inner`, so neither needs a new hand-written body.
+  (`api-rs/src/store/testdouble.rs`, renamed from `delegating.rs` by
+  `2026-10-05-23-55-37-one-owner-for-the-store-test-double`). **Corrected.** This
+  record originally said the two `CountingStore` spies
+  (`handlers/products.rs:631`, `handlers/stores.rs:198`) "forward it for free
+  through their `inner`, so neither needs a new hand-written body". That is false
+  for `handlers/stores.rs`: its spy wrapped an `InMemoryStore` directly, never
+  imported `DelegatingStore`, and kept a hand-written `find_by_ids` — it had a body
+  *because* `DelegatingStore` was never adopted there. Only `handlers/products.rs`'s
+  spy composed one. Both spies now live in `store/testdouble.rs` as a single
+  shared `CountingStore`, so the distinction no longer exists; see that proposal
+  for why composing `DelegatingStore` never made a spy free.
 
 Empty input returns an empty vec without touching the pool — `by_ids` with no
 ids already short-circuits in the handler's loop today, and that must stay true.

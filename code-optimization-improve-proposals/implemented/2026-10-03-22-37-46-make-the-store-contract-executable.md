@@ -275,6 +275,27 @@ step 6 calls for in `stores.rs` — composes `DelegatingStore` instead of copyin
 111 lines. Land this **before** that proposal's step 6, or it will copy the
 boilerplate a second time.
 
+> **Corrected by `2026-10-05-23-55-37-one-owner-for-the-store-test-double`.** Three
+> claims above did not hold, and two of them are why the residue existed:
+>
+> - **`CountingStore` kept its `UserStore` and `SessionStore` impls.** The 39 lines
+>   were not deleted. `Arc<dyn MarketplaceStore>` is what a spy is *stored as*, and
+>   Rust has no partial trait impl, so the spy owes all three traits whatever it
+>   composes. Composing `DelegatingStore` moves where the forwards are written; it
+>   does not remove them from the spy. This proposal's own step 6 went on to copy
+>   129 lines in `stores.rs` for that reason.
+> - **"Costs zero edits in that module" was false**, for the same reason. The
+>   forwards cost one edit in `DelegatingStore`; the spy still grew a method of its
+>   own. Machine evidence in the repository: `bd01f17` added `list_sessions` and
+>   `delete_expired_for_user` three hours after `DelegatingStore` landed and had to
+>   hand-edit the spy.
+> - **The ordering instruction was not followed.** Step 6 of
+>   `2026-10-03-22-34-46-one-read-path-for-the-product-lists.md` shipped in
+>   `stores.rs` without this landing first. That proposal picked up the residue:
+>   `DelegatingStore` is now `store/testdouble.rs` and carries one shared
+>   `CountingStore` that both handler suites use, so there is one copy of the
+>   forwards rather than three.
+
 The 6 pass-through `ProductStore` methods at `:477-517` are harder to remove
 without a partial trait impl, which Rust does not have. Leave them, and let the
 compiler keep naming the site — that part is honest and cheap.
