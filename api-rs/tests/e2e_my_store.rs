@@ -16,9 +16,15 @@
 
 mod common;
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use reqwest::header::{HeaderValue, AUTHORIZATION};
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
+use sqlx::postgres::PgPoolOptions;
+
+use api_rs::store::SqlProductStore;
 
 const PASSWORD: &str = "correct horse battery";
 
@@ -631,4 +637,72 @@ async fn a_deleted_product_comes_back_as_missing_from_a_batch_lookup() {
     assert_eq!(after["items"].as_array().map(Vec::len), Some(1));
     assert_eq!(after["items"][0]["id"], "prod-1");
     assert_eq!(after["missing"], json!([id]));
+}
+
+/// Four concurrent writes against a pool of two all answer `201`.
+///
+/// This is the test whose absence let the write path reach `main`.
+/// `concurrent_registrations_of_one_address_produce_exactly_one_seller`
+/// (`e2e_auth.rs`) spawns four registrations against a pool of *five* — one task
+/// short of the pool, which is exactly why the defect survived: eight parked
+/// permits against five is already over budget, but with 4 < 5 each task's
+/// second acquisition eventually resolved, so the test passed.
+///
+/// Below the pool size it does not resolve. Every write used to acquire a
+/// *second* connection from the primary to read its own row back while still
+/// holding the first — two `let`s, the second shadowing the first, and Rust not
+/// dropping the shadowed binding — so four writes wanted eight permits out of
+/// two. The two that took a permit could not finish to release it, so the others
+/// died on `PoolTimedOut` after the acquire timeout and the handler turned that
+/// into a `500` each. Red as `[201, 201, 500, 500]` before this change, and it
+/// is identical to genuine pool saturation — reached by the service's own code
+/// at half the configured capacity, and invisible to `cargo clippy` because
+/// nothing about either query is wrong.
+///
+/// One permit per write is the entire difference. Nothing here makes the pool
+/// larger or raises `DB_MAX_CONNECTIONS`; it stops the service spending half of
+/// it, which is what turns the pool into the true per-request budget its
+/// documented capacity assumes.
+#[tokio::test]
+async fn concurrent_writes_do_not_exhaust_the_pool() {
+    let stack = common::TestStack::start(true, |_| {}).await;
+    let (token, _store_id) = sign_up(&stack, "pool").await;
+
+    // A pool of two for four writes, so the requests overlap even when the
+    // scheduler hands them out staggered: two concurrent buggy writes already
+    // want four permits out of two, which is enough to deadlock on its own. The
+    // acquire timeout is production's default from `config.rs` rather than
+    // something tighter — a regression here should fail, not flake.
+    let tight = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(2))
+        // The harness's own database, reached through its connect options rather
+        // than a second copy of the url — `serve_with_store` then points a whole
+        // server at it, so this exercises the real middleware, handler and store.
+        .connect_with((*stack.pool.connect_options()).clone())
+        .await
+        .expect("connect the tight pool");
+    let base = stack.serve_with_store(Arc::new(SqlProductStore::new(tight))).await;
+
+    let mut tasks = Vec::new();
+    for index in 0..4 {
+        let base = base.clone();
+        let token = token.clone();
+        tasks.push(tokio::spawn(async move {
+            authed(reqwest::Method::POST, &format!("{base}/my-store/products"), &token)
+                .json(&json!({ "title": format!("Concurrent {index}"), "price": 42.5, "stock": 3 }))
+                .send()
+                .await
+                .expect("the write is answered")
+                .status()
+                .as_u16()
+        }));
+    }
+
+    let mut statuses: Vec<u16> = Vec::new();
+    for task in tasks {
+        statuses.push(task.await.expect("the write task did not panic"));
+    }
+    statuses.sort_unstable();
+    assert_eq!(statuses, vec![201, 201, 201, 201], "{statuses:?}");
 }

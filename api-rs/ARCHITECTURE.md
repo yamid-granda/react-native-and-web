@@ -216,6 +216,11 @@ Design points that matter:
 - **Only L2 misses reach Postgres**, and the pool is bounded
   (`DB_MAX_CONNECTIONS=10`, 2 s acquire timeout) with the acquire wait recorded
   as `sqlx_pool_acquire_seconds` — the earliest visible sign of X4 developing.
+  That budget is a genuine per-request one: a store method holds at most one
+  primary connection at a time, so a write that reads its own row back reuses the
+  connection it already holds rather than taking a second permit. One
+  `sqlx_pool_acquire_seconds` observation per request is the signal working as
+  intended; two would mean the write path was quietly halving the pool.
   With `DATABASE_READ_URL` set, the public reads use a second pool and `/health`
   keeps pinging the primary.
 - **`invalidate_detail(id)` is wired to the write path now**, and it is called
@@ -336,7 +341,7 @@ limiter is worth a failed request.**
 | Per-IP registry full | `Untracked`: served with no per-IP permit, still bounded globally | Normal 200s | `ApiRsLoadShed` (`scope=ip-untracked`) |
 | Postgres down | Reads 500 with the contract body; `/health` reports `down` | 500 / 503 | `ApiRsHighErrorRate` |
 | Postgres slow at startup | `connect_primary_pool` probes with its own 4 s deadline, up to 5 attempts; still exits if it never connects | Startup delayed, then serving | a `warn` per failed attempt |
-| Pool saturated | Acquire timeout after 2 s → 500, wait visible as a metric | 500 | `ApiRsPoolAcquireLatency` |
+| Pool saturated | Acquire timeout after 2 s → 500, wait visible as a metric. Every method draws exactly one permit, so this means reads and writes competing for the pool rather than one request parking two | 500 | `ApiRsPoolAcquireLatency` |
 | Concurrency saturated | 503 before work starts | Graceful refusal | `ApiRsLoadShed` |
 | rps window exceeded | 429 | Graceful refusal | None by design — expected client behaviour, so it lives on the dashboard (`http_rate_limited_total`) instead of paging |
 | Login throttle window exceeded | 429 on `/auth/login`, `/auth/register` | Graceful refusal, marketplace unaffected | `auth_login_total{result="invalid"}` on `api-red.json` |
@@ -471,7 +476,13 @@ The constraints that make this work, restated as rules:
    truth — a lost L1 costs one Postgres read, never a wrong answer.
 2. **Budget `Σ DB_MAX_CONNECTIONS` against the Postgres limit.** Ten replicas
    at the default of 10 is 100 connections; the knob exists so that arithmetic
-   is explicit.
+   is explicit. That arithmetic is only sound because a store method holds at
+   most one primary connection at a time — a write that reads its own row back
+   reuses the connection it already holds instead of parking a second permit,
+   which is what once made the pool serve half its configured writes and turned
+   `N` concurrent writes against a pool of `N` into `N` timeouts.
+   `store/contract.rs` asserts the rule against a pool of one, so the next method
+   added to a store is checked rather than reviewed.
 3. **The rps limiter lives in Valkey, not in a semaphore**, so limits stay
    meaningful across instances. The semaphores deliberately stay per-instance.
 4. **Reads are most of the workload, which is why read replicas are a config

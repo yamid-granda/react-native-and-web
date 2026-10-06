@@ -118,8 +118,9 @@ impl UserStore for SqlProductStore {
 
         // Read the row back rather than assembling a response value from the
         // arguments: `createdAt` then comes from the column, so the value in the
-        // 201 and the value any later read returns are the same one.
-        let mut connection = self.acquire_primary().await?;
+        // 201 and the value any later read returns are the same one. On the
+        // connection already held above, so a registration parks one permit from
+        // a pool sized for one per request rather than two.
         let row: UserRow = sqlx::query_as(SELECT_USER_BY_ID)
             .bind(&new_user.id)
             .fetch_one(&mut *connection)
