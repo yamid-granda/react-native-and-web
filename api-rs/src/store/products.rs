@@ -27,6 +27,18 @@ pub const PAGE_SIZE: i64 = 20;
 /// accepts, so the client can validate without asking.
 pub const MAX_TITLE_LENGTH: usize = 200;
 
+/// Description cap, and the same reasoning as [`MAX_TITLE_LENGTH`] with a
+/// different number: the column is `TEXT`, so nothing downstream bounds it, and
+/// an unbounded body field is a free memory-amplification lever — the value is
+/// copied whole into both cache tiers, and one product on a list page multiplies
+/// it by [`PAGE_SIZE`]. 4 KiB is far beyond any real product description.
+pub const MAX_DESCRIPTION_LENGTH: usize = 4 * 1024;
+
+/// Image URL cap. A URL is not prose, so this is generous rather than
+/// comfortable: the field exists to point at a picture, not to carry one, and it
+/// is copied into the same cache entries as the description.
+pub const MAX_IMAGE_URL_LENGTH: usize = 2 * 1024;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Product {
     pub id: String,

@@ -19,6 +19,17 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     restart: unless-stopped
+    # This instance is shared: it holds both cache tiers *and* the rate-limit
+    # counters the load shedder depends on. A ceiling is what keeps one from
+    # starving the other, and `allkeys-lru` is the policy that matches the
+    # service's posture — the cache is an accelerator and the limiter is the
+    # thing that must survive. `noeviction` would instead turn a full cache into
+    # write failures that the limiter's fail-open path then absorbs.
+    command:
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
     ports:
       - "6379:6379"
     healthcheck:

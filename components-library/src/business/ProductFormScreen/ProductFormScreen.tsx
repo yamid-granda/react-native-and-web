@@ -43,6 +43,10 @@ export type ProductFormScreenProps = {
 }
 
 const MAX_TITLE_LENGTH = 200
+/** Mirrors `MAX_DESCRIPTION_LENGTH` in `api-rs/src/store/products.rs`. */
+const MAX_DESCRIPTION_LENGTH = 4 * 1024
+/** Mirrors `MAX_IMAGE_URL_LENGTH` in `api-rs/src/store/products.rs`. */
+const MAX_IMAGE_URL_LENGTH = 2 * 1024
 
 /**
  * Create/edit form for a seller-created product.
@@ -197,6 +201,16 @@ export function parse(fields: {
   if (!Number.isInteger(stock)) return { error: "Stock must be a whole number" }
   if (stock < 0) return { error: "Stock must not be negative" }
 
+  const description = fields.description.trim()
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    return { error: `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters` }
+  }
+
+  const imageUrl = fields.imageUrl.trim()
+  if (imageUrl.length > MAX_IMAGE_URL_LENGTH) {
+    return { error: `Image URL must be at most ${MAX_IMAGE_URL_LENGTH} characters` }
+  }
+
   return {
     title,
     // Trimmed but never dropped: `""` is how a seller says "clear this", and it is
@@ -204,9 +218,9 @@ export function parse(fields: {
     // "leave it alone", so a blank field would silently keep its old value while
     // the form reported a successful save. On create the server normalises `""` to
     // `NULL` anyway, so the two paths cost the same body.
-    description: fields.description.trim(),
+    description,
     price,
-    imageUrl: fields.imageUrl.trim(),
+    imageUrl,
     stock,
   }
 }
