@@ -178,6 +178,27 @@ fn describe_api_metrics() {
          incr-generation. Every one of these degrades to a cache miss rather than \
          to an error."
     );
+    metrics::describe_histogram!(
+        "cache_entry_size_bytes",
+        Bytes,
+        "Size of a response body accepted into the cache, by kind. Recorded only \
+         for bodies that were stored, so a rising p99 here is the cache filling \
+         with large payloads rather than the two being refused."
+    );
+    metrics::describe_counter!(
+        "cache_l1_oversize_total",
+        Count,
+        "Bodies refused by the in-process tier because they exceeded \
+         L1_MAX_VALUE_BYTES, by kind. Not cached and not an error: the caller \
+         still gets its response, and the next request re-reads Postgres."
+    );
+    metrics::describe_counter!(
+        "cache_l2_oversize_total",
+        Count,
+        "Bodies refused by the shared Valkey tier because they exceeded \
+         L1_MAX_VALUE_BYTES, by kind. Tracked separately from the L1 refusal \
+         because the shared store also holds the rate-limit counters."
+    );
     metrics::describe_counter!(
         "cache_list_generation_bumps_total",
         Count,

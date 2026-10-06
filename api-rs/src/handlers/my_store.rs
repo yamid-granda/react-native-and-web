@@ -15,7 +15,10 @@ use crate::error::{json_response, no_content, AppError, NO_STORE};
 use crate::handlers::products::{parse_page, ProductJson, ProductsPageJson};
 use crate::handlers::JsonBody;
 use crate::middleware::AuthUser;
-use crate::store::{NewProduct, Patch, ProductPatch, MAX_TITLE_LENGTH, PAGE_SIZE};
+use crate::store::{
+    NewProduct, Patch, ProductPatch, MAX_DESCRIPTION_LENGTH, MAX_IMAGE_URL_LENGTH,
+    MAX_TITLE_LENGTH, PAGE_SIZE,
+};
 
 #[derive(Deserialize)]
 pub struct CreateProductRequest {
@@ -74,9 +77,13 @@ pub async fn create(
 ) -> Result<Response, AppError> {
     let new_product = NewProduct {
         title: validate_title(request.title)?,
-        description: trim_to_none(request.description),
+        description: validate_optional_text(
+            "description",
+            request.description,
+            MAX_DESCRIPTION_LENGTH,
+        )?,
         price: validate_price(request.price)?,
-        image_url: trim_to_none(request.image_url),
+        image_url: validate_optional_text("imageUrl", request.image_url, MAX_IMAGE_URL_LENGTH)?,
         stock: validate_stock(request.stock.unwrap_or(0))?,
     };
 
@@ -98,9 +105,16 @@ pub async fn update(
 ) -> Result<Response, AppError> {
     let patch = ProductPatch {
         title: set(request.title.map(validate_title).transpose()?),
-        description: trim_to_patch(request.description),
+        // Same three states as `trim_to_patch`, with the cap applied before the
+        // value is stored: clearing a field still works, storing an over-long
+        // one does not.
+        description: validate_patch_text(
+            "description",
+            request.description,
+            MAX_DESCRIPTION_LENGTH,
+        )?,
         price: set(request.price.map(validate_price).transpose()?),
-        image_url: trim_to_patch(request.image_url),
+        image_url: validate_patch_text("imageUrl", request.image_url, MAX_IMAGE_URL_LENGTH)?,
         stock: set(request.stock.map(validate_stock).transpose()?),
     };
 
@@ -176,6 +190,51 @@ fn trim_to_none(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
 }
 
+/// The cap, measured the way the value will be stored: trimmed, then counted,
+/// exactly as [`validate_title`] does. Whitespace a seller pasted around the prose
+/// is not stored, so it must not count against the limit either.
+///
+/// An over-long value is a `422` naming the field and the limit, never a
+/// truncation — silently shortening a description would look like a successful
+/// save.
+fn check_text_length(field: &str, value: &str, max: usize) -> Result<(), AppError> {
+    if value.trim().chars().count() > max {
+        return Err(AppError::Validation(format!("{field} must be at most {max} characters")));
+    }
+    Ok(())
+}
+
+/// [`validate_title`]'s shape for an optional text field: the same normalisation,
+/// plus the cap. `field` is the wire name, so the message names the field the
+/// seller actually typed into.
+fn validate_optional_text(
+    field: &str,
+    value: Option<String>,
+    max: usize,
+) -> Result<Option<String>, AppError> {
+    if let Some(text) = &value {
+        check_text_length(field, text, max)?;
+    }
+    Ok(trim_to_none(value))
+}
+
+/// [`trim_to_patch`] with the cap applied on the way through.
+///
+/// [`trim_to_patch`] keeps owning the absent/cleared/set distinction, because
+/// that mapping is what a three-state field lives or dies by. Only the two arms
+/// that carry a value are measured, which is what lets a seller still clear a
+/// description that arrived over-long.
+fn validate_patch_text(
+    field: &str,
+    value: Option<Option<String>>,
+    max: usize,
+) -> Result<Patch<String>, AppError> {
+    if let Some(Some(text)) = &value {
+        check_text_length(field, text, max)?;
+    }
+    Ok(trim_to_patch(value))
+}
+
 /// The same normalisation, kept three-state for a `PATCH`.
 ///
 /// `None` (key absent) is [`Patch::Unset`], and `Some("")` / `Some("   ")` are
@@ -225,6 +284,109 @@ mod tests {
         assert!(validate_title("   ".to_string()).is_err());
         assert!(validate_title("x".repeat(MAX_TITLE_LENGTH).to_string()).is_ok());
         assert!(validate_title("x".repeat(MAX_TITLE_LENGTH + 1).to_string()).is_err());
+    }
+
+    /// `description` and `imageUrl` are the two free-text fields the database
+    /// stores as `TEXT`, so the API is the only place they can be bounded. Each
+    /// one is asserted at exactly its cap and one over, like the title above.
+    #[test]
+    fn the_free_text_fields_are_bounded_at_their_caps() {
+        for (field, max) in
+            [("description", MAX_DESCRIPTION_LENGTH), ("imageUrl", MAX_IMAGE_URL_LENGTH)]
+        {
+            assert_eq!(
+                validate_optional_text(field, Some("x".repeat(max)), max).unwrap(),
+                Some("x".repeat(max)),
+                "{field} at the cap"
+            );
+            assert_eq!(
+                validate_optional_text(field, Some("x".repeat(max + 1)), max)
+                    .expect_err("one over the cap")
+                    .to_string(),
+                format!("{field} must be at most {max} characters"),
+                "{field} one over the cap"
+            );
+        }
+    }
+
+    /// The cap is measured on the stored value, not the pasted one: whitespace a
+    /// seller wrapped around the prose is trimmed away, so it cannot be used to
+    /// push a real description over the limit.
+    #[test]
+    fn the_cap_is_measured_after_trimming() {
+        let padded = format!("  {}  ", "x".repeat(MAX_DESCRIPTION_LENGTH));
+        assert!(validate_optional_text("description", Some(padded), MAX_DESCRIPTION_LENGTH).is_ok());
+    }
+
+    /// `validate_title` counts characters, not bytes, so the cap means the same
+    /// thing for a description of accented prose as for one of ASCII.
+    #[test]
+    fn the_cap_counts_characters_rather_than_bytes() {
+        let four_byte_chars = "é".repeat(MAX_DESCRIPTION_LENGTH);
+        assert!(four_byte_chars.len() > MAX_DESCRIPTION_LENGTH);
+        assert!(validate_optional_text(
+            "description",
+            Some(four_byte_chars),
+            MAX_DESCRIPTION_LENGTH
+        )
+        .is_ok());
+    }
+
+    /// An absent or blank optional field is still `NULL` rather than a length
+    /// error — the cap must not turn "field left alone" into a 422.
+    #[test]
+    fn a_missing_free_text_field_is_still_null_rather_than_an_error() {
+        assert_eq!(
+            validate_optional_text("description", None, MAX_DESCRIPTION_LENGTH).unwrap(),
+            None
+        );
+        assert_eq!(
+            validate_optional_text("description", Some("   ".to_string()), MAX_DESCRIPTION_LENGTH)
+                .unwrap(),
+            None
+        );
+    }
+
+    /// The three states a `PATCH` body can put a capped field in. This is the
+    /// behaviour `implemented/2026-10-04-17-18-57-clearing-a-product-text-field-is-silently-discarded.md`
+    /// landed: the cap is added on top of it and must not collapse any two of
+    /// them, or a seller can no longer delete an over-long description.
+    #[test]
+    fn a_capped_text_field_still_keeps_absent_cleared_and_set_apart() {
+        assert_eq!(
+            validate_patch_text("description", None, MAX_DESCRIPTION_LENGTH).unwrap(),
+            Patch::Unset
+        );
+        assert_eq!(
+            validate_patch_text("description", Some(None), MAX_DESCRIPTION_LENGTH).unwrap(),
+            Patch::Set(None)
+        );
+        assert_eq!(
+            validate_patch_text(
+                "description",
+                Some(Some("  Full-grain.  ".to_string())),
+                MAX_DESCRIPTION_LENGTH
+            )
+            .unwrap(),
+            Patch::Set(Some("Full-grain.".to_string()))
+        );
+        // Clearing is a separate arm and is never measured, so an
+        // already-over-long description stays deletable; storing a new
+        // over-long one is refused.
+        assert_eq!(
+            validate_patch_text("description", Some(None), MAX_DESCRIPTION_LENGTH).unwrap(),
+            Patch::Set(None)
+        );
+        assert_eq!(
+            validate_patch_text(
+                "description",
+                Some(Some("x".repeat(MAX_DESCRIPTION_LENGTH + 1))),
+                MAX_DESCRIPTION_LENGTH
+            )
+            .expect_err("one over the cap")
+            .to_string(),
+            format!("description must be at most {MAX_DESCRIPTION_LENGTH} characters")
+        );
     }
 
     #[test]
@@ -486,6 +648,18 @@ mod handler_tests {
             (json!({ "title": "x".repeat(201), "price": 1 }), "title"),
             (json!({ "title": "x", "price": "free" }), "price"),
             (json!({ "price": 1 }), "Failed to deserialize"),
+            // `description` and `imageUrl` join the capped set. Both message
+            // shapes match the title's, and both answer 400 for the same reason:
+            // they are the last bound on two `TEXT` columns, and a seller who
+            // pastes 4 KiB of prose should be told which field to shorten.
+            (
+                json!({ "title": "x", "price": 1, "description": "x".repeat(4097) }),
+                "description must be at most 4096",
+            ),
+            (
+                json!({ "title": "x", "price": 1, "imageUrl": "x".repeat(2049) }),
+                "imageUrl must be at most 2048",
+            ),
         ];
         for (payload, expected) in cases {
             let label = payload.to_string();
@@ -498,6 +672,58 @@ mod handler_tests {
             let message = body(response).await["message"].as_str().unwrap_or_default().to_string();
             assert!(message.contains(expected), "{message:?} should mention {expected}");
         }
+    }
+
+    /// The other side of the cap, so the boundary is a boundary and not a lower
+    /// limit: a description and an image URL at exactly their caps are stored
+    /// whole. A cap that rejected these would be a different, undocumented
+    /// limit from the one the constant names.
+    #[tokio::test]
+    async fn free_text_fields_at_exactly_their_cap_are_stored_whole() {
+        const PREFIX: &str = "https://example.test/";
+        let image_url = format!("{PREFIX}{}", "x".repeat(MAX_IMAGE_URL_LENGTH - PREFIX.len()));
+        let (app, token, _user) = signed_in().await;
+        let response = app
+            .clone()
+            .oneshot(call(
+                Method::POST,
+                "/my-store/products",
+                Some(&token),
+                Some(json!({
+                    "title": "Field Notes",
+                    "description": "x".repeat(MAX_DESCRIPTION_LENGTH),
+                    "imageUrl": image_url,
+                    "price": 12
+                })),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created = body(response).await;
+        assert_eq!(created["description"], "x".repeat(MAX_DESCRIPTION_LENGTH));
+        assert_eq!(created["imageUrl"].as_str().unwrap().chars().count(), MAX_IMAGE_URL_LENGTH);
+    }
+
+    /// `PATCH` still clears a capped field: a `null` is not measured, so a seller
+    /// is never stuck holding a description they cannot save over *or* delete.
+    #[tokio::test]
+    async fn a_capped_field_can_still_be_cleared() {
+        let (app, token, _user) = signed_in().await;
+        let created = create_product(&app, &token).await;
+        let id = created["id"].as_str().expect("id").to_string();
+
+        let response = app
+            .clone()
+            .oneshot(call(
+                Method::PATCH,
+                &format!("/my-store/products/{id}"),
+                Some(&token),
+                Some(json!({ "description": null })),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body(response).await["description"], Value::Null);
     }
 
     #[tokio::test]
@@ -685,6 +911,11 @@ mod handler_tests {
             (json!({ "stock": -5 }), "stock"),
             (json!({ "title": "  " }), "title"),
             (json!({ "title": "x".repeat(201) }), "title"),
+            // The two free-text fields are capped the same way a title is, and
+            // answer with the same status — the columns are `TEXT`, so this is
+            // the only place they are bounded.
+            (json!({ "description": "x".repeat(4097) }), "description must be at most 4096"),
+            (json!({ "imageUrl": "x".repeat(2049) }), "imageUrl must be at most 2048"),
         ] {
             let response = app
                 .clone()

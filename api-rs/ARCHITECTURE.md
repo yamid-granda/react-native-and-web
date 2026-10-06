@@ -172,7 +172,7 @@ the same path as a miss.
 flowchart TD
     req["GET /products?page=2"] --> parse{"parse_page: JS Number coercion<br/>then prisma_offset narrows skip"}
     parse -->|"negative / overflow / non-finite"| e500["500 {statusCode, message}"]
-    parse -->|"OFFSET 20"| l1{"L1 · moka<br/>key products:list:gen:bits<br/>list TTL 5s · detail TTL 60s<br/>max 50k entries each"}
+    parse -->|"OFFSET 20"| l1{"L1 · moka<br/>key products:list:gen:bits<br/>list TTL 5s · detail TTL 60s<br/>L1_MAX_ENTRIES per tier (default 50k)<br/>body ≤ L1_MAX_VALUE_BYTES"}
     l1 -->|"hit"| body["response bytes"]
     l1 -->|"miss"| l2{"L2 · Valkey<br/>key api-rs:products:list:gen:bits<br/>TTL 60s"}
     l2 -->|"hit"| repop["repopulate L1"] --> body
@@ -189,6 +189,20 @@ Design points that matter:
 - **Two TTLs, not one.** List pages get 5 s because they repeat across shoppers
   *and* bound staleness; details get 60 s. One global TTL would be wrong for
   one of them.
+- **The memory bound has two halves, because one cannot see what it is storing.**
+  `L1_MAX_ENTRIES` counts entries — a 400-byte page and a 40 MB one both cost
+  "1 of 50,000" — so `L1_MAX_VALUE_BYTES` is what bounds the size of each entry
+  (`cache/mod.rs::set`). A body over the ceiling is **refused, not stored**:
+  storing it would let one oversized value evict the hot set around it, and in
+  the shared tier the same value competes with the `api-rs:rl:*` rate-limit keys
+  that hold load shedding up. Refusing is fail-open like every other cache
+  failure here — the handler already has its serialized body, so the caller is
+  unaffected. The inputs are bounded before this matters:
+  `MAX_DESCRIPTION_LENGTH` and `MAX_IMAGE_URL_LENGTH` (`store/products.rs`) cap
+  the only two free-text request fields the database stores as `TEXT`.
+  `cache_entry_size_bytes` and `cache_{l1,l2}_oversize_total` make both halves
+  visible; the ceiling is deliberately far above a real page, so a non-zero
+  refusal count means something upstream of the field caps is not doing its job.
 - **An L2 hit repopulates L1** (`cache/mod.rs`), so a cold instance warms from
   the shared cache instead of hammering Postgres.
 - **A miss on an expired key does not fan out.** `cache/singleflight.rs` hands

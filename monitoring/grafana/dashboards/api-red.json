@@ -161,6 +161,54 @@
       ],
       "title": "Cache failures (service fails open)",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
+      "id": 8,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(cache_entry_size_bytes_bucket[5m])))",
+          "legendFormat": "p95 {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, kind) (rate(cache_entry_size_bytes_bucket[5m])))",
+          "legendFormat": "p99 {{kind}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Cached body size (vs L1_MAX_VALUE_BYTES)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
+      "id": 9,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(cache_l1_oversize_total[5m]))",
+          "legendFormat": "L1 refused {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (kind) (rate(cache_l2_oversize_total[5m]))",
+          "legendFormat": "L2 refused {{kind}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Cache bodies refused as oversize",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",

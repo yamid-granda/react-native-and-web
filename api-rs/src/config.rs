@@ -40,6 +40,13 @@ pub struct Config {
     pub l1_list_ttl: Duration,
     pub l1_detail_ttl: Duration,
     pub l2_ttl: Duration,
+    /// Entry ceiling for each L1 tier. Counts pages, so it is only half the
+    /// memory bound; `l1_max_value_bytes` is the other half.
+    pub l1_max_entries: u64,
+    /// Ceiling on a single cached body. Refused rather than stored, because an
+    /// oversized entry evicts its neighbours and, in the shared tier, competes
+    /// with the rate-limit counters.
+    pub l1_max_value_bytes: usize,
     pub global_concurrency_limit: usize,
     pub per_ip_concurrency_limit: usize,
     /// Requests per second across all instances; 0 disables the check.
@@ -82,6 +89,8 @@ impl Default for Config {
             l1_list_ttl: Duration::from_secs(5),
             l1_detail_ttl: Duration::from_secs(60),
             l2_ttl: Duration::from_secs(60),
+            l1_max_entries: crate::cache::l1::DEFAULT_MAX_ENTRIES,
+            l1_max_value_bytes: crate::cache::DEFAULT_MAX_VALUE_BYTES,
             global_concurrency_limit: 1024,
             per_ip_concurrency_limit: 64,
             rate_limit_global_rps: 0,
@@ -138,6 +147,14 @@ impl Config {
         config.l1_detail_ttl =
             env_duration_secs("L1_DETAIL_TTL_SECS")?.unwrap_or(config.l1_detail_ttl);
         config.l2_ttl = env_duration_secs("L2_TTL_SECS")?.unwrap_or(config.l2_ttl);
+        if let Some(raw) = env_str("L1_MAX_ENTRIES") {
+            config.l1_max_entries =
+                raw.parse().map_err(|e| ConfigError::invalid("L1_MAX_ENTRIES", e))?;
+        }
+        if let Some(raw) = env_str("L1_MAX_VALUE_BYTES") {
+            config.l1_max_value_bytes =
+                raw.parse().map_err(|e| ConfigError::invalid("L1_MAX_VALUE_BYTES", e))?;
+        }
         if let Some(raw) = env_str("GLOBAL_CONCURRENCY_LIMIT") {
             config.global_concurrency_limit =
                 raw.parse().map_err(|e| ConfigError::invalid("GLOBAL_CONCURRENCY_LIMIT", e))?;
@@ -273,6 +290,8 @@ mod tests {
         "L1_LIST_TTL_SECS",
         "L1_DETAIL_TTL_SECS",
         "L2_TTL_SECS",
+        "L1_MAX_ENTRIES",
+        "L1_MAX_VALUE_BYTES",
         "GLOBAL_CONCURRENCY_LIMIT",
         "PER_IP_CONCURRENCY_LIMIT",
         "RATE_LIMIT_GLOBAL_RPS",
@@ -352,6 +371,10 @@ mod tests {
         assert_eq!(config.db_read_max_connections, 10);
         assert_eq!(config.db_acquire_timeout, Duration::from_millis(2000));
         assert_eq!(config.l1_list_ttl, Duration::from_secs(5));
+        // The cache bounds default to the constants the tiers read, so an
+        // operator who changes one constant changes the documented default too.
+        assert_eq!(config.l1_max_entries, crate::cache::l1::DEFAULT_MAX_ENTRIES);
+        assert_eq!(config.l1_max_value_bytes, crate::cache::DEFAULT_MAX_VALUE_BYTES);
         assert_eq!(config.cors_origin, "http://localhost:3000");
     }
 
@@ -369,6 +392,8 @@ mod tests {
             set("L1_LIST_TTL_SECS", "7");
             set("L1_DETAIL_TTL_SECS", "8");
             set("L2_TTL_SECS", "9");
+            set("L1_MAX_ENTRIES", "1000");
+            set("L1_MAX_VALUE_BYTES", "2048");
             set("GLOBAL_CONCURRENCY_LIMIT", "11");
             set("PER_IP_CONCURRENCY_LIMIT", "12");
             set("RATE_LIMIT_GLOBAL_RPS", "13");
@@ -394,6 +419,8 @@ mod tests {
         assert_eq!(config.l1_list_ttl, Duration::from_secs(7));
         assert_eq!(config.l1_detail_ttl, Duration::from_secs(8));
         assert_eq!(config.l2_ttl, Duration::from_secs(9));
+        assert_eq!(config.l1_max_entries, 1000);
+        assert_eq!(config.l1_max_value_bytes, 2048);
         assert_eq!(config.global_concurrency_limit, 11);
         assert_eq!(config.per_ip_concurrency_limit, 12);
         assert_eq!(config.rate_limit_global_rps, 13);

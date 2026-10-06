@@ -1,5 +1,43 @@
 # Cached payload size is unowned: the cache bounds entry *count*, and the only fields a seller can make unbounded are the ones nobody bounds
 
+## Outcome
+
+Implemented. Steps 1, 2, 3, 4 and 6 landed as written. Step 5 landed in a
+different shape than proposed, for a reason worth keeping:
+
+- **`cache_l1_evictions_total` was not emitted.** `moka` 0.12.16 exposes no
+  eviction count at all. Its counters live behind the explicitly
+  `unstable-debug-counters` feature and are surfaced as `debug_stats()`, a
+  snapshot that would need polling and differencing to become a counter — an
+  unstable dependency feature adopted to serve one line of a proposal, which is
+  the wrong trade. What shipped instead is `cache_entry_size_bytes{kind}`, the
+  signal that actually predicts the cliff: entry size is the input to the
+  pathology, and hit ratio is the lagging symptom.
+- **The refusal counter is split per tier** (`cache_l1_oversize_total` and
+  `cache_l2_oversize_total`) rather than being one `cache_l1_*` series, because
+  the two tiers refuse for different reasons — an LRU evicts its neighbours, the
+  shared store competes with `api-rs:rl:*` — and the crate already splits
+  `cache_l1_*` from `cache_l2_*` throughout.
+- **Two status/placement details differ from the text.** Validation errors in
+  this service answer `400`, not the `422` the proposal assumed; the new caps
+  answer `400` so they match the existing title cap exactly, which is what the
+  proposal actually asked for ("the same message shape as an over-long title").
+  And the byte bound lives in `CacheTier::set`, so its test lives in
+  `cache/mod.rs` rather than `cache/l1.rs` — `L1Cache` has no bound to test.
+  The L2 branch is covered by the L1 assertions plus the shared code path; a
+  dedicated L2 test would need a `Valkey` socket and a trait seam that does not
+  exist.
+
+Everything else in **Proposed approach** is implemented as described, and the
+**Validation** list was worked through: `cargo test --lib` (212 passing),
+`test:e2e` against Docker (Postgres contract, parity goldens, seed — all
+passing), the metric contract, `coverage` at 94.15% lines against a gate of 80%,
+and `bench`. Two items could not be run and are recorded in the pull request:
+the mobile app was not launched on a simulator, and `web-application`'s Playwright
+suite could not start because the local development database has never had this
+repository's migrations applied — a pre-existing condition, unrelated to this
+change.
+
 ## Problem / opportunity
 
 `api-rs` caches whole serialized response bodies in two tiers, and both tiers are

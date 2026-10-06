@@ -48,8 +48,13 @@ fn bench_handlers(criterion: &mut Criterion) {
         config: Arc::new(config.clone()),
         store,
         cache: CacheTier::new(
-            api_rs::cache::L1Cache::new(Duration::from_secs(60), Duration::from_secs(60)),
+            api_rs::cache::L1Cache::new(
+                Duration::from_secs(60),
+                Duration::from_secs(60),
+                api_rs::cache::l1::DEFAULT_MAX_ENTRIES,
+            ),
             None,
+            api_rs::cache::DEFAULT_MAX_VALUE_BYTES,
         ),
         limiter: api_rs::middleware::rate_limit::RateLimiter::new(&config, None),
         metrics: None,

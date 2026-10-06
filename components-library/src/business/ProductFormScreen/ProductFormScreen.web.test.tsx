@@ -194,4 +194,32 @@ describe("parse", () => {
     expect(parse({ ...fields, stock: "1.5" })).toEqual({ error: "Stock must be a whole number" })
     expect(parse({ ...fields, stock: "" })).toEqual(expect.objectContaining({ stock: 0 }))
   })
+
+  /// The form mirrors the server's caps so an over-long description is an inline
+  /// message rather than a round trip. The constants are restated rather than
+  /// imported because api-rs and the shared library are separate workspaces with
+  /// no build-time link between them.
+  it("mirrors the server's caps on description and imageUrl", () => {
+    expect(parse({ ...fields, description: "x".repeat(4 * 1024) })).toEqual(
+      expect.objectContaining({ description: "x".repeat(4 * 1024) })
+    )
+    expect(parse({ ...fields, description: "x".repeat(4 * 1024 + 1) })).toEqual({
+      error: "Description must be at most 4096 characters",
+    })
+    expect(parse({ ...fields, imageUrl: "x".repeat(2 * 1024) })).toEqual(
+      expect.objectContaining({ imageUrl: "x".repeat(2 * 1024) })
+    )
+    expect(parse({ ...fields, imageUrl: "x".repeat(2 * 1024 + 1) })).toEqual({
+      error: "Image URL must be at most 2048 characters",
+    })
+  })
+
+  /// The cap is measured on the trimmed value, as the server measures it — a
+  /// seller who pastes prose with newlines around it should not be pushed over
+  /// a limit by whitespace that is not stored.
+  it("measures the caps after trimming", () => {
+    expect(parse({ ...fields, description: `  ${"x".repeat(4 * 1024)}  ` })).toEqual(
+      expect.objectContaining({ description: "x".repeat(4 * 1024) })
+    )
+  })
 })

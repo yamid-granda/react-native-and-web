@@ -44,8 +44,9 @@ impl AppState {
         metrics: Option<PrometheusHandle>,
     ) -> Self {
         let cache = CacheTier::new(
-            L1Cache::new(config.l1_list_ttl, config.l1_detail_ttl),
+            L1Cache::new(config.l1_list_ttl, config.l1_detail_ttl, config.l1_max_entries),
             valkey.clone().map(|conn| L2Cache::new(conn, config.l2_ttl)),
+            config.l1_max_value_bytes,
         );
         let limiter = RateLimiter::new(
             &config,

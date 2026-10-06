@@ -202,6 +202,8 @@ psql "$DATABASE_URL" -c 'SELECT count(*) FROM "Product";'
 | `L1_LIST_TTL_SECS` | `5` | Per-process list cache TTL. |
 | `L1_DETAIL_TTL_SECS` | `60` | Per-process detail cache TTL. |
 | `L2_TTL_SECS` | `60` | Shared Valkey cache TTL. |
+| `L1_MAX_ENTRIES` | `50000` | Entry ceiling for **each** in-process cache tier (list and detail). Counts pages, so on its own it is not a memory bound — `L1_MAX_VALUE_BYTES` is the other half. |
+| `L1_MAX_VALUE_BYTES` | `1048576` | Ceiling on one cached body. A larger response is refused rather than stored and counted as `cache_l1_oversize_total` / `cache_l2_oversize_total`; the caller still gets its response and the next request re-reads Postgres. Well above any real page — `MAX_DESCRIPTION_LENGTH` and `MAX_IMAGE_URL_LENGTH` bound the inputs first — so a non-zero count means something upstream of the field caps is not doing its job. |
 | `GLOBAL_CONCURRENCY_LIMIT` | `1024` | In-flight requests before returning 503. |
 | `PER_IP_CONCURRENCY_LIMIT` | `64` | In-flight requests per client IP. |
 | `RATE_LIMIT_GLOBAL_RPS` | `0` | Fleet-wide Valkey-backed requests/second; zero disables. |
