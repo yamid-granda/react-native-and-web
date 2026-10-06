@@ -643,8 +643,9 @@ impl ProductStore for SqlProductStore {
             .await?;
 
         // Read back through the same join the list/detail queries use, so the
-        // 201 body cannot disagree with what a later GET returns.
-        let mut connection = self.acquire_primary().await?;
+        // 201 body cannot disagree with what a later GET returns — on the
+        // connection already held above, so a write parks one permit from a pool
+        // sized for one per request rather than two.
         let row: ProductRow = sqlx::query_as(DETAIL_OWNED_QUERY)
             .bind(&id)
             .bind(owner_id)
@@ -676,7 +677,6 @@ impl ProductStore for SqlProductStore {
             return Ok(None);
         }
 
-        let mut connection = self.acquire_primary().await?;
         let row: ProductRow = sqlx::query_as(DETAIL_OWNED_QUERY)
             .bind(id)
             .bind(owner_id)

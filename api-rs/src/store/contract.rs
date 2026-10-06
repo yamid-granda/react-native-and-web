@@ -11,15 +11,26 @@
 //! `test:e2e` against [`super::SqlProductStore`]. A disagreement becomes a red
 //! build instead of something a reviewer has to notice.
 //!
+//! [`assert_a_write_takes_one_connection`] is the one exception, and it is a
+//! deliberate one: the pool is not part of the store *interface*, so the double
+//! has nothing to disagree about. It runs against the SQL store only, under
+//! `test:e2e`.
+//!
 //! Every assertion here is one both implementations should still hold in two
 //! years. An assertion that pinned today's behaviour of either one would make
 //! the bug permanent, which is the reason this suite is small.
 
 use std::future::Future;
+use std::time::Duration;
 
 use chrono::NaiveDateTime;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
-use super::products::{NewProduct, Patch, Product, ProductPatch, StoreError, PAGE_SIZE};
+use super::products::{
+    NewProduct, Patch, Product, ProductPatch, ProductStore, SqlProductStore, StoreError, PAGE_SIZE,
+};
+use super::sessions::SessionStore;
+use super::users::UserStore;
 use super::MarketplaceStore;
 
 /// The sellers the suite registers. Deliberately unlike the e2e fixtures, so a
@@ -48,6 +59,13 @@ const ORDERING_OWNER_STORE_NAME: &str = "Ordering Contract Shop";
 const BATCH_OWNER_ID: &str = "usr_store_contract_batch";
 const BATCH_OWNER_EMAIL: &str = "store-contract-batch@rnw.test";
 const BATCH_OWNER_STORE_NAME: &str = "Batch Contract Shop";
+
+/// Its own seller for the connection assertion, so a caller that runs it after
+/// [`assert_store_contract`] in the same database cannot collide on either unique
+/// column — the address is the one `create_user` refuses on.
+const WIDE_OWNER_ID: &str = "usr_store_contract_one_permit";
+const WIDE_OWNER_EMAIL: &str = "store-contract-one-permit@rnw.test";
+const WIDE_STORE_NAME: &str = "One Permit Contract Shop";
 
 /// Ids chosen so byte order and a locale collation *cannot* agree. Every pair
 /// differs only in case, and case is the one thing the two rules order
@@ -112,6 +130,87 @@ where
     a_refused_registration_changes_nothing(store).await;
     expiry_is_folded_into_the_session_lookup(store).await;
     expired_sessions_leave_the_table_and_live_ones_are_enumerable(store).await;
+}
+
+/// A store method holds at most one primary connection at a time — the rule
+/// `DB_MAX_CONNECTIONS` is sized against, and the only one nothing checked.
+///
+/// `create`, `update_owned` and `create_user` each used to acquire a *second*
+/// connection from the primary while still holding the first: the second `let`
+/// shadowed the first, and Rust does not drop the shadowed binding. Two
+/// `PoolConnection`s are two permits from a pool sized for one per request, and
+/// a permit comes back only when its guard drops — so every in-flight write
+/// halved the service's write concurrency, and `N` concurrent writes against a
+/// pool of `N` all died on `PoolTimedOut` rather than all answering. Nothing
+/// caught it because the two acquisitions each look right in isolation, and the
+/// defect lives only in their interaction.
+///
+/// A pool of one is the tightest formulation of the rule and needs no
+/// arithmetic: a method that acquires twice blocks on its own second acquire and
+/// fails here. That is the point of putting it in the contract suite rather than
+/// in a comment — the next method added to a store is checked against the rule
+/// instead of against a reviewer noticing a second `acquire_primary`.
+///
+/// `SqlProductStore`-only, and unlike [`assert_store_contract`] not run against
+/// the double: the double has no pool, so asserting it there would assert nothing
+/// about the double. `options` are the harness's own connect options, so this
+/// runs against the database the rest of the suite uses without the suite needing
+/// to know the url.
+pub async fn assert_a_write_takes_one_connection(options: PgConnectOptions) {
+    // Long enough that a correct method never notices it, short enough that a
+    // double-acquiring one fails the test instead of hanging it.
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(2))
+        .connect_with(options)
+        .await
+        .expect("connect the single-connection pool");
+    let store = SqlProductStore::new(pool);
+
+    store
+        .create_user(new_user(WIDE_OWNER_ID, WIDE_OWNER_EMAIL, WIDE_STORE_NAME))
+        .await
+        .expect("register a seller against a pool of one");
+
+    let created =
+        store.create(WIDE_OWNER_ID, new_product("One Permit")).await.expect("create against one");
+
+    store
+        .update_owned(
+            WIDE_OWNER_ID,
+            &created.id,
+            ProductPatch { price: Patch::Set(Some(7.0)), ..Default::default() },
+        )
+        .await
+        .expect("update against a pool of one")
+        .expect("the row it just created");
+
+    // The other branch of `update_owned`: the early return answers `None` before
+    // the read-back, so it is the one write here that holds no connection at all
+    // by the time it answers. Exercised so the assertion covers both exits.
+    assert!(
+        store
+            .update_owned(WIDE_OWNER_ID, "prd_never_existed", ProductPatch::default())
+            .await
+            .expect("a missing row is still an answered call")
+            .is_none(),
+        "a patch to a row that does not exist is absent, not an error"
+    );
+
+    assert!(
+        store.delete_owned(WIDE_OWNER_ID, &created.id).await.expect("delete against one"),
+        "delete against a pool of one"
+    );
+
+    let now = chrono::Utc::now().naive_utc();
+    store
+        .create_session("one-permit-live", WIDE_OWNER_ID, now + chrono::Duration::hours(1))
+        .await
+        .expect("create a session against a pool of one");
+    assert!(
+        store.delete_session("one-permit-live").await.expect("delete a session against one"),
+        "session writes take one permit too"
+    );
 }
 
 async fn register_the_contract_sellers<S: MarketplaceStore + ?Sized>(store: &S) {

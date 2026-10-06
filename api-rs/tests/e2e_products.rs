@@ -61,6 +61,24 @@ async fn the_store_contract_holds_for_postgres() {
     .await;
 }
 
+/// The same rule the in-memory double cannot have: a store method holds at most
+/// one primary connection at a time.
+///
+/// The suite above says the two implementations agree about what the queries
+/// *return*. Nothing said how many connections they *take*, which is how three
+/// write-then-read-back methods came to park two permits from a pool sized for
+/// one per request — halving write concurrency, and turning `N` concurrent
+/// writes against a pool of `N` into `N` timeouts. Driven here against a pool of
+/// one, where a method that acquires twice blocks on its own second acquire.
+#[tokio::test]
+async fn a_write_takes_one_connection() {
+    let stack = common::TestStack::start(false, |_| {}).await;
+    api_rs::store::contract::assert_a_write_takes_one_connection(
+        (*stack.pool.connect_options()).clone(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn product_read_contract_and_pagination_boundaries() {
     let stack = common::TestStack::start(true, |_| {}).await;
