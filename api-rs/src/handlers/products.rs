@@ -499,21 +499,19 @@ pub(crate) fn product_headers(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use axum::body::Body;
-    use axum::Router;
     use chrono::NaiveDateTime;
-    use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use crate::app::router;
     use crate::config::Config;
-    use crate::store::{
-        DelegatingStore, InMemoryStore, Product, ProductStore, StoreError, StoreOp,
+    use crate::store::testdouble::{
+        base_config, body_of, counting_state, get, get_all, CountingStore,
     };
+    use crate::store::{InMemoryStore, Product, StoreOp};
 
     use super::*;
 
@@ -656,247 +654,19 @@ mod tests {
         assert_eq!(find_calls.load(Ordering::SeqCst), 2, "the retired key has to be refilled");
     }
 
-    /// Wraps [`InMemoryStore`] to count the queries that actually reach the
-    /// database, and to make each one slow enough that concurrent requests
-    /// genuinely collide on a single fill instead of racing past it.
-    ///
-    /// Only the three read methods are instrumented; everything else is
-    /// [`DelegatingStore`]'s forwarding, so a new trait method costs no edits
-    /// here. The failure switches moved to the store itself, which is what
-    /// `/health` needs and what keeps the mechanism in one place.
-    #[derive(Clone)]
-    struct CountingStore {
-        inner: DelegatingStore,
-        list_calls: Arc<AtomicUsize>,
-        count_calls: Arc<AtomicUsize>,
-        find_calls: Arc<AtomicUsize>,
-        /// Separate from `find_calls` on purpose: the claim being pinned is that
-        /// one *batch* is one store call, which a counter that also moved for
-        /// each singular read could not distinguish from the shape it replaced.
-        batch_calls: Arc<AtomicUsize>,
-        delay: Duration,
-    }
-
-    impl CountingStore {
-        fn new(inner: InMemoryStore) -> Self {
-            Self {
-                inner: DelegatingStore::new(Arc::new(inner)),
-                list_calls: Arc::new(AtomicUsize::new(0)),
-                count_calls: Arc::new(AtomicUsize::new(0)),
-                find_calls: Arc::new(AtomicUsize::new(0)),
-                batch_calls: Arc::new(AtomicUsize::new(0)),
-                delay: Duration::from_millis(30),
-            }
-        }
-    }
-
     /// The spy plus a handle on the store behind it, so a test can make a
     /// surface fail. Cloning an `InMemoryStore` shares its state, so the switch
     /// the test sets is the one the spy reads through.
+    ///
+    /// The spy is [`CountingStore`], which lives in `store::testdouble` and is
+    /// shared with `handlers::stores`: one type, holding the counters and the
+    /// delay that make concurrent requests collide on a single fill instead of
+    /// racing past it.
     fn counting_store(products: usize) -> (CountingStore, InMemoryStore) {
         let inner = InMemoryStore::new(
             (0..products).map(|index| product(&format!("prod-{index}"), 10.0)).collect(),
         );
         (CountingStore::new(inner.clone()), inner)
-    }
-
-    #[async_trait::async_trait]
-    impl ProductStore for CountingStore {
-        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
-            self.list_calls.fetch_add(1, Ordering::SeqCst);
-            tokio::time::sleep(self.delay).await;
-            self.inner.list_page(offset, limit).await
-        }
-
-        async fn count(&self) -> Result<i64, StoreError> {
-            self.count_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.count().await
-        }
-
-        async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
-            self.find_calls.fetch_add(1, Ordering::SeqCst);
-            tokio::time::sleep(self.delay).await;
-            self.inner.find_by_id(id).await
-        }
-
-        async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
-            self.batch_calls.fetch_add(1, Ordering::SeqCst);
-            // The delay is what the per-id loop used to pay N times over. Kept
-            // per call, not per id, because that is the shape now under test: one
-            // round trip for the whole set.
-            tokio::time::sleep(self.delay).await;
-            self.inner.find_by_ids(ids).await
-        }
-
-        async fn ping(&self) -> Result<(), StoreError> {
-            self.inner.ping().await
-        }
-
-        // The owner-scoped and write paths are pass-throughs too: the tests in
-        // this module are about the read path's cache behaviour, and
-        // `handlers/my_store.rs` is where a mutation is asserted. Rust has no
-        // partial trait impl, so these stay and the compiler keeps naming the
-        // site.
-        async fn list_page_for_owner(
-            &self,
-            owner_id: &str,
-            offset: i64,
-            limit: i64,
-        ) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_page_for_owner(owner_id, offset, limit).await
-        }
-
-        async fn list_public_page_by_owner(
-            &self,
-            owner_id: &str,
-            offset: i64,
-            limit: i64,
-        ) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_public_page_by_owner(owner_id, offset, limit).await
-        }
-
-        async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.inner.count_for_owner(owner_id).await
-        }
-
-        async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.inner.count_public_by_owner(owner_id).await
-        }
-
-        async fn find_owned_by_id(
-            &self,
-            owner_id: &str,
-            id: &str,
-        ) -> Result<Option<Product>, StoreError> {
-            self.inner.find_owned_by_id(owner_id, id).await
-        }
-
-        async fn create(
-            &self,
-            owner_id: &str,
-            new_product: crate::store::NewProduct,
-        ) -> Result<Product, StoreError> {
-            self.inner.create(owner_id, new_product).await
-        }
-
-        async fn update_owned(
-            &self,
-            owner_id: &str,
-            id: &str,
-            patch: crate::store::ProductPatch,
-        ) -> Result<Option<Product>, StoreError> {
-            self.inner.update_owned(owner_id, id, patch).await
-        }
-
-        async fn delete_owned(&self, owner_id: &str, id: &str) -> Result<bool, StoreError> {
-            self.inner.delete_owned(owner_id, id).await
-        }
-    }
-
-    // `AppState` holds one `Arc<dyn MarketplaceStore>` rather than three handles,
-    // so `CountingStore` still has to be a `UserStore` and a `SessionStore` —
-    // but it forwards them instead of writing them, which is the 39 lines that
-    // used to live here.
-    #[async_trait::async_trait]
-    impl crate::store::UserStore for CountingStore {
-        async fn find_user_by_email(
-            &self,
-            email: &str,
-        ) -> Result<Option<crate::store::UserRecord>, StoreError> {
-            self.inner.find_user_by_email(email).await
-        }
-
-        async fn find_user_by_id(
-            &self,
-            id: &str,
-        ) -> Result<Option<crate::store::StoreUser>, StoreError> {
-            self.inner.find_user_by_id(id).await
-        }
-
-        async fn create_user(
-            &self,
-            new_user: crate::store::NewUser,
-        ) -> Result<crate::store::StoreUser, StoreError> {
-            self.inner.create_user(new_user).await
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl crate::store::SessionStore for CountingStore {
-        async fn find_valid_session(
-            &self,
-            token_hash: &str,
-        ) -> Result<Option<crate::store::Session>, StoreError> {
-            self.inner.find_valid_session(token_hash).await
-        }
-
-        async fn create_session(
-            &self,
-            token_hash: &str,
-            user_id: &str,
-            expires_at: chrono::NaiveDateTime,
-        ) -> Result<(), StoreError> {
-            self.inner.create_session(token_hash, user_id, expires_at).await
-        }
-
-        async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
-            self.inner.delete_session(token_hash).await
-        }
-
-        async fn delete_expired_for_user(&self, user_id: &str) -> Result<u64, StoreError> {
-            self.inner.delete_expired_for_user(user_id).await
-        }
-
-        async fn list_sessions(
-            &self,
-            user_id: &str,
-        ) -> Result<Vec<crate::store::Session>, StoreError> {
-            self.inner.list_sessions(user_id).await
-        }
-    }
-
-    /// The concurrency limiter is a confounder in these tests: they assert how
-    /// many queries reach the database, not that load was shed.
-    fn base_config() -> Config {
-        Config {
-            global_concurrency_limit: 4096,
-            per_ip_concurrency_limit: 4096,
-            rate_limit_global_rps: 0,
-            rate_limit_per_ip_rps: 0,
-            ..Config::default()
-        }
-    }
-
-    fn counting_state(store: CountingStore) -> AppState {
-        AppState::new(base_config(), Arc::new(store), None, None)
-    }
-
-    fn get(uri: &str) -> axum::http::Request<Body> {
-        axum::http::Request::builder().uri(uri).body(Body::empty()).unwrap()
-    }
-
-    /// Drives `uris` as genuinely concurrent requests. Cloning the `Router`
-    /// clones the `AppState`, which is the point: the singleflight map has to
-    /// be shared across those clones to deduplicate anything.
-    async fn get_all(app: Router, uris: &[String]) -> Vec<StatusCode> {
-        let tasks: Vec<_> = uris
-            .iter()
-            .map(|uri| {
-                let app = app.clone();
-                let uri = uri.clone();
-                tokio::spawn(async move { app.oneshot(get(&uri)).await.unwrap().status() })
-            })
-            .collect();
-        let mut statuses = Vec::new();
-        for task in tasks {
-            statuses.push(task.await.unwrap());
-        }
-        statuses
-    }
-
-    async fn body_of(response: Response) -> serde_json::Value {
-        let bytes: Bytes = response.into_body().collect().await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
     }
 
     /// The stampede this replaces: 64 concurrent requests on a cold key issued

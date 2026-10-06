@@ -97,20 +97,14 @@ pub async fn products(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
-    use std::time::Duration;
 
-    use axum::Router;
-    use chrono::NaiveDateTime;
     use tower::ServiceExt;
 
     use crate::app::router;
-    use crate::config::Config;
-    use crate::store::{
-        InMemoryStore, NewProduct, NewUser, Product, ProductStore, Session, SessionStore,
-        StoreError, StoreUser, UserRecord, UserStore,
-    };
+    use crate::store::testdouble::{body_of, counting_state, get, get_all, CountingStore};
+    use crate::store::InMemoryStore;
 
     use super::*;
 
@@ -138,242 +132,27 @@ mod tests {
         );
     }
 
-    /// Counts the queries that actually reach the store and makes each one slow
-    /// enough that concurrent requests genuinely collide on a single fill
-    /// instead of racing past it — the same technique `handlers::products` uses,
-    /// because it is the only way to assert deduplication rather than infer it.
-    #[derive(Clone)]
-    struct CountingStore {
-        inner: InMemoryStore,
-        list_calls: Arc<AtomicUsize>,
-        count_calls: Arc<AtomicUsize>,
-        delay: Duration,
-    }
-
-    impl CountingStore {
-        async fn new() -> Self {
-            let inner = InMemoryStore::default();
-            let store = Self {
-                inner: inner.clone(),
-                list_calls: Arc::new(AtomicUsize::new(0)),
-                count_calls: Arc::new(AtomicUsize::new(0)),
-                delay: Duration::from_millis(30),
-            };
-            store.register(STORE_A, "Shop A").await;
-            store.register(STORE_B, "Shop B").await;
-            store
-        }
-
-        /// One seller row plus a full page of catalogue, so `total` is larger
-        /// than `PAGE_SIZE` and a second page exists.
-        async fn register(&self, id: &str, store_name: &str) {
-            self.inner
-                .create_user(NewUser {
-                    id: id.to_string(),
-                    email: format!("{id}@rnw.test"),
-                    password_hash: "$argon2id$not-a-real-hash".to_string(),
-                    store_name: store_name.to_string(),
-                })
-                .await
-                .expect("insert seller");
-            for index in 0..PRODUCTS_PER_STORE {
-                self.inner
-                    .create(
-                        id,
-                        NewProduct {
-                            title: format!("Product {index}"),
-                            description: None,
-                            price: 10.0,
-                            image_url: None,
-                            stock: 1,
-                        },
-                    )
-                    .await
-                    .expect("insert product");
-            }
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl ProductStore for CountingStore {
-        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_page(offset, limit).await
-        }
-
-        async fn count(&self) -> Result<i64, StoreError> {
-            self.inner.count().await
-        }
-
-        async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
-            self.inner.find_by_id(id).await
-        }
-
-        async fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Product>, StoreError> {
-            self.inner.find_by_ids(ids).await
-        }
-
-        async fn list_page_for_owner(
-            &self,
-            owner_id: &str,
-            offset: i64,
-            limit: i64,
-        ) -> Result<Vec<Product>, StoreError> {
-            self.inner.list_page_for_owner(owner_id, offset, limit).await
-        }
-
-        async fn list_public_page_by_owner(
-            &self,
-            owner_id: &str,
-            offset: i64,
-            limit: i64,
-        ) -> Result<Vec<Product>, StoreError> {
-            self.list_calls.fetch_add(1, Ordering::SeqCst);
-            tokio::time::sleep(self.delay).await;
-            self.inner.list_public_page_by_owner(owner_id, offset, limit).await
-        }
-
-        async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.inner.count_for_owner(owner_id).await
-        }
-
-        async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
-            self.count_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.count_public_by_owner(owner_id).await
-        }
-
-        async fn find_owned_by_id(
-            &self,
-            owner_id: &str,
-            id: &str,
-        ) -> Result<Option<Product>, StoreError> {
-            self.inner.find_owned_by_id(owner_id, id).await
-        }
-
-        async fn create(
-            &self,
-            owner_id: &str,
-            new_product: NewProduct,
-        ) -> Result<Product, StoreError> {
-            self.inner.create(owner_id, new_product).await
-        }
-
-        async fn update_owned(
-            &self,
-            owner_id: &str,
-            id: &str,
-            patch: crate::store::ProductPatch,
-        ) -> Result<Option<Product>, StoreError> {
-            self.inner.update_owned(owner_id, id, patch).await
-        }
-
-        async fn delete_owned(&self, owner_id: &str, id: &str) -> Result<bool, StoreError> {
-            self.inner.delete_owned(owner_id, id).await
-        }
-
-        async fn ping(&self) -> Result<(), StoreError> {
-            self.inner.ping().await
-        }
-    }
-
-    /// These tests are about the storefront's read path, so identity is a
-    /// pass-through. They exist only because `AppState` holds one
-    /// `Arc<dyn MarketplaceStore>` rather than three handles.
-    #[async_trait::async_trait]
-    impl UserStore for CountingStore {
-        async fn find_user_by_email(&self, email: &str) -> Result<Option<UserRecord>, StoreError> {
-            self.inner.find_user_by_email(email).await
-        }
-
-        async fn find_user_by_id(&self, id: &str) -> Result<Option<StoreUser>, StoreError> {
-            self.inner.find_user_by_id(id).await
-        }
-
-        async fn create_user(&self, new_user: NewUser) -> Result<StoreUser, StoreError> {
-            self.inner.create_user(new_user).await
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl SessionStore for CountingStore {
-        async fn find_valid_session(
-            &self,
-            token_hash: &str,
-        ) -> Result<Option<Session>, StoreError> {
-            self.inner.find_valid_session(token_hash).await
-        }
-
-        async fn create_session(
-            &self,
-            token_hash: &str,
-            user_id: &str,
-            expires_at: NaiveDateTime,
-        ) -> Result<(), StoreError> {
-            self.inner.create_session(token_hash, user_id, expires_at).await
-        }
-
-        async fn delete_session(&self, token_hash: &str) -> Result<bool, StoreError> {
-            self.inner.delete_session(token_hash).await
-        }
-
-        async fn delete_expired_for_user(&self, user_id: &str) -> Result<u64, StoreError> {
-            self.inner.delete_expired_for_user(user_id).await
-        }
-
-        async fn list_sessions(&self, user_id: &str) -> Result<Vec<Session>, StoreError> {
-            self.inner.list_sessions(user_id).await
-        }
-    }
-
-    /// The concurrency limiter is a confounder here: these tests assert how many
-    /// queries reach the store, not that load was shed.
-    fn base_config() -> Config {
-        Config {
-            global_concurrency_limit: 4096,
-            per_ip_concurrency_limit: 4096,
-            rate_limit_global_rps: 0,
-            rate_limit_per_ip_rps: 0,
-            ..Config::default()
-        }
-    }
-
-    fn counting_state(store: CountingStore) -> AppState {
-        AppState::new(base_config(), Arc::new(store), None, None)
-    }
-
-    fn get(uri: &str) -> axum::http::Request<axum::body::Body> {
-        axum::http::Request::builder().uri(uri).body(axum::body::Body::empty()).unwrap()
-    }
-
-    /// Drives `uris` as genuinely concurrent requests. Cloning the `Router`
-    /// clones the `AppState`, which is the point: the singleflight map has to be
-    /// shared across those clones to deduplicate anything.
-    async fn get_all(app: Router, uris: &[String]) -> Vec<StatusCode> {
-        let tasks: Vec<_> = uris
-            .iter()
-            .map(|uri| {
-                let app = app.clone();
-                let uri = uri.clone();
-                tokio::spawn(async move { app.oneshot(get(&uri)).await.unwrap().status() })
-            })
-            .collect();
-        let mut statuses = Vec::new();
-        for task in tasks {
-            statuses.push(task.await.unwrap());
-        }
-        statuses
-    }
-
-    async fn body_of(response: axum::response::Response) -> serde_json::Value {
-        let bytes: axum::body::Bytes =
-            http_body_util::BodyExt::collect(response.into_body()).await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
+    /// The spy, seeded with two sellers each holding a full page of catalogue, so
+    /// `total` is larger than `PAGE_SIZE` and a second page exists.
+    ///
+    /// The spy itself is [`CountingStore`], which lives in `store::testdouble` and
+    /// is shared with `handlers::products`. It counts the queries that actually
+    /// reach the store and makes each one slow enough that concurrent requests
+    /// genuinely collide on a single fill instead of racing past it — the only way
+    /// to assert deduplication rather than infer it. This suite reads the
+    /// storefront pair of counters; the catalogue pair stay at zero.
+    async fn counting_store() -> CountingStore {
+        let store = CountingStore::new(InMemoryStore::default());
+        store.seed_seller(STORE_A, "Shop A", PRODUCTS_PER_STORE).await;
+        store.seed_seller(STORE_B, "Shop B", PRODUCTS_PER_STORE).await;
+        store
     }
 
     /// The stampede this read path is supposed to collapse: 64 concurrent
     /// requests on a cold storefront key issued 64 page queries plus 64 counts.
     #[tokio::test]
     async fn concurrent_cold_storefront_requests_fill_once() {
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let list_calls = Arc::clone(&store.list_calls);
         let count_calls = Arc::clone(&store.count_calls);
         let app = router(counting_state(store));
@@ -390,7 +169,7 @@ mod tests {
     /// handler had no test for: a write retires a seller's cached page.
     #[tokio::test]
     async fn a_generation_bump_makes_a_cached_storefront_page_unreachable() {
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let list_calls = Arc::clone(&store.list_calls);
         let state = counting_state(store);
         let app = router(state.clone());
@@ -410,7 +189,7 @@ mod tests {
     /// Collapsing must not serialise unrelated keys into one queue.
     #[tokio::test]
     async fn distinct_stores_are_not_serialised_against_each_other() {
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let list_calls = Arc::clone(&store.list_calls);
         let app = router(counting_state(store));
 
@@ -428,7 +207,7 @@ mod tests {
     /// `hasNextPage` computed from the storefront's own rows.
     #[tokio::test]
     async fn the_storefront_page_carries_the_shared_envelope() {
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let response = router(counting_state(store))
             .oneshot(get(&format!("/stores/{STORE_A}/products")))
             .await
@@ -448,14 +227,14 @@ mod tests {
     /// distinction the envelope builder exists to keep.
     #[tokio::test]
     async fn a_store_with_no_products_is_an_empty_page_not_a_404() {
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let response = router(counting_state(store))
             .oneshot(get("/stores/usr_store_c/products"))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "an unknown store is still a 404");
 
-        let store = CountingStore::new().await;
+        let store = counting_store().await;
         let response = router(counting_state(store))
             .oneshot(get(&format!("/stores/{STORE_B}/products?page=99")))
             .await
