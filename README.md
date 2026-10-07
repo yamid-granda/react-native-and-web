@@ -23,7 +23,8 @@ building this, not just configured on paper).
   [react-native-web](https://necolas.github.io/react-native-web/); on
   native, through Expo. This is the actual mechanism that maximizes sharing
   between the two apps.
-- **`web-application`** — Next.js 16, App Router, SSR (Turbopack).
+- **`web-application`** — Next.js 16, App Router, an ISR-first hybrid
+  (Turbopack); see **Web rendering strategy** below.
 - **`mobile-application`** — Expo SDK 57 (managed), React Navigation,
   TanStack Query.
 - **`api-rs`** — Rust + Axum + sqlx read API serving the contract both clients
@@ -33,6 +34,57 @@ building this, not just configured on paper).
 - pnpm workspaces + Turborepo for task orchestration/caching.
 - Vitest for unit/component tests (web-flavored RN components, plain
   TypeScript utils); Playwright for web e2e; Detox for native e2e.
+
+## Web rendering strategy
+
+`web-application` is an **ISR-first hybrid**: the public catalogue is
+server-rendered and cached at the edge, while the private, per-user routes stay
+client-rendered. The shared `components-library` screens must be `"use client"`
+(NativeWind has no RSC support — see the gotchas below), so each catalogue route
+is a thin Server Component that fetches and then hands the data to a small
+client view which renders the shared screen:
+
+```txt
+app/marketplace/page.tsx                       Server Component: fetch page 1
+└─ app/marketplace/marketplace-view.tsx        "use client": React Query + infinite scroll
+   └─ ProductListScreen
+
+app/marketplace/[id]/page.tsx                  Server Component: fetch product + generateMetadata
+└─ app/marketplace/[id]/product-detail-view.tsx "use client": navigation callbacks
+   └─ ProductDetailScreen
+
+app/stores/[id]/page.tsx                       Server Component: fetch store + products + generateMetadata
+└─ app/stores/[id]/public-store-view.tsx       "use client": navigation callbacks
+   └─ PublicStoreScreen
+```
+
+The server reads live in `web-application/lib/api-server.ts`: the same shared
+transport (`createApi`) with Next's cache directives attached through its
+`fetchImpl` seam, so there is one transport rather than a second fetch path.
+Every read is tagged (`lib/catalogue.ts`), and a seller write retires the public
+cache on demand through the `revalidateCatalogue` server action
+(`app/actions.ts`) called from the My Store write path.
+
+### Per-route mapping
+
+| Route | SEO | Rendering | Data |
+| --- | --- | --- | --- |
+| `/` | yes | Static (shell) | none — the shared `HomeScreen` is interactive/session-driven |
+| `/marketplace` | yes | ISR (`revalidate: 60`) | Server Component fetches page 1; `useInfiniteProducts` takes over from page 2 |
+| `/marketplace/[id]` | **critical** | ISR (`revalidate: 300`) + on-demand | Server Component fetches the product; `generateMetadata` sets title/description/OpenGraph |
+| `/stores/[id]` | **critical** | ISR (`revalidate: 300`) + on-demand | Server Component fetches the store and its first product page |
+| `/login` | no | CSR | client only |
+| `/cart`, `/checkout`, `/wishlist` | no | CSR | client stores (Zustand) |
+| `/my-store`, `/my-store/new`, `/my-store/[id]/edit` | no (private) | CSR | per-user; disallowed in `robots.txt` |
+| `/sitemap.xml`, `/robots.txt` | — | Static | generated from the catalogue's first page |
+
+The dynamic product and store routes export `generateStaticParams` returning an
+empty array, so they are generated on first visit and cached by ISR — `next build`
+never reads the catalogue. If the API is unreachable when `/marketplace` is
+prerendered, the page falls back to per-request rendering (`connection()`)
+instead of caching an unavailable catalogue; a build with the API reachable
+prerenders it as ISR again. That is what keeps `next build` from requiring a
+running API.
 
 ## Prerequisites
 
