@@ -4,6 +4,14 @@ packages:
   - "mobile-application"
   - "api-rs"
 
+allowBuilds:
+  '@parcel/watcher': true
+  detox: true
+  dtrace-provider: true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
 catalog:
   typescript: ^6.0.3
   vitest: ^5.0.0
@@ -17,7 +25,3 @@ catalog:
   react: 19.2.3
   react-dom: 19.2.3
   react-native: 0.86.3
-
-onlyBuiltDependencies:
-  - esbuild
-  - sharp

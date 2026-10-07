@@ -11,7 +11,7 @@ Monorepo sharing React Native UI (NativeWind + react-native-web / Expo) between 
 
 ## 1. Requirements & install
 
-- Node ≥ 20.19 / 22.12 (`fnm use`), pnpm 9.7.1, Rust stable (1.99.0 via rustup), Docker runtime (Colima ok: `brew install colima docker && colima start`), Xcode license accepted on macOS (`sudo xcodebuild -license accept`).
+- Node ≥ 20.19 / 22.12 (`fnm use`), pnpm 12.10.1, Rust stable (1.99.0 via rustup), Docker runtime (Colima ok: `brew install colima docker && colima start`), Xcode license accepted on macOS (`sudo xcodebuild -license accept`).
 - Optional: `cargo-llvm-cov` (coverage), `k6` (load tests), `critcmp` (bench diffs).
 
 ```bash
