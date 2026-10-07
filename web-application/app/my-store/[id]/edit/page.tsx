@@ -11,6 +11,7 @@ import {
   useSessionStore,
 } from "@rnw/components-library"
 import { fetchProduct, myStoreApi } from "../../../../lib/api"
+import { revalidateCatalogue } from "../../../actions"
 
 /**
  * Edit one of the caller's products.
@@ -63,7 +64,14 @@ function EditProductForm({ id }: { id: string }) {
       isSubmitting={isSubmitting}
       setSubmitting={setIsSubmitting}
       setError={setError}
-      update={(productId, values) => store.update.mutateAsync({ id: productId, values })}
+      update={async (productId, values) => {
+        const updated = await store.update.mutateAsync({ id: productId, values })
+        // Best-effort: the save already succeeded, so a failed revalidation must
+        // not read as a failed edit. The public cache falls back to its
+        // revalidate window.
+        await revalidateCatalogue(productId, storeId).catch(() => {})
+        return updated
+      }}
       onDone={() => router.replace("/my-store")}
       onCancel={() => router.back()}
     />

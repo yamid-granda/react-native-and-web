@@ -1,37 +1,56 @@
-"use client"
-
-import { use } from "react"
-import { useRouter } from "solito/navigation"
-import { useQuery } from "@tanstack/react-query"
-import { PublicStoreScreen, storeKey, storeProductsKey } from "@rnw/components-library"
-import { fetchStore, fetchStoreProducts } from "../../../lib/api"
+import type { Metadata } from "next"
+import { notFound } from "next/navigation"
+import { connection } from "next/server"
+import type { ProductsPage, StoreProfile } from "@rnw/components-library"
+import { getStore, getStoreProducts } from "../../../lib/api-server"
+import { CatalogueUnavailable } from "../../catalogue-unavailable"
+import { PublicStoreView } from "./public-store-view"
 
 /**
- * The public storefront.
- *
- * Unauthenticated on purpose: a storefront is a catalogue page, and the
- * marketplace it sits in never asked for a token.
- *
- * Shape follows `app/marketplace/[id]/page.tsx` — `params` is a promise, so
- * `use(params)` suspends on the first render.
+ * No build-time catalogue read: storefronts are generated on first visit and
+ * cached by ISR, so `next build` never needs the API. See README "Per-route mapping".
  */
-export default function StorePage({ params }: PageProps<"/stores/[id]">) {
-  const { id } = use(params)
-  const router = useRouter()
+export function generateStaticParams() {
+  return []
+}
 
-  const store = useQuery({ queryKey: storeKey(id), queryFn: () => fetchStore(id) })
-  const products = useQuery({
-    queryKey: storeProductsKey(id),
-    queryFn: () => fetchStoreProducts(id),
-  })
+export async function generateMetadata({ params }: PageProps<"/stores/[id]">): Promise<Metadata> {
+  const { id } = await params
+  let store: StoreProfile | null
+  try {
+    store = await getStore(id)
+  } catch {
+    return {}
+  }
 
-  return (
-    <PublicStoreScreen
-      storeName={store.data?.storeName ?? "Store"}
-      products={products.data?.items ?? []}
-      isLoading={store.isPending || products.isPending}
-      error={store.error ?? products.error}
-      onSelectProduct={(productId) => router.push(`/marketplace/${productId}`)}
-    />
-  )
+  if (!store) return { title: "Store not found" }
+
+  return {
+    title: store.storeName,
+    description: `Browse everything ${store.storeName} sells on the marketplace.`,
+    openGraph: { title: store.storeName, type: "website" },
+  }
+}
+
+/**
+ * The public storefront, server-rendered for SEO.
+ *
+ * Unauthenticated on purpose, like the marketplace it sits in: a storefront is a
+ * catalogue page, and the API is the boundary that never asked for a token here.
+ */
+export default async function StorePage({ params }: PageProps<"/stores/[id]">) {
+  const { id } = await params
+
+  let store: StoreProfile | null
+  let products: ProductsPage | null
+  try {
+    ;[store, products] = await Promise.all([getStore(id), getStoreProducts(id)])
+  } catch {
+    await connection()
+    return <CatalogueUnavailable />
+  }
+
+  if (!store) notFound()
+
+  return <PublicStoreView storeName={store.storeName} products={products?.items ?? []} />
 }

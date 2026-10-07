@@ -9,6 +9,7 @@ import {
   useSessionStore,
 } from "@rnw/components-library"
 import { myStoreApi } from "../../../lib/api"
+import { revalidateCatalogue } from "../../actions"
 
 export default function NewProductPage() {
   const router = useRouter()
@@ -27,7 +28,11 @@ export default function NewProductPage() {
         onCancel={() => router.back()}
         onSubmit={async (values) => {
           try {
-            await store.create.mutateAsync(values)
+            const created = await store.create.mutateAsync(values)
+            // Best-effort: the product is created either way. A failed
+            // revalidation only leaves the public cache to its revalidate window,
+            // and must not keep the seller on the form.
+            await revalidateCatalogue(created.id, storeId).catch(() => {})
             // Back to the list rather than the new product's page: the list is what
             // a seller came here to see, and it is already invalidated by the
             // mutation.

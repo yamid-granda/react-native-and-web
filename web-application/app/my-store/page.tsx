@@ -2,8 +2,9 @@
 
 import { useCallback } from "react"
 import { useRouter } from "solito/navigation"
-import { SessionGate, StoreScreen, useMyStoreRoute } from "@rnw/components-library"
+import { SessionGate, StoreScreen, useMyStoreRoute, useSessionStore } from "@rnw/components-library"
 import { myStoreApi } from "../../lib/api"
+import { revalidateCatalogue } from "../actions"
 
 /**
  * My Store: the seller's own product list.
@@ -25,6 +26,7 @@ export default function MyStorePage() {
 
 function SignedInStore() {
   const router = useRouter()
+  const storeId = useSessionStore((state) => state.user?.id ?? "")
   // The api adapter is `lib/api`'s `myStoreApi`: it names this app's own transport
   // functions, and every My Store route needs it.
   const store = useMyStoreRoute(
@@ -33,5 +35,16 @@ function SignedInStore() {
     (id) => router.push(`/my-store/${id}/edit`),
   )
 
-  return <StoreScreen {...store} />
+  return (
+    <StoreScreen
+      {...store}
+      onDelete={(id) => {
+        store.onDelete(id)
+        // The mutation retires React Query; this retires the ISR pages a delete
+        // removes the product from. Fire-and-forget: revalidation happens on the
+        // next visit, after the delete has committed.
+        void revalidateCatalogue(id, storeId).catch(() => {})
+      }}
+    />
+  )
 }

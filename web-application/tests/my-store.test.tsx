@@ -1,24 +1,22 @@
-import { Suspense, act, type ReactElement } from "react"
+import { Suspense, type ReactElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { productWriteKeys, useSessionStore } from "@rnw/components-library"
 import MyStorePage from "../app/my-store/page"
 import NewProductPage from "../app/my-store/new/page"
-import StorePage from "../app/stores/[id]/page"
-import {
-  createMyProduct,
-  deleteMyProduct,
-  fetchMyProducts,
-  fetchStore,
-  fetchStoreProducts,
-} from "../lib/api"
+import { PublicStoreView } from "../app/stores/[id]/public-store-view"
+import { createMyProduct, deleteMyProduct, fetchMyProducts } from "../lib/api"
 
 // `lib/api` is a re-export of the shared client (`createApi` in
 // `@rnw/components-library`/api/transport), but the module path and every export
 // name are unchanged, so this automock still intercepts all the call sites. The
 // transport behind it is covered in components-library/src/api/transport.test.ts.
 vi.mock("../lib/api")
+// The seller write path retires the ISR cache through a server action. Its own
+// behavior is Next's; these tests only need it not to reach for `next/cache`, and
+// to resolve like the async function it stands in for.
+vi.mock("../app/actions", () => ({ revalidateCatalogue: vi.fn(async () => {}) }))
 const push = vi.fn()
 const replace = vi.fn()
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }))
@@ -59,15 +57,6 @@ function wrap(ui: ReactElement, queryClient: QueryClient) {
       <Suspense fallback={null}>{ui}</Suspense>
     </QueryClientProvider>
   )
-}
-
-/** For the promise-taking `params` prop: settle it inside act(). */
-async function renderAsync(ui: ReactElement) {
-  await act(async () => {
-    renderWithClient(ui)
-    await Promise.resolve()
-    await Promise.resolve()
-  })
 }
 
 function signIn() {
@@ -215,31 +204,25 @@ describe("NewProductPage", () => {
   })
 })
 
-describe("StorePage (the public storefront)", () => {
-  beforeEach(() => {
-    useSessionStore.setState({ token: null, user: null, status: "anonymous" })
-    replace.mockClear()
-  })
+describe("PublicStoreView (the public storefront)", () => {
+  beforeEach(() => push.mockClear())
 
-  it("renders a store without a session", async () => {
-    vi.mocked(fetchStore).mockResolvedValue({
-      id: "usr_1",
-      storeName: "Riverbend Vintage",
-      createdAt: "2026-01-01T00:00:00.000Z",
-    })
-    vi.mocked(fetchStoreProducts).mockResolvedValue(page)
-
-    await renderAsync(
-      <StorePage params={Promise.resolve({ id: "usr_1" })} searchParams={Promise.resolve({})} />,
+  it("renders the server-fetched store without a session", () => {
+    render(
+      <PublicStoreView storeName="Riverbend Vintage" products={page.items} />,
     )
 
-    await waitFor(() => {
-      expect(screen.getByText("Leather Weekender Bag")).toBeInTheDocument()
-    })
+    expect(screen.getByText("Leather Weekender Bag")).toBeInTheDocument()
     expect(screen.getAllByText("Riverbend Vintage").length).toBeGreaterThan(0)
-    // And no session was required for any of it.
-    expect(replacedWith()).not.toContain("/login")
-    expect(fetchStore).toHaveBeenCalledWith("usr_1")
-    expect(fetchStoreProducts).toHaveBeenCalledWith("usr_1")
+  })
+
+  it("routes a storefront product to its detail page", () => {
+    render(
+      <PublicStoreView storeName="Riverbend Vintage" products={page.items} />,
+    )
+
+    fireEvent.click(screen.getByTestId("product-card-prd_1"))
+
+    expect(pushedTo()).toContain("/marketplace/prd_1")
   })
 })

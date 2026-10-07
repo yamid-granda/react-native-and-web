@@ -1,49 +1,38 @@
-import { Suspense, act } from "react"
-import { describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import ProductDetailPage from "../app/marketplace/[id]/page"
-import { fetchProduct } from "../lib/api"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
+import { ProductDetailView } from "../app/marketplace/[id]/product-detail-view"
 
-// `lib/api` is a re-export of the shared client (`createApi` in
-// `@rnw/components-library`/api/transport), but the module path and every export
-// name are unchanged, so this automock still intercepts all the call sites. The
-// transport behind it is covered in components-library/src/api/transport.test.ts.
-vi.mock("../lib/api")
 // solito/navigation's useRouter() calls next/navigation's useRouter, which
 // throws outside a real Next.js app router (see MainNav.web.test.tsx).
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+const push = vi.fn()
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }) }))
 
-describe("ProductDetailPage", () => {
-  it("renders the fetched product", async () => {
-    vi.mocked(fetchProduct).mockResolvedValue({
-      id: "prod-1",
-      title: "Wireless Headphones",
-      price: 129.99,
-      stock: 10,
-    })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const paramsPromise = Promise.resolve({ id: "prod-1" })
+const product = {
+  id: "prod-1",
+  title: "Wireless Headphones",
+  description: "Noise cancelling.",
+  price: 129.99,
+  stock: 10,
+  storeId: "usr_1",
+  storeName: "Riverbend Vintage",
+}
 
-    // `use(params)` suspends on the first render; the retry that follows once
-    // the promise settles only commits if it's driven from inside the same
-    // act() batch as the initial render (a plain `render()` + `waitFor()`
-    // leaves the retry stuck showing the Suspense fallback forever).
-    await act(async () => {
-      render(
-        <QueryClientProvider client={queryClient}>
-          <Suspense fallback={null}>
-            <ProductDetailPage params={paramsPromise} searchParams={Promise.resolve({})} />
-          </Suspense>
-        </QueryClientProvider>,
-      )
-      await paramsPromise
-      await Promise.resolve()
-    })
+describe("ProductDetailView", () => {
+  beforeEach(() => push.mockClear())
 
-    await waitFor(() => {
-      expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
-    })
-    expect(fetchProduct).toHaveBeenCalledWith("prod-1")
+  it("renders the server-fetched product", () => {
+    render(<ProductDetailView product={product} />)
+
+    expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
+    expect(screen.getByText("$129.99")).toBeInTheDocument()
+  })
+
+  it("routes the seller link to the public storefront", () => {
+    render(<ProductDetailView product={product} />)
+
+    fireEvent.click(screen.getByTestId("product-detail-store"))
+
+    // The URL, ignoring solito's extra options argument.
+    expect(push.mock.calls.map((call) => call[0])).toContain("/stores/usr_1")
   })
 })
