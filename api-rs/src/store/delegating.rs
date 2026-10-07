@@ -33,12 +33,17 @@ impl DelegatingStore {
 
 #[async_trait]
 impl ProductStore for DelegatingStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
-        self.0.list_page(offset, limit).await
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        q: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError> {
+        self.0.list_page(offset, limit, q).await
     }
 
-    async fn count(&self) -> Result<i64, StoreError> {
-        self.0.count().await
+    async fn count(&self, q: Option<&str>) -> Result<i64, StoreError> {
+        self.0.count(q).await
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {

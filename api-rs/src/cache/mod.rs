@@ -36,7 +36,8 @@ pub fn detail_key(id: &str) -> String {
     format!("products:detail:{id}")
 }
 
-/// The catalog list key: namespace generation, then the page's float bits.
+/// The catalog list key: namespace generation, then the page's float bits,
+/// then the normalised search query.
 ///
 /// The generation is what makes a write path possible at all. Page keys cannot
 /// be enumerated — `products:list:<bits>` over every page a shopper has ever
@@ -44,8 +45,20 @@ pub fn detail_key(id: &str) -> String {
 /// leave every cached page stale until its 5 s TTL ran out. Folding in a counter
 /// that a write bumps retires all of them at once, with one `INCR` and no
 /// `SCAN` (see `ARCHITECTURE.md` §12).
-pub fn list_key(generation: i64, page: f64) -> String {
-    format!("products:list:{generation}:{}", page.to_bits())
+///
+/// `q` is part of the key so two different search queries against the same
+/// page never share a cache entry — that is the whole point of moving the
+/// filter server-side. `None` and the empty string both serialise to `:`
+/// (`#none:` and `#:`), keeping the pre-search key shape unchanged for the
+/// common unfiltered read path so no existing entry gets evicted on the
+/// upgrade.
+pub fn list_key(generation: i64, page: f64, q: Option<&str>) -> String {
+    let q_tag = q.unwrap_or("").trim();
+    if q_tag.is_empty() {
+        format!("products:list:{generation}:{}", page.to_bits())
+    } else {
+        format!("products:list:{generation}:{}:{}", page.to_bits(), q_tag)
+    }
 }
 
 /// A public storefront's list key: the same scheme under a per-store namespace,
@@ -395,7 +408,7 @@ mod tests {
         let cache = caching();
         // The builder under test, not a literal copy of its format: a literal
         // here would keep passing if the scheme changed underneath it.
-        let key = |generation: i64| list_key(generation, 1.0);
+        let key = |generation: i64| list_key(generation, 1.0, None);
         cache.set(Kind::List, &key(cache.generation()), Bytes::from_static(b"before")).await;
         assert!(cache.get(Kind::List, &key(cache.generation())).await.is_some());
 
@@ -411,14 +424,28 @@ mod tests {
     #[test]
     fn the_key_scheme_keeps_its_format() {
         assert_eq!(detail_key("prod-1"), "products:detail:prod-1");
-        assert_eq!(list_key(7, 1.0), format!("products:list:7:{}", 1.0f64.to_bits()));
+        // `None` keeps the pre-search key shape unchanged, so a deploy that
+        // ships this change does not invalidate every existing list entry on the
+        // unfiltered read path.
+        assert_eq!(list_key(7, 1.0, None), format!("products:list:7:{}", 1.0f64.to_bits()));
+        // `Some("")` is also unfiltered and still hashes to the same key.
+        assert_eq!(list_key(7, 1.0, Some("")), list_key(7, 1.0, None));
+        // `Some("blusa")` is a real search and gets its own cache slot.
+        assert_eq!(
+            list_key(7, 1.0, Some("blusa")),
+            format!("products:list:7:{}:blusa", 1.0f64.to_bits())
+        );
         assert_eq!(
             store_list_key(7, "usr-1", 1.0),
             format!("stores:usr-1:products:list:7:{}", 1.0f64.to_bits())
         );
         // Distinct pages and distinct stores are distinct keys — the property
         // singleflight and retirement both rest on.
-        assert_ne!(list_key(7, 1.0), list_key(7, 2.0));
+        assert_ne!(list_key(7, 1.0, None), list_key(7, 2.0, None));
+        // And distinct queries, since the search-filtered fetch has to live
+        // behind its own cache entry.
+        assert_ne!(list_key(7, 1.0, Some("a")), list_key(7, 1.0, Some("b")));
+        assert_ne!(list_key(7, 1.0, None), list_key(7, 1.0, Some("a")));
         assert_ne!(store_list_key(7, "usr-1", 1.0), store_list_key(7, "usr-2", 1.0));
     }
 
@@ -447,14 +474,14 @@ mod tests {
     #[tokio::test]
     async fn invalidate_detail_only_touches_the_detail_key() {
         let cache = caching();
-        cache.set(Kind::List, &list_key(0, 1.0), Bytes::from_static(b"list")).await;
+        cache.set(Kind::List, &list_key(0, 1.0, None), Bytes::from_static(b"list")).await;
         cache.set(Kind::Detail, &detail_key("prod-1"), Bytes::from_static(b"detail")).await;
 
         cache.invalidate_detail("prod-1").await;
 
         assert!(cache.get(Kind::Detail, &detail_key("prod-1")).await.is_none());
         assert!(
-            cache.get(Kind::List, &list_key(0, 1.0)).await.is_some(),
+            cache.get(Kind::List, &list_key(0, 1.0, None)).await.is_some(),
             "list pages are retired by the generation, not per key"
         );
     }

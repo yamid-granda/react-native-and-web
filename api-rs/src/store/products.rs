@@ -22,6 +22,14 @@ use sqlx::{FromRow, PgPool, Postgres};
 /// initialised with.
 pub const PAGE_SIZE: i64 = 20;
 
+/// Cap on the search `q` after trimming. Bounds two costs the database pays on
+/// every cached entry: the index scan range (LIKE patterns read up to the first
+/// wildcard, so a long prefix is the expensive shape) and the cache key length
+/// (`list_key` folds `q` into the key, and `L1Cache` is a fixed-size map). 100
+/// characters is well past anything a real shopper types and well short of the
+/// shape an automated scan generates.
+pub const MAX_QUERY_LENGTH: usize = 100;
+
 /// Title cap for a seller-created product. Long enough for a real title,
 /// short enough that the list projection stays small; matches what the API
 /// accepts, so the client can validate without asking.
@@ -158,9 +166,21 @@ pub trait ProductStore: Send + Sync + 'static {
     /// The rows for one page. The total row count is deliberately a separate
     /// call: it is per-catalog rather than per-page, so the handler caches it
     /// instead of recomputing it on every request.
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError>;
+    ///
+    /// `q` is the case-insensitive substring the handler parsed out of `?q=` and
+    /// trimmed to [`MAX_QUERY_LENGTH`]. `None` and `Some("")` both mean
+    /// "unfiltered": the client-side substring filter the search bar used to
+    /// rely on is replaced by this predicate, so the two shapes a caller used
+    /// to pass through unchanged must continue to behave unchanged.
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        q: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError>;
     /// `COUNT(*)` over the whole catalog — the `total` the envelope requires.
-    async fn count(&self) -> Result<i64, StoreError>;
+    /// `q` has the same semantics as [`Self::list_page`].
+    async fn count(&self, q: Option<&str>) -> Result<i64, StoreError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError>;
     /// The rows for `ids`, in an unspecified order, with no entry for an id that
     /// does not exist. The batched form of [`Self::find_by_id`]: one statement
@@ -289,11 +309,23 @@ impl From<ProductRow> for Product {
 /// `migrations/20261004210000_pin_product_id_collation`. The `COLLATE` clause
 /// and that migration are one change — neither is safe alone.
 const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
+// Search variant of `LIST_QUERY`: the same projection and the same `LEFT JOIN`,
+// with a case-insensitive substring predicate over `title` OR `description`.
+// `ILIKE` with a `%...%` wildcard cannot use the existing
+// `Product_createdAt_id_idx`, so a search walks the whole catalogue; that is the
+// cost of correctness over the in-memory client-side filter this replaces, and
+// it is bounded by `MAX_QUERY_LENGTH` rather than by a separate search
+// subsystem. `$3` is bound by the caller to a `%`-wrapped, lowercased copy of
+// `q`, with no literal escape, so a `%` or `_` a shopper put in is still a
+// wildcard — the `q` cap keeps that acceptable.
+const LIST_SEARCH_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."title" ILIKE $3 OR p."description" ILIKE $3 ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
 // Not a raw string: this one *ends* in a `"`, and in `r#"…"#` that quote would
 // pair with the `#` and become the terminator — leaving the identifier
 // unclosed. The two queries above get away with `r#"…"#` only because neither
 // ends in a quote.
 const COUNT_QUERY: &str = "SELECT COUNT(*) FROM \"Product\"";
+const COUNT_SEARCH_QUERY: &str =
+    "SELECT COUNT(*) FROM \"Product\" WHERE \"title\" ILIKE $1 OR \"description\" ILIKE $1";
 const DETAIL_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = $1"#;
 /// `DETAIL_QUERY` with one predicate instead of N: the same projection and the
 /// same `LEFT JOIN`, so a row is byte-identical to what the singular query
@@ -569,16 +601,44 @@ pub fn generate_product_id() -> String {
 
 #[async_trait::async_trait]
 impl ProductStore for SqlProductStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        q: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError> {
         let mut connection = Self::acquire(self.reads(), self.read_role()).await?;
-        let rows: Vec<ProductRow> =
-            sqlx::query_as(LIST_QUERY).bind(limit).bind(offset).fetch_all(&mut *connection).await?;
+        let rows: Vec<ProductRow> = match q {
+            Some(pattern) => {
+                sqlx::query_as(LIST_SEARCH_QUERY)
+                    .bind(limit)
+                    .bind(offset)
+                    .bind(pattern)
+                    .fetch_all(&mut *connection)
+                    .await?
+            }
+            None => {
+                sqlx::query_as(LIST_QUERY)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&mut *connection)
+                    .await?
+            }
+        };
         Ok(rows.into_iter().map(Product::from).collect())
     }
 
-    async fn count(&self) -> Result<i64, StoreError> {
+    async fn count(&self, q: Option<&str>) -> Result<i64, StoreError> {
         let mut connection = Self::acquire(self.reads(), self.read_role()).await?;
-        let total: i64 = sqlx::query_scalar(COUNT_QUERY).fetch_one(&mut *connection).await?;
+        let total: i64 = match q {
+            Some(pattern) => {
+                sqlx::query_scalar(COUNT_SEARCH_QUERY)
+                    .bind(pattern)
+                    .fetch_one(&mut *connection)
+                    .await?
+            }
+            None => sqlx::query_scalar(COUNT_QUERY).fetch_one(&mut *connection).await?,
+        };
         Ok(total)
     }
 
