@@ -59,6 +59,14 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     expect(screen.getByText("Mechanical Keyboard")).toBeInTheDocument()
   })
 
+  // Same shared `ScreenHeader` the cart and wishlist use, so the title clears
+  // the status bar without this screen restating the safe-area math.
+  it("renders the screen title via ScreenHeader", () => {
+    renderList({ products })
+    expect(screen.getByTestId("marketplace-title")).toBeInTheDocument()
+    expect(screen.getByText("Marketplace")).toBeInTheDocument()
+  })
+
   it("shows a loading state", () => {
     renderList({ products: [], isLoading: true })
     expect(screen.getByText("Loading products…")).toBeInTheDocument()
@@ -86,6 +94,17 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
     expect(screen.getByText("Mechanical Keyboard")).toBeInTheDocument()
     expect(screen.queryByText("Wireless Headphones")).not.toBeInTheDocument()
+  })
+
+  it("emits the active query to the page through onQueryChange", async () => {
+    const onQueryChange = vi.fn()
+    renderList({ products, onQueryChange })
+
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "keyboard" } })
+
+    // `useDeferredValue` keeps the input responsive while the filter still
+    // settles; the page sees the same string on the next render pass.
+    await waitFor(() => expect(onQueryChange).toHaveBeenLastCalledWith("keyboard"))
   })
 
   it("shows a no-match message when the search query matches nothing", () => {

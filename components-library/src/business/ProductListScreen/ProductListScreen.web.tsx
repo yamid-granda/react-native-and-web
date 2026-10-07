@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ComponentType } from "react"
 import { Text, View, type TextProps, type ViewProps } from "react-native"
 import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
@@ -20,6 +21,13 @@ export type ProductListScreenProps = {
   isFetchingNextPage?: boolean
   onEndReached?: () => void
   onSelectProduct?: (id: string) => void
+  /**
+   * Fires with the **debounced** search query (`useDeferredValue` already
+   * mediates typing). The page owns the actual `q` and re-runs
+   * `useInfiniteProducts` when it changes — the list screen is the input's
+   * source of truth, the page is the request's source of truth.
+   */
+  onQueryChange?: (q: string) => void
   /** Resolves the recently-viewed rail. Props in, no fetching here — see `StoreScreen`. */
   fetchProductsByIds: FetchProductsByIds
 }
@@ -32,9 +40,10 @@ export function ProductListScreen({
   isFetchingNextPage,
   onEndReached,
   onSelectProduct,
+  onQueryChange,
   fetchProductsByIds,
 }: ProductListScreenProps) {
-  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results } =
+  const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results, deferredQuery } =
     useProductSearch(products)
   const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const sentinelRef = useRef<View>(null)
@@ -48,6 +57,14 @@ export function ProductListScreen({
     return product ? [product] : []
   })
   const showRecentlyViewed = recentlyViewed.length > 0 && !query.trim()
+
+  // The deferred query drives the server-side refetch: the page forwards it
+  // to `useInfiniteProducts`, which folds it into the React Query key so a
+  // fresh query resets pagination and a stale page 1 from another search
+  // cannot leak into this one.
+  useEffect(() => {
+    onQueryChange?.(deferredQuery)
+  }, [deferredQuery, onQueryChange])
 
   // stable element references so unrelated re-renders (e.g.
   // isFetchingNextPage flipping) don't recreate every card's onPress
@@ -78,10 +95,8 @@ export function ProductListScreen({
 
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">
-          Marketplace
-        </ClassNameText>
+      <ScreenHeader title="Marketplace" testID="marketplace-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
         <SearchInput value={query} onChangeText={setQuery} />
         <ProductFilterControls
           sortBy={sortBy}
