@@ -66,3 +66,40 @@ describe("filterAndSortProducts", () => {
     expect(filter({ priceRange: { min: 1000 } })).toEqual([])
   })
 })
+
+describe("filterAndSortProducts accent-insensitive search", () => {
+  const accented = [
+    { id: "a", title: "Blusa para bebé", price: 10, stock: 1 },
+    { id: "b", title: "Tina", description: "Bañera grande", price: 40, stock: 1 },
+    { id: "c", title: "Crème brûlée candle", price: 12, stock: 1 },
+    { id: "d", title: "Yoga Mat", price: 5, stock: 1 },
+  ]
+
+  function search(query: string) {
+    return filterAndSortProducts(accented, { query, sortBy: "relevance", priceRange: {} }).map(
+      (p) => p.id,
+    )
+  }
+
+  it("finds bebé through bebe, bebé, and BEBÉ", () => {
+    expect(search("bebe")).toEqual(["a"])
+    expect(search("bebé")).toEqual(["a"])
+    expect(search("BEBÉ")).toEqual(["a"])
+  })
+
+  it("finds bañera through banera in the description", () => {
+    expect(search("banera")).toEqual(["b"])
+    expect(search("bañera")).toEqual(["b"])
+  })
+
+  it("folds other Latin diacritics the same way", () => {
+    expect(search("creme brulee")).toEqual(["c"])
+    expect(search("CRÈME")).toEqual(["c"])
+  })
+
+  it("still matches plain queries and non-matches as before", () => {
+    expect(search("yoga")).toEqual(["d"])
+    expect(search("nonexistent")).toEqual([])
+    expect(search("")).toEqual(["a", "b", "c", "d"])
+  })
+})

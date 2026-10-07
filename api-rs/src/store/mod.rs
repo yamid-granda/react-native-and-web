@@ -2,6 +2,7 @@ pub mod contract;
 pub mod delegating;
 pub mod memory;
 pub mod products;
+pub mod search;
 pub mod sessions;
 pub mod users;
 

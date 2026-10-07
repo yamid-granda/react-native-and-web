@@ -105,6 +105,13 @@ builds `--bin api-rs`), so migrations run from a checkout rather than from a
 deployed instance. `db:migrate` is idempotent, and sqlx takes a Postgres
 advisory lock, so several instances or developers running it at once is safe.
 
+The server never migrates at boot, so a binary newer than its database starts
+and then fails the queries the missing migration owns. Product search is the
+sharp edge: its queries call `unaccent()`, and a database predating the
+`enable_unaccent_for_search` migration answers 500 to every `?q=` request.
+The server probes for the extension at startup and refuses to boot with the
+remedy (`db:migrate` against that database) rather than failing requests.
+
 ### First-time setup on an existing database
 
 A database migrated by Prisma has an **empty** `_sqlx_migrations` table, so sqlx

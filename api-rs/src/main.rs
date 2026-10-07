@@ -22,10 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
     telemetry::spawn_pool_sampler(pool.clone(), "primary");
-    telemetry::spawn_rss_sampler();
-
-    // A read replica is an accelerator, not a dependency: unreachable or
-    // misconfigured means reads stay on the primary, exactly as before.
+    telemetry::spawn_rss_sampler(); // A read replica is an accelerator, not a dependency: unreachable or
+                                    // misconfigured means reads stay on the primary, exactly as before.
     let read_pool = match config.database_read_url.as_deref() {
         Some(url) => {
             let pool = api_rs::store::connect_read_replica(
@@ -46,6 +44,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(url) => connect_valkey(url).await,
         None => None,
     };
+
+    // The `?q=` search folds accents with `unaccent()`, which lives in the
+    // database rather than in this binary: a checkout rebuilt without running
+    // `db:migrate` boots fine and then answers 500 to every search
+    // (`function unaccent(text) does not exist`). Probe once, here, so that
+    // misconfiguration fails the boot with the remedy instead of failing
+    // requests with the symptom. Both pools are probed because public reads
+    // go to the replica when one is configured.
+    require_unaccent(&pool, "primary").await?;
+    if let Some(read) = &read_pool {
+        require_unaccent(read, "read").await?;
+    }
 
     let store = match read_pool {
         Some(read) => SqlProductStore::with_read_replica(pool, read),
@@ -70,6 +80,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     tracing::info!("shutdown complete");
+    Ok(())
+}
+
+/// Verifies the pool serves `unaccent()`, which the product search queries
+/// call on every `?q=` request. Fails the boot — rather than every search —
+/// when the database predates the `enable_unaccent_for_search` migration, with
+/// the command that repairs it.
+async fn require_unaccent(
+    pool: &sqlx::PgPool,
+    role: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Err(error) = sqlx::query("SELECT unaccent('e')").execute(pool).await {
+        return Err(format!(
+            "postgres {role} pool is missing the `unaccent` extension ({error}); \
+             run `pnpm --filter @rnw/api-rs db:migrate` against this database and restart"
+        )
+        .into());
+    }
     Ok(())
 }
 

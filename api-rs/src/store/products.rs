@@ -310,22 +310,28 @@ impl From<ProductRow> for Product {
 /// and that migration are one change — neither is safe alone.
 const LIST_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
 // Search variant of `LIST_QUERY`: the same projection and the same `LEFT JOIN`,
-// with a case-insensitive substring predicate over `title` OR `description`.
+// with an accent- and case-insensitive substring predicate over `title` OR
+// `description`. The needle (`$3`) arrives already accent-stripped and
+// lowercased by `parse_search_q` (Unicode NFKD fold); the column side is
+// folded by `unaccent()`, whose transliteration dictionary agrees with that
+// fold on the Latin range, with `ILIKE` folding case on top. `unaccent` comes
+// from the `unaccent` extension, enabled by
+// `migrations/20261007120000_enable_unaccent_for_search`.
 // `ILIKE` with a `%...%` wildcard cannot use the existing
 // `Product_createdAt_id_idx`, so a search walks the whole catalogue; that is the
 // cost of correctness over the in-memory client-side filter this replaces, and
 // it is bounded by `MAX_QUERY_LENGTH` rather than by a separate search
-// subsystem. `$3` is bound by the caller to a `%`-wrapped, lowercased copy of
+// subsystem. `$3` is bound by the caller to a `%`-wrapped, folded copy of
 // `q`, with no literal escape, so a `%` or `_` a shopper put in is still a
 // wildcard — the `q` cap keeps that acceptable.
-const LIST_SEARCH_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."title" ILIKE $3 OR p."description" ILIKE $3 ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
+const LIST_SEARCH_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE unaccent(p."title") ILIKE $3 OR unaccent(p."description") ILIKE $3 ORDER BY p."createdAt" ASC, p."id" COLLATE "C" ASC LIMIT $1 OFFSET $2"#;
 // Not a raw string: this one *ends* in a `"`, and in `r#"…"#` that quote would
 // pair with the `#` and become the terminator — leaving the identifier
 // unclosed. The two queries above get away with `r#"…"#` only because neither
 // ends in a quote.
 const COUNT_QUERY: &str = "SELECT COUNT(*) FROM \"Product\"";
 const COUNT_SEARCH_QUERY: &str =
-    "SELECT COUNT(*) FROM \"Product\" WHERE \"title\" ILIKE $1 OR \"description\" ILIKE $1";
+    "SELECT COUNT(*) FROM \"Product\" WHERE unaccent(\"title\") ILIKE $1 OR unaccent(\"description\") ILIKE $1";
 const DETAIL_QUERY: &str = r#"SELECT p."id", p."title", p."description", p."price", p."currency", p."imageUrl", p."stock", p."createdAt", p."ownerId", u."storeName" FROM "Product" p LEFT JOIN "User" u ON u."id" = p."ownerId" WHERE p."id" = $1"#;
 /// `DETAIL_QUERY` with one predicate instead of N: the same projection and the
 /// same `LEFT JOIN`, so a row is byte-identical to what the singular query

@@ -67,6 +67,7 @@ sqlx = { version = "0.9", default-features = false, features = [
   "tls-rustls-ring",
 ] }
 thiserror = "2"
+unicode-normalization = "0.1"
 # Features are what this crate *calls*, not what its dependencies happen to
 # enable. Feature unification means `redis`/`sqlx`/`hyper`/`tonic` currently pull
 # in `time`, `sync` and `net` for us, which hides the real dependency: trimming

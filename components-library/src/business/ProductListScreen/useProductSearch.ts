@@ -1,17 +1,20 @@
 import { useDeferredValue, useMemo, useState } from "react"
 import type { ProductData } from "../../types/Product"
+import { normalizeSearchText } from "./normalizeSearchText"
 
 export type SortOption = "relevance" | "price-asc" | "price-desc"
 export type PriceRange = { min?: number; max?: number }
 
 // same substring-match approach as IconsGallery's search. Only matches
 // against products already fetched — search doesn't query further pages.
+// Both sides are accent-folded (Unicode NFKD, same canonical form as the
+// server's `?q=` search), so a fetched "Bebé" survives a typed "bebe".
 function matchesQuery(query: string, product: ProductData) {
-  const normalized = query.trim().toLowerCase()
+  const normalized = normalizeSearchText(query.trim())
   if (!normalized) return true
   return (
-    product.title.toLowerCase().includes(normalized) ||
-    (product.description?.toLowerCase().includes(normalized) ?? false)
+    normalizeSearchText(product.title).includes(normalized) ||
+    (product.description != null && normalizeSearchText(product.description).includes(normalized))
   )
 }
 
