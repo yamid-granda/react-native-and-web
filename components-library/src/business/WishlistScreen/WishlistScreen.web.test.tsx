@@ -36,6 +36,13 @@ describe("WishlistScreen (web, via react-native-web)", () => {
     )
   })
 
+  // The title lives in a shared `ScreenHeader` wrapper so it picks up the
+  // safe-area-aware top padding without each screen restating it.
+  it("renders the screen title via ScreenHeader", () => {
+    renderWishlist(catalog(product))
+    expect(screen.getByText("Wishlist")).toBeInTheDocument()
+  })
+
   it("renders a wishlisted product with its resolved price", async () => {
     useWishlistStore.getState().toggleItem(product.id)
     renderWishlist(catalog(product))

@@ -11,6 +11,7 @@ import {
 import type { ComponentProps, ComponentType } from "react"
 import { Button } from "../../common/Button/Button"
 import { FormField } from "../../common/FormField/FormField"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { useSessionStore } from "./useSessionStore"
 import type { AuthSession } from "../../types/Store"
 
@@ -94,15 +95,12 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
   return (
     <ClassNameKeyboardAvoidingView className="flex-1 bg-background" behavior="padding">
       <ClassNameScrollView testID="auth-screen" className="flex-1 bg-background">
-        <ClassNameView className="gap-4 p-6">
-          <ClassNameView className="gap-1">
-            <ClassNameText testID="auth-title" className="text-2xl font-semibold text-foreground">
-              {isSignUp ? "Open your store" : "Sign in"}
-            </ClassNameText>
-            {subtitle ? (
-              <ClassNameText className="text-sm text-muted">{subtitle}</ClassNameText>
-            ) : null}
-          </ClassNameView>
+        <ScreenHeader
+          title={isSignUp ? "Open your store" : "Sign in"}
+          subtitle={subtitle}
+          testID="auth-title"
+        />
+        <ClassNameView className="gap-4 px-6 pb-6">
 
           <FormField
             label="Email"

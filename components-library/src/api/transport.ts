@@ -121,8 +121,18 @@ export function createApi(config: ApiConfig) {
     })
   }
 
-  function fetchProducts(page = 1) {
-    return request<ProductsPage>(`/products?page=${page}`)
+  /**
+   * `q` is the case-insensitive substring search the marketplace uses for its
+   * search bar. When set, the server filters against `title` OR `description`
+   * for the whole catalogue (not just the pages already loaded), so the same
+   * `q` reaches the same answer regardless of which page a shopper has scrolled
+   * to.
+   */
+  function fetchProducts(page = 1, q?: string) {
+    const params = new URLSearchParams({ page: String(page) })
+    const trimmed = q?.trim()
+    if (trimmed) params.set("q", trimmed)
+    return request<ProductsPage>(`/products?${params.toString()}`)
   }
 
   function fetchProduct(id: string) {

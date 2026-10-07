@@ -34,6 +34,13 @@ describe("CartScreen (web, via react-native-web)", () => {
     await waitFor(() => expect(screen.getByText("Your cart is empty.")).toBeInTheDocument())
   })
 
+  // The title lives in a shared `ScreenHeader` wrapper so it picks up the
+  // safe-area-aware top padding without each screen restating it.
+  it("renders the screen title via ScreenHeader", () => {
+    renderCart(catalog(product))
+    expect(screen.getByText("Cart")).toBeInTheDocument()
+  })
+
   it("renders a line item with its quantity and the total price", async () => {
     useCartStore.getState().addItem(product.id)
     renderCart(catalog(product))

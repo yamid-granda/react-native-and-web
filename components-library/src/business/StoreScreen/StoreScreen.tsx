@@ -8,6 +8,7 @@ import {
   type ViewProps,
 } from "react-native"
 import { Button } from "../../common/Button/Button"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { formatPrice } from "../../utils/formatPrice"
 import type { ProductData } from "../../types/Product"
 
@@ -48,8 +49,8 @@ export function StoreScreen({
 }: StoreScreenProps) {
   return (
     <ClassNameScrollView testID="store-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">{storeName}</ClassNameText>
+      <ScreenHeader title={storeName} testID="store-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
 
         {isLoading ? <ClassNameText className="text-muted">Loading your products…</ClassNameText> : null}
         {error ? (
