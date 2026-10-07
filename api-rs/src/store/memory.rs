@@ -130,19 +130,20 @@ impl InMemoryStore {
 
     /// Case-insensitive substring match against `title` OR `description`, with
     /// the pattern already wrapped in `%...%` by the caller. Empty `pattern`
-    /// (`%`) matches everything, mirroring Postgres `ILIKE '%'`. Lowercased on
-    /// both sides so a row's `description` carrying uppercase letters is
-    /// reachable through a lowercase shopper query.
+    /// (`%`) matches everything, mirroring Postgres `ILIKE '%'`. Folded
+    /// through [`crate::store::search::fold_search_text`] on both sides so a
+    /// row's `Bebé` is reachable through a shopper's `bebe` — the same fold the
+    /// handler applies to `q` and `unaccent()` applies to the column in SQL.
     fn matches_pattern(product: &Product, pattern: &str) -> bool {
-        let needle = pattern.trim_matches('%').to_ascii_lowercase();
+        let needle = crate::store::search::fold_search_text(pattern.trim_matches('%'));
         if needle.is_empty() {
             return true;
         }
-        let in_title = product.title.to_ascii_lowercase().contains(&needle);
+        let in_title = crate::store::search::fold_search_text(&product.title).contains(&needle);
         let in_description = product
             .description
             .as_deref()
-            .map(|text| text.to_ascii_lowercase().contains(&needle))
+            .map(|text| crate::store::search::fold_search_text(text).contains(&needle))
             .unwrap_or(false);
         in_title || in_description
     }

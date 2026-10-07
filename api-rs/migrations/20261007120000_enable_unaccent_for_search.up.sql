@@ -1,0 +1,17 @@
+-- Enables the `unaccent` extension for accent-insensitive product search.
+--
+-- The marketplace search (`LIST_SEARCH_QUERY` / `COUNT_SEARCH_QUERY` in
+-- `src/store/products.rs`) matches `?q=` against `title` OR `description`.
+-- The needle arrives already accent-stripped and lowercased by the handler's
+-- Unicode NFKD fold (`src/store/search.rs`), but Postgres `ILIKE` only folds
+-- case — `bebe` never matches a stored `bebé` without help. Wrapping the
+-- column side in `unaccent()` strips diacritics at comparison time using the
+-- extension's transliteration dictionary, which agrees with the NFKD fold on
+-- the Latin range, so `?q=bebe` and `?q=bebé` return the same rows.
+--
+-- Extension, not a second column: a generated/stored folded column would need
+-- a backfill and a trigger to stay in sync with seller writes, while
+-- `unaccent()` folds at read time and is correct by construction. The search
+-- already walks the whole catalogue (a `%...%` ILIKE cannot use the list
+-- index), so the per-row function call adds no new plan shape.
+CREATE EXTENSION IF NOT EXISTS unaccent;

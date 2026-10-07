@@ -110,6 +110,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "unicode-normalization",
 ]
 
 [[package]]

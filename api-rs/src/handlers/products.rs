@@ -167,13 +167,16 @@ pub fn parse_page(raw_query: Option<&str>) -> Result<PageQuery, AppError> {
     Ok(PageQuery { page, skip, offset, q })
 }
 
-/// Trim, length-cap, and lower-case `raw` for use as an `ILIKE` value.
+/// Trim, length-cap, and fold `raw` for use as an `ILIKE` value.
 ///
 /// A trimmed-empty string is reported as `Ok(None)` so the handler sees the
-/// unfiltered default the same way it sees an absent `?q=`. Lowercasing
-/// happens here (not in the store) because Postgres `ILIKE` already folds case,
-/// and the in-memory implementation needs an explicit lowercase to match — so
-/// doing it once at the boundary keeps the two paths in lockstep.
+/// unfiltered default the same way it sees an absent `?q=`. Folding
+/// (accent-strip plus lowercase, per [`crate::store::search`]) happens here
+/// (not in the store) because Postgres `ILIKE` already folds case but not
+/// accents — the column side is folded by `unaccent()` in the query — and the
+/// in-memory implementation needs an explicitly folded needle to match — so
+/// doing it once at the boundary keeps the two paths in lockstep. As a side
+/// effect the cache key is canonical: `?q=bebé` and `?q=bebe` share one slot.
 fn parse_search_q(raw: &str) -> Result<Option<String>, AppError> {
     use crate::store::products::MAX_QUERY_LENGTH;
     let trimmed = raw.trim();
@@ -185,11 +188,11 @@ fn parse_search_q(raw: &str) -> Result<Option<String>, AppError> {
             "q must be at most {MAX_QUERY_LENGTH} characters"
         )));
     }
-    // The ILIKE pattern wraps the needle in `%`. The needle is lowercased and
+    // The ILIKE pattern wraps the needle in `%`. The needle is folded and
     // contains no SQL specials a shopper might type, so a literal `%`/`_`
     // passes through unchanged and remains a wildcard. The cap above bounds how
     // many a scan can inject.
-    Ok(Some(format!("%{}%", trimmed.to_ascii_lowercase())))
+    Ok(Some(format!("%{}%", crate::store::search::fold_search_text(trimmed))))
 }
 
 /// Prisma keeps 15 significant digits, truncates toward zero, rejects a
@@ -602,6 +605,15 @@ mod tests {
     }
 
     #[test]
+    fn parse_search_q_folds_accents_to_a_shared_canonical_form() {
+        // `bebé` and `bebe` — and `bañera` and `banera` — produce the same
+        // pattern, so they share one predicate and one cache slot.
+        assert_eq!(parse_search_q("bebé").unwrap(), parse_search_q("bebe").unwrap());
+        assert_eq!(parse_search_q("bañera").unwrap(), parse_search_q("banera").unwrap());
+        assert_eq!(parse_search_q("BEBÉ").unwrap(), Some("%bebe%".to_string()));
+    }
+
+    #[test]
     fn parse_search_q_caps_the_length_to_the_documented_max() {
         use crate::store::products::MAX_QUERY_LENGTH;
         let at_cap = "a".repeat(MAX_QUERY_LENGTH);
@@ -792,6 +804,58 @@ mod tests {
         // Empty / absent `q` is the unfiltered default: same envelope, full count.
         let body = body_of(app.clone().oneshot(get("/products")).await.unwrap()).await;
         assert_eq!(body["total"], 3);
+    }
+
+    /// Accent-insensitivity through the handler path: a stored `Bebé` is
+    /// reachable through `?q=bebe` and `?q=bebé` alike, and a stored `Bañera`
+    /// through `?q=banera`. Runs against `InMemoryStore`; the Postgres twin of
+    /// this assertion lives in `tests/e2e_products.rs`, where `unaccent()`
+    /// does the column-side folding.
+    #[tokio::test]
+    async fn q_search_matches_with_and_without_accents() {
+        let mut accent_title = product("prod-bebe", 9.0);
+        accent_title.title = "Bebé azul".to_string();
+        let mut accent_description = product("prod-banera", 40.0);
+        accent_description.title = "Tub".to_string();
+        accent_description.description = Some("Bañera grande".to_string());
+        let mut no_match = product("prod-skip", 5.0);
+        no_match.title = "Yoga Mat".to_string();
+
+        let state = AppState::new(
+            base_config(),
+            Arc::new(InMemoryStore::new(vec![accent_title, accent_description, no_match])),
+            None,
+            None,
+        );
+        let app = router(state);
+
+        // Percent-encoded: a raw `é` is not a valid `http::Uri`, and the
+        // shopper's browser sends `%C3%A9` on the wire anyway.
+        for q in ["bebe", "beb%C3%A9", "BEB%C3%89"] {
+            let uri = format!("/products?q={q}");
+            let body = body_of(app.clone().oneshot(get(&uri)).await.unwrap()).await;
+            let ids: Vec<&str> = body["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, vec!["prod-bebe"], "query {q:?} missed the accented title");
+            assert_eq!(body["total"], 1);
+        }
+
+        for q in ["banera", "ba%C3%B1era"] {
+            let uri = format!("/products?q={q}");
+            let body = body_of(app.clone().oneshot(get(&uri)).await.unwrap()).await;
+            let ids: Vec<&str> = body["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, vec!["prod-banera"], "query {q:?} missed the accented description");
+            assert_eq!(body["total"], 1);
+        }
     }
 
     /// Two different `q` values for the same page produce different cache

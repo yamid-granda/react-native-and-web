@@ -312,3 +312,70 @@ async fn an_unreachable_replica_reads_from_the_primary() {
     let detail: Value = response.json().await.unwrap();
     assert_eq!(detail["id"], "prod-1");
 }
+
+/// Accent-insensitive search against Postgres: the column side of the match is
+/// folded by `unaccent()` (see the `enable_unaccent_for_search` migration),
+/// so a stored `Bebé` answers `?q=bebe` as well as `?q=bebé` — the same rows
+/// the in-memory double returns through its NFKD fold.
+#[tokio::test]
+async fn product_search_ignores_accents() {
+    let stack = common::TestStack::start(false, |_| {}).await;
+    let now = chrono::Utc::now().naive_utc();
+    for (id, title, description) in [
+        ("prod-accent-bebe", "Bebé azul", None),
+        ("prod-accent-banera", "Tub", Some("Bañera grande")),
+    ] {
+        sqlx::query(
+            r#"INSERT INTO "Product" ("id", "title", "description", "price", "stock", "createdAt")
+               VALUES ($1, $2, $3, 5.0, 3, $4)"#,
+        )
+        .bind(id)
+        .bind(title)
+        .bind(description)
+        .bind(now)
+        .execute(&stack.pool)
+        .await
+        .expect("seed an accented product");
+    }
+    let client = reqwest::Client::new();
+
+    // Title match, with and without the accent — and uppercase for good
+    // measure. Pre-encoded: reqwest here has no `.query()` helper, and the
+    // shopper's browser sends `%C3%A9` on the wire anyway. All three agree.
+    for (q, encoded) in [("bebe", "bebe"), ("bebé", "beb%C3%A9"), ("BEBÉ", "BEB%C3%89")] {
+        let page: Value = client
+            .get(format!("{}/products?q={encoded}", stack.base_url))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let ids: Vec<&str> = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["prod-accent-bebe"], "query {q:?} missed the accented title");
+    }
+
+    // Description-only match, again both spellings.
+    for (q, encoded) in [("banera", "banera"), ("bañera", "ba%C3%B1era")] {
+        let page: Value = client
+            .get(format!("{}/products?q={encoded}", stack.base_url))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let ids: Vec<&str> = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["prod-accent-banera"], "query {q:?} missed the accented description");
+    }
+}
