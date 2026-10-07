@@ -4,6 +4,7 @@ import "./globals.css"
 import { NavHeader } from "./nav-header"
 import { Providers } from "./providers"
 import { SsrStylesWrapper } from "./ssr-styles-wrapper"
+import { SITE_URL } from "../lib/site"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,8 +17,12 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "react-native-and-web",
-  description: "Boilerplate: Next.js (SSR) + Expo sharing one React Native component library",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "react-native-and-web",
+    template: "%s · react-native-and-web",
+  },
+  description: "A marketplace with a server-rendered, SEO-friendly catalogue.",
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
