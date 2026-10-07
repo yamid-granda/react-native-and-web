@@ -121,6 +121,10 @@ export function Button({
 }: ButtonProps) {
   const inert = Boolean(disabled || loading)
   const style = variantStyle[variant]
+  // Icon-only buttons (custom `children`, no text label) drop the horizontal
+  // padding and pin the width to the same `control` token as the height, so
+  // width and height stay equal instead of stretching into a pill.
+  const iconOnly = children != null
 
   return (
     <ClassNamePressable
@@ -143,7 +147,7 @@ export function Button({
       aria-selected={selected}
       disabled={inert}
       onPress={onPress}
-      className={cn(BUTTON_BASE_CLASSNAME, style.container, inert && "opacity-50", className)}
+      className={cn(BUTTON_BASE_CLASSNAME, style.container, iconOnly && "w-control px-0", inert && "opacity-50", className)}
     >
       {children ?? (
         <ClassNameText className={cn(style.label, LABEL_CLASSNAME, labelClassName)}>
