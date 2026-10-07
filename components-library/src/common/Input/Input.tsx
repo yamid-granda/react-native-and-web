@@ -64,7 +64,7 @@ export function Input({
       onPress={() => inputRef.current?.focus()}
       style={textCursorStyle}
       className={cn(
-        "gap-2 rounded-lg border border-border-muted bg-surface px-3",
+        "gap-2 rounded-lg border border-control-border bg-control-bg px-3",
         // A one-line input is the shared control height (h-control,
         // tailwind-preset.cjs — the same token Button uses) so inputs and
         // buttons line up. A multiline one has to grow, so it gets padding
@@ -84,7 +84,7 @@ export function Input({
         // After `{...rest}` and therefore not overridable: a taller box comes from
         // the wrapper's className above, and a textarea aligns to the top.
         className={cn(
-          "flex-1 text-sm text-foreground outline-none placeholder:text-muted",
+          "flex-1 text-sm text-control-text outline-none placeholder:text-muted",
           multiline && "min-h-20 text-left",
         )}
       />

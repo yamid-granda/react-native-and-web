@@ -41,9 +41,12 @@
  * `#8a8a92` measures 3.43:1 on white — about *twice* the weight of iOS's
  * `systemGray4` (1.71:1) — and a form is the one place that weight repeats
  * down the page, so it read as a cage around every field rather than an edge.
- * `border` is therefore for *actions*, which are singular and need to read as
- * actionable: `Button`'s `secondary` variant. `border-muted` is for
- * *fields*, which are repeated and should stay quiet: `Input`. Both land near
+ * `border` is therefore for standalone actions whose singular outline needs
+ * to read as actionable. The quiet control finish — `Input` and `Button`'s
+ * `secondary` variant — shares one name for border, fill and label
+ * (`border-control-border`, `bg-control-bg`, `text-control-text` in
+ * `tailwind-preset.cjs`, aliasing `border-muted` / `surface` / `foreground`),
+ * so a secondary button never drifts heavier than the field beside it. Both land near
  * 1.7:1 against the fill they enclose, and the two schemes are matched to each
  * other so a form weighs the same in either.
  *
