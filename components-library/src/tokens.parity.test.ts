@@ -234,7 +234,8 @@ const CONTRAST_FLOORS: { pair: [string, string]; min: number; reason: string }[]
   // the page: at 3.4:1 it measured about twice iOS's systemGray4 (1.71:1) and
   // read as a cage around every field, heavier than the cards it sits on. 1.5:1
   // is a visibility floor, not an accessibility claim — Material's outlined field
-  // is in the same range. `Input` is the only consumer, and if a field ever does
+  // is in the same range. `Input` and `Button`'s secondary variant share it
+  // through the `control` aliases in the preset, and if a control ever does
   // have to clear 3:1 the fix is `border`, one class name away.
   {
     pair: ["border-muted", "surface"],

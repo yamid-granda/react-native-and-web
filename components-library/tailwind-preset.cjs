@@ -50,6 +50,17 @@ module.exports = {
         // on every field reads as heavier than the cards it sits on. See the
         // "two border weights" section of tokens.css for the trade.
         "border-muted": "rgb(var(--color-border-muted) / <alpha-value>)",
+        // One quiet control finish, shared by `Input` and `Button`'s secondary
+        // variant so the two never drift apart again. Each entry aliases the
+        // `--color-*` token beside it — the values live in `tokens.css` and
+        // nowhere else — giving both components a single name for the same
+        // border, fill and label: `border-control-border`, `bg-control-bg`,
+        // `text-control-text`.
+        control: {
+          bg: "rgb(var(--color-surface) / <alpha-value>)",
+          border: "rgb(var(--color-border-muted) / <alpha-value>)",
+          text: "rgb(var(--color-foreground) / <alpha-value>)",
+        },
       },
     },
   },

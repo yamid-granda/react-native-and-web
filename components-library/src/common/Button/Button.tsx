@@ -39,8 +39,9 @@ const variantStyle: Record<ButtonVariant, ButtonStyle> = {
     label: "text-white",
   },
   secondary: {
-    container: "rounded-lg border border-border bg-surface active:bg-surface-muted",
-    label: "text-foreground",
+    container:
+      "rounded-lg border border-control-border bg-control-bg active:bg-surface-muted",
+    label: "text-control-text",
   },
 }
 
