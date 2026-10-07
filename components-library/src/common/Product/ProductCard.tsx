@@ -2,9 +2,6 @@ import { memo, type ComponentType, type ReactNode } from "react"
 import { Pressable, Text, View, type PressableProps, type ViewProps } from "react-native"
 import { cn } from "../../utils/cn"
 import { formatPrice } from "../../utils/formatPrice"
-import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
-import { isWishlisted, useWishlistStore } from "../../business/WishlistScreen/useWishlistStore"
-import { Button } from "../Button/Button"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -18,7 +15,6 @@ export type ProductProps = ProductData & { onPress?: () => void; className?: str
  * adapters (`Product.tsx` / `Product.web.tsx`) own nothing but the image
  * element, because that is the one thing that genuinely differs: `expo-image`
  * on native, react-native-web's `Image` (with `alt`) on web. Everything else
- * — the card's own `className`, the out-of-stock badge, the wishlist toggle —
  * used to be spelled out twice and is held here once.
  */
 export type ProductCardProps = ProductProps & {
@@ -42,15 +38,10 @@ export const ProductCard = memo(function ProductCard({
   className,
 }: ProductCardProps) {
   const outOfStock = stock === 0
-  const wishlisted = useWishlistStore((state) => isWishlisted(state.ids, id))
-  const toggleItem = useWishlistStore((state) => state.toggleItem)
 
   return (
-    // A plain View, not a second button, wraps the card content and the
-    // wishlist toggle as siblings: both render a real <button> on web
-    // (accessibilityRole="button" via propsToAccessibilityComponent), and
-    // nesting one <button> inside another is invalid HTML that breaks
-    // hydration.
+    // A plain View wraps the card content. The wishlist toggle that used to
+    // sit here as a sibling button was removed per marketplace request.
     <ClassNameView className={cn("relative w-full", className)}>
       <ClassNamePressable
         testID={`product-card-${id}`}
@@ -86,20 +77,6 @@ export const ProductCard = memo(function ProductCard({
         ) : null}
         <Text className="text-base font-bold text-brand">{formatPrice(price, currency)}</Text>
       </ClassNamePressable>
-      <Button
-        label={wishlisted ? `Remove ${title} from wishlist` : `Add ${title} to wishlist`}
-        variant="secondary"
-        testId={`wishlist-toggle-${id}`}
-        // The id, not a snapshot of this card. This line used to hand the
-        // wishlist a hand-built `ProductData` that silently dropped `storeId` /
-        // `storeName`, so wishlisting from a card and wishlisting from the detail
-        // page persisted two different things. A callee that needs one field
-        // cannot be handed a wrong one.
-        onPress={() => toggleItem(id)}
-        className="absolute right-2 top-2"
-      >
-        <HeartIcon size={18} filled={wishlisted} className={wishlisted ? "text-brand" : "text-muted"} />
-      </Button>
     </ClassNameView>
   )
 })
