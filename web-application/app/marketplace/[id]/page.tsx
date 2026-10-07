@@ -33,10 +33,19 @@ export async function generateMetadata({
   return {
     title: product.title,
     description,
+    alternates: { canonical: `/marketplace/${id}` },
     openGraph: {
       title: product.title,
       description,
       type: "website",
+      url: `/marketplace/${id}`,
+      siteName: "react-native-and-web",
+      images: product.imageUrl ? [product.imageUrl] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: product.title,
+      description,
       images: product.imageUrl ? [product.imageUrl] : undefined,
     },
   }
@@ -48,6 +57,8 @@ export async function generateMetadata({
  * `getProduct` is the same cached, tagged read `generateMetadata` makes (Next
  * memoizes it within the render), so the product's name, price and stock are in
  * the initial HTML and a seller edit retires the page on demand.
+ *
+ * Includes JSON-LD structured data for rich snippets in search results.
  */
 export default async function ProductDetailPage({ params }: PageProps<"/marketplace/[id]">) {
   const { id } = await params
@@ -62,5 +73,34 @@ export default async function ProductDetailPage({ params }: PageProps<"/marketpl
 
   if (!product) notFound()
 
-  return <ProductDetailView product={product} />
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.title,
+    description: product.description,
+    image: product.imageUrl,
+    offers: {
+      "@type": "Offer",
+      price: product.price,
+      priceCurrency: product.currency || "USD",
+      availability:
+        product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+    ...(product.storeName && {
+      brand: {
+        "@type": "Brand",
+        name: product.storeName,
+      },
+    }),
+  }
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <ProductDetailView product={product} />
+    </>
+  )
 }

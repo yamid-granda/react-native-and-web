@@ -47,6 +47,7 @@ export type { ProductListScreenProps } from "./business/ProductListScreen/Produc
 export { useInfiniteProducts } from "./business/ProductListScreen/useInfiniteProducts"
 export { ProductDetailScreen } from "./business/ProductDetailScreen/ProductDetailScreen"
 export type { ProductDetailScreenProps } from "./business/ProductDetailScreen/ProductDetailScreen"
+export { ProductDetailScreenWithSemantics } from "./business/ProductDetailScreen/ProductDetailScreen.web"
 export { CartScreen } from "./business/CartScreen/CartScreen"
 export type { CartScreenProps } from "./business/CartScreen/CartScreen"
 export {

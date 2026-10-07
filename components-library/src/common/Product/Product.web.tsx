@@ -4,7 +4,7 @@ import { ProductCard, type ProductProps } from "./ProductCard"
 
 export type { ProductProps } from "./ProductCard"
 
-// see Button.tsx / README "Architecture boundaries" for why this is cast locally
+// see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameImage = Image as ComponentType<ImageProps & { className?: string }>
 
 // The web half of the platform split: this file is the whole of the
@@ -22,6 +22,8 @@ export const Product = memo(function Product(props: ProductProps) {
             source={{ uri: imageUrl }}
             accessibilityLabel={title}
             resizeMode="cover"
+            width={300}
+            height={128}
             className="h-32 w-full rounded-md bg-surface-muted"
           />
         ) : null

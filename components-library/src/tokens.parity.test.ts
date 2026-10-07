@@ -69,7 +69,7 @@ const PALETTE_BLOCKS: Record<string, string> = {
  * is the one value `Button` and `Input` have to agree on.
  */
 const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
-  "business/ProductDetailScreen/ProductDetailScreen.tsx h-64": "product image height",
+  "business/ProductDetailScreen/ProductDetailScreenBase.tsx h-64": "product image height",
   "common/Input/Input.tsx min-h-20":
     "multiline textarea height — padding replaces the fixed height by design (see Input.tsx)",
   "common/Input/Input.tsx py-2":
@@ -78,6 +78,8 @@ const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
   "common/MainNav/MainNavItem.tsx py-2": "nav item vertical padding",
   "common/Product/ProductCard.tsx h-32": "product image height",
   "common/Product/ProductCard.tsx py-1": "product card padding",
+  "common/Product/ProductCard.web.tsx h-32": "product image height",
+  "common/Product/ProductCard.web.tsx py-1": "product card padding",
   "common/Product/Product.web.tsx h-32": "product image height",
 }
 

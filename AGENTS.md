@@ -68,3 +68,50 @@ Run the narrowest relevant checks for a change, then broader checks when practic
 - Keep shared UI in `components-library`; read `.agents/rules/component-reuse.md` before changing cross-platform UI.
 - `Button` has exactly two variants (`primary`, `secondary`) and no size variants. Use one of them; a new variant or a new size needs a proposal under `improve-proposals/` agreed with the team before implementation. See `.agents/rules/button-variants.md`.
 - See `.agents/rules/` for the full project policies. Before using a task workflow, read its matching skill in `.agents/skills/`; reusable role prompts are in `.agents/agents/`.
+
+## SEO policy (web application)
+
+The public catalogue routes (`/marketplace`, `/marketplace/[id]`, `/stores/[id]`) are server-rendered for SEO. When changing components or pages that affect these routes, follow these rules:
+
+### Crawlable links
+
+- **Product cards must use `<Link>` on web**, not `Pressable` + `router.push()`. Crawlers discover pages by following `<a href>` tags; a `Pressable` renders as a `<div>` and is invisible to them.
+- The platform split already handles this: `ProductCard.web.tsx` wraps the card in a Next.js `<Link>`, while `ProductCard.tsx` (native) uses `Pressable`. Do not "simplify" this back into a shared `Pressable`.
+- Any new clickable card or list item that navigates to a public route must follow the same pattern: `.web.tsx` uses `<Link>`, native uses `Pressable`.
+
+### Semantic HTML
+
+- **Product detail pages must use semantic HTML.** The web wrapper `ProductDetailScreenWithSemantics` wraps the screen in `<article>` and renders the product title as `<h1>`. Do not remove these wrappers.
+- Use `<article>` for self-contained product/store content, `<h1>` for the product/store name, and `<section>` for logical groupings.
+- The shared `ProductDetailScreen` renders `<Text>` (a `<span>` on web) for the title; the `.web.tsx` wrapper adds the `<h1>`. This split is intentional.
+
+### Structured data (JSON-LD)
+
+- **Product and store pages must include JSON-LD structured data.** The product detail page (`app/marketplace/[id]/page.tsx`) already emits a `Product` schema with `offers` (price, currency, availability). Keep it in sync with the `ProductData` type.
+- If you add new fields to `ProductData` that are SEO-relevant (e.g., `brand`, `sku`, `rating`), add them to the JSON-LD.
+- Use `https://schema.org` types. For products: `Product` + `Offer`. For stores: `Store` + `Place`.
+
+### Metadata
+
+- **Every public page must set `alternates.canonical`** in `generateMetadata`. This prevents duplicate-content issues if the same page is reachable via multiple URLs.
+- **Every public page must set OpenGraph `url` and `site_name`** in addition to `title`, `description`, and `images`.
+- **Every public page should set Twitter Card metadata** (`twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`) for social sharing.
+- The root layout's `metadataBase` and `title.template` are already configured; page-level metadata overrides them.
+
+### Images
+
+- **Product images must have explicit `width` and `height`** to prevent Cumulative Layout Shift (CLS). The web adapter (`Product.web.tsx`) sets `width={300}` and `height={128}` (matching `h-32`). If you change the CSS height, update the `height` prop to match.
+- Always set `accessibilityLabel` (maps to `alt` on web) on product images.
+
+### Sitemap
+
+- The sitemap (`app/sitemap.ts`) lists product pages from the first catalogue page. If you add new public routes, add them to the sitemap.
+- Product pages use `changeFrequency: "weekly"` and `priority: 0.8`. Keep these values unless there's a specific reason to change them.
+
+### What NOT to do
+
+- Do not add `noindex` to public catalogue pages.
+- Do not remove the `generateMetadata` export from public pages.
+- Do not replace `<Link>` with `Pressable` in web components.
+- Do not remove JSON-LD structured data from product/store pages.
+- Do not remove `width`/`height` from product images.

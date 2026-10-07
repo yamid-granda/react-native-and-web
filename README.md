@@ -86,6 +86,167 @@ instead of caching an unavailable catalogue; a build with the API reachable
 prerenders it as ISR again. That is what keeps `next build` from requiring a
 running API.
 
+## SEO implementation
+
+The public catalogue routes are server-rendered for SEO. Here is how each SEO
+requirement is implemented and how to maintain it when making changes.
+
+### Crawlable links (internal linking)
+
+Product cards on the marketplace list page use a platform split so crawlers can
+discover product pages:
+
+```tsx
+// ProductCard.tsx (native) — uses Pressable
+<ClassNamePressable
+  testID={`product-card-${id}`}
+  accessibilityRole="button"
+  onPress={onPress}
+  className={cn("w-full gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80", ...)}
+>
+  {/* card content: image, title, description, price */}
+</ClassNamePressable>
+
+// ProductCard.web.tsx (web) — uses Next.js <Link>
+<Link href={`/marketplace/${id}`} className={cn("w-full gap-2 rounded-lg bg-surface p-3 shadow-sm", ...)}>
+  {/* card content: image, title, description, price */}
+</Link>
+```
+
+The bundler resolves `ProductCard` → `ProductCard.web.tsx` on web, `ProductCard.tsx`
+on native. Crawlers follow the `<a href>` tag; native uses `Pressable` + `onPress`.
+
+### Semantic HTML
+
+Product detail pages wrap the shared screen in semantic HTML:
+
+```tsx
+// ProductDetailScreen.web.tsx
+export function ProductDetailScreenWithSemantics(props: ProductDetailScreenProps) {
+  const { product } = props
+  return (
+    <article>
+      {product ? <h1>{product.title}</h1> : null}
+      <ProductDetailScreen {...props} />
+    </article>
+  )
+}
+```
+
+The shared `ProductDetailScreen` renders `<Text>` (a `<span>` on web) for the title;
+the `.web.tsx` wrapper adds the `<h1>`. This split is intentional.
+
+### Structured data (JSON-LD)
+
+Product detail pages emit JSON-LD structured data for rich snippets:
+
+```tsx
+// app/marketplace/[id]/page.tsx
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: product.title,
+  description: product.description,
+  image: product.imageUrl,
+  offers: {
+    "@type": "Offer",
+    price: product.price,
+    priceCurrency: product.currency || "USD",
+    availability: product.stock > 0
+      ? "https://schema.org/InStock"
+      : "https://schema.org/OutOfStock",
+  },
+  ...(product.storeName && {
+    brand: { "@type": "Brand", name: product.storeName },
+  }),
+}
+
+return (
+  <>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+    <ProductDetailView product={product} />
+  </>
+)
+```
+
+### Metadata (canonical, OpenGraph, Twitter Cards)
+
+Every public page sets complete metadata in `generateMetadata`:
+
+```tsx
+// app/marketplace/[id]/page.tsx
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const { id } = await params
+  const product = await getProduct(id)
+  if (!product) return { title: "Product not found" }
+
+  const description = product.description || `Buy ${product.title} on the marketplace.`
+  return {
+    title: product.title,
+    description,
+    alternates: { canonical: `/marketplace/${id}` },
+    openGraph: {
+      title: product.title,
+      description,
+      type: "website",
+      url: `/marketplace/${id}`,
+      siteName: "react-native-and-web",
+      images: product.imageUrl ? [product.imageUrl] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: product.title,
+      description,
+      images: product.imageUrl ? [product.imageUrl] : undefined,
+    },
+  }
+}
+```
+
+### Image dimensions (CLS prevention)
+
+Product images set explicit `width` and `height` to prevent layout shift:
+
+```tsx
+// Product.web.tsx
+<ClassNameImage
+  source={{ uri: imageUrl }}
+  accessibilityLabel={title}
+  resizeMode="cover"
+  width={300}
+  height={128}  // matches h-32 (128px)
+  className="h-32 w-full rounded-md bg-surface-muted"
+/>
+```
+
+If you change the CSS height (e.g., `h-40`), update the `height` prop to match (160).
+
+### Sitemap
+
+The sitemap lists product pages from the first catalogue page:
+
+```tsx
+// app/sitemap.ts
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const staticRoutes = [
+    { url: `${SITE_URL}/`, changeFrequency: "daily", priority: 1 },
+    { url: `${SITE_URL}/marketplace`, changeFrequency: "hourly", priority: 0.9 },
+  ]
+  const page = await getProductsPage(1)
+  return [
+    ...staticRoutes,
+    ...page.items.map((product) => ({
+      url: `${SITE_URL}/marketplace/${product.id}`,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    })),
+  ]
+}
+```
+
 ## Prerequisites
 
 - **Node ≥ 20.19 / 22.12.** A `.node-version` file pins `22.23.3` — with

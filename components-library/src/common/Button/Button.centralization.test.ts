@@ -19,6 +19,8 @@ const NOT_A_BUTTON: Record<string, string> = {
   "common/MainNav/MainNav.tsx": "nav item, onPress wiring",
   "common/MainNav/MainNav.web.tsx": "nav item, href wiring",
   "common/Product/ProductCard.tsx": "the product card itself, which navigates",
+  "common/Product/ProductCard.web.tsx":
+    "the product card's web half, which navigates via <Link>",
   "icons/IconsGallery/IconsGallery.tsx": "dev-only icon preview card",
 }
 
