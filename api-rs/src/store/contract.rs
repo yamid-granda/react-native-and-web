@@ -229,20 +229,20 @@ async fn register_the_contract_sellers<S: MarketplaceStore + ?Sized>(store: &S) 
 /// negative ones; a double that clamps instead would return a page the database
 /// never produces, and a test asserting against it would be asserting fiction.
 async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &S) {
-    let first_page = store.list_page(0, PAGE_SIZE).await.expect("first page");
+    let first_page = store.list_page(0, PAGE_SIZE, None).await.expect("first page");
     assert!(!first_page.is_empty(), "the harness must seed at least one product");
 
-    let whole = store.list_page(0, i64::MAX).await.expect("the whole catalogue");
+    let whole = store.list_page(0, i64::MAX, None).await.expect("the whole catalogue");
     assert_eq!(
         first_page.first().map(|product| product.id.as_str()),
         whole.first().map(|product| product.id.as_str()),
         "offset 0 is the first row, not a page of its own"
     );
 
-    let total = store.count().await.expect("count the catalogue");
+    let total = store.count(None).await.expect("count the catalogue");
     assert_eq!(total, whole.len() as i64, "the total is the whole catalogue");
     assert!(
-        store.list_page(total, PAGE_SIZE).await.expect("offset past the end").is_empty(),
+        store.list_page(total, PAGE_SIZE, None).await.expect("offset past the end").is_empty(),
         "an offset past the last row is an empty page"
     );
     assert!(
@@ -254,7 +254,10 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
         "an unknown owner has no rows"
     );
 
-    assert!(store.list_page(0, 0).await.expect("limit 0").is_empty(), "limit 0 is an empty page");
+    assert!(
+        store.list_page(0, 0, None).await.expect("limit 0").is_empty(),
+        "limit 0 is an empty page"
+    );
     assert_eq!(
         store.count_for_owner(OWNER_ID).await.expect("count a seller with nothing"),
         0,
@@ -262,11 +265,11 @@ async fn listing_windows_state_one_answer<S: MarketplaceStore + ?Sized>(store: &
     );
 
     assert!(
-        store.list_page(-1, PAGE_SIZE).await.is_err(),
+        store.list_page(-1, PAGE_SIZE, None).await.is_err(),
         "a negative offset is refused, not clamped to page one"
     );
     assert!(
-        store.list_page(0, -1).await.is_err(),
+        store.list_page(0, -1, None).await.is_err(),
         "a negative limit is refused, not read as unlimited"
     );
 }

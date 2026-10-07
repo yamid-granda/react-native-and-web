@@ -98,23 +98,53 @@ impl InMemoryStore {
     /// The rows one query would return, in the order `LIST_QUERY` and
     /// `LIST_OWNED_QUERY` produce them — so a pagination assertion written
     /// against this store is the same assertion the E2E suite makes against
-    /// Postgres. `owner_id: None` is the public catalogue.
+    /// Postgres. `owner_id: None` is the public catalogue. `q` mirrors the
+    /// store-level contract: `Some("")` is an empty pattern that matches
+    /// everything, exactly like the SQL `ILIKE '%'`, so the unfiltered default
+    /// is reachable through the same parameter.
     ///
     /// The product lock is released before the seller rows are read: `rows` is
     /// the only place that reads one lock while holding the other, so the order
     /// is always products-then-users and never the reverse.
-    fn rows(&self, owner_id: Option<&str>) -> Vec<Product> {
+    fn rows(&self, owner_id: Option<&str>, q: Option<&str>) -> Vec<Product> {
         let mut rows: Vec<Product> = {
             let products = self.products.lock().expect("in-memory products");
             products
                 .iter()
-                .filter(|product| owner_id.is_none() || product.owner_id.as_deref() == owner_id)
+                .filter(|product| {
+                    if owner_id.is_some_and(|id| product.owner_id.as_deref() != Some(id)) {
+                        return false;
+                    }
+                    match q {
+                        Some(pattern) => Self::matches_pattern(product, pattern),
+                        None => true,
+                    }
+                })
                 .cloned()
                 .collect()
         };
         sort_by_contract(&mut rows);
         self.join_store_names(&mut rows);
         rows
+    }
+
+    /// Case-insensitive substring match against `title` OR `description`, with
+    /// the pattern already wrapped in `%...%` by the caller. Empty `pattern`
+    /// (`%`) matches everything, mirroring Postgres `ILIKE '%'`. Lowercased on
+    /// both sides so a row's `description` carrying uppercase letters is
+    /// reachable through a lowercase shopper query.
+    fn matches_pattern(product: &Product, pattern: &str) -> bool {
+        let needle = pattern.trim_matches('%').to_ascii_lowercase();
+        if needle.is_empty() {
+            return true;
+        }
+        let in_title = product.title.to_ascii_lowercase().contains(&needle);
+        let in_description = product
+            .description
+            .as_deref()
+            .map(|text| text.to_ascii_lowercase().contains(&needle))
+            .unwrap_or(false);
+        in_title || in_description
     }
 
     /// The one query `LIMIT`/`OFFSET` answers, without the clamping this store
@@ -239,14 +269,19 @@ fn sort_by_contract(products: &mut [Product]) {
 
 #[async_trait]
 impl ProductStore for InMemoryStore {
-    async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+    async fn list_page(
+        &self,
+        offset: i64,
+        limit: i64,
+        q: Option<&str>,
+    ) -> Result<Vec<Product>, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Self::slice(&self.rows(None), offset, limit)
+        Self::slice(&self.rows(None, q), offset, limit)
     }
 
-    async fn count(&self) -> Result<i64, StoreError> {
+    async fn count(&self, q: Option<&str>) -> Result<i64, StoreError> {
         self.gate(StoreOp::Count).await?;
-        Ok(self.len() as i64)
+        Ok(self.rows(None, q).len() as i64)
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
@@ -286,7 +321,7 @@ impl ProductStore for InMemoryStore {
         limit: i64,
     ) -> Result<Vec<Product>, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Self::slice(&self.rows(Some(owner_id)), offset, limit)
+        Self::slice(&self.rows(Some(owner_id), None), offset, limit)
     }
 
     async fn list_public_page_by_owner(
@@ -296,17 +331,17 @@ impl ProductStore for InMemoryStore {
         limit: i64,
     ) -> Result<Vec<Product>, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Self::slice(&self.rows(Some(owner_id)), offset, limit)
+        Self::slice(&self.rows(Some(owner_id), None), offset, limit)
     }
 
     async fn count_for_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Ok(self.rows(Some(owner_id)).len() as i64)
+        Ok(self.rows(Some(owner_id), None).len() as i64)
     }
 
     async fn count_public_by_owner(&self, owner_id: &str) -> Result<i64, StoreError> {
         self.gate(StoreOp::Products).await?;
-        Ok(self.rows(Some(owner_id)).len() as i64)
+        Ok(self.rows(Some(owner_id), None).len() as i64)
     }
 
     async fn find_owned_by_id(
@@ -511,8 +546,8 @@ mod tests {
         assert_eq!(store.count_public_by_owner("usr-1").await.unwrap(), 1);
         assert_eq!(store.count_public_by_owner("usr-nobody").await.unwrap(), 0);
         // The ownerless seed row stays visible on the public list.
-        assert_eq!(store.count().await.unwrap(), 3);
-        let public = store.list_page(0, 20).await.unwrap();
+        assert_eq!(store.count(None).await.unwrap(), 3);
+        let public = store.list_page(0, 20, None).await.unwrap();
         assert!(public
             .iter()
             .any(|product| product.id == "seeded" && product.store_name.is_none()));
@@ -644,16 +679,16 @@ mod tests {
         let store = InMemoryStore::new(vec![seed("prod-1", 1)]);
 
         store.fail_once(StoreOp::Count);
-        assert!(store.count().await.is_err(), "the first call fails");
-        assert_eq!(store.count().await.unwrap(), 1, "one-shot means one failure");
+        assert!(store.count(None).await.is_err(), "the first call fails");
+        assert_eq!(store.count(None).await.unwrap(), 1, "one-shot means one failure");
 
         store.fail_always(StoreOp::Products);
-        assert!(store.list_page(0, 20).await.is_err());
+        assert!(store.list_page(0, 20, None).await.is_err());
         assert!(store.count_for_owner("usr-1").await.is_err(), "the surface, not the method");
-        assert_eq!(store.count().await.unwrap(), 1, "another surface is untouched");
+        assert_eq!(store.count(None).await.unwrap(), 1, "another surface is untouched");
 
         store.clear_failures(StoreOp::Products);
-        assert_eq!(store.list_page(0, 20).await.unwrap().len(), 1);
+        assert_eq!(store.list_page(0, 20, None).await.unwrap().len(), 1);
 
         store.hang_always(StoreOp::Ping);
         assert!(
@@ -666,9 +701,52 @@ mod tests {
     async fn delete_removes_exactly_one_row_and_is_idempotent_safe() {
         let store = store().await;
         assert!(store.delete_owned("usr-1", "prod-a").await.unwrap());
-        assert_eq!(store.count().await.unwrap(), 2);
+        assert_eq!(store.count(None).await.unwrap(), 2);
         // A second delete reports "nothing to do", not an error.
         assert!(!store.delete_owned("usr-1", "prod-a").await.unwrap());
+    }
+
+    /// The in-memory and SQL paths both run this assertion under `test:e2e`.
+    /// A product whose only match is in `description` is reachable; so is a
+    /// product matched only by `title`; case folding matches Postgres; and the
+    /// empty / None pattern is the unfiltered default.
+    #[tokio::test]
+    async fn list_page_filters_by_q_across_title_and_description() {
+        let mut title_hit = seed("prod-1", 1);
+        title_hit.title = "Wireless Headphones".to_string();
+        let mut description_hit = seed("prod-2", 2);
+        description_hit.title = "Ceramic Coffee Mug".to_string();
+        description_hit.description = Some("A nice BLUSA".to_string());
+        let mut description_match = seed("prod-3", 3);
+        description_match.title = "Yoga Mat".to_string();
+        description_match.description = Some("Foam".to_string());
+        let store = InMemoryStore::new(vec![title_hit, description_hit, description_match]);
+
+        // Title-only match, mixed case.
+        let page = store.list_page(0, 20, Some("%BLUSA%")).await.unwrap();
+        assert_eq!(
+            page.iter().map(|product| product.id.as_str()).collect::<Vec<_>>(),
+            vec!["prod-2"]
+        );
+        assert_eq!(store.count(Some("%blusa%")).await.unwrap(), 1);
+
+        // Description-only match.
+        let page = store.list_page(0, 20, Some("%foam%")).await.unwrap();
+        assert_eq!(
+            page.iter().map(|product| product.id.as_str()).collect::<Vec<_>>(),
+            vec!["prod-3"]
+        );
+
+        // No `q` is the unfiltered default.
+        let page = store.list_page(0, 20, None).await.unwrap();
+        assert_eq!(page.len(), 3);
+        // An empty pattern matches everything, exactly like Postgres `ILIKE '%'`.
+        let page = store.list_page(0, 20, Some("%")).await.unwrap();
+        assert_eq!(page.len(), 3);
+
+        // A non-matching pattern returns an empty page.
+        let page = store.list_page(0, 20, Some("%absent%")).await.unwrap();
+        assert!(page.is_empty());
     }
 
     /// Every assertion here is also run against Postgres, under `test:e2e`.

@@ -111,6 +111,13 @@ pub struct PageQuery {
     pub skip: f64,
     /// What Prisma actually sends as `OFFSET` — see [`prisma_offset`].
     pub offset: i64,
+    /// The trimmed, length-capped search query. `None` when `?q=` is absent or
+    /// only whitespace, so the handler and the cache key both treat "no query"
+    /// as the unfiltered default rather than as an empty pattern. Length-capped
+    /// because the value bounds the cache key length (`list_key` folds it in)
+    /// and the bound on a real shopper's typing is far below the length an
+    /// automated scan would generate.
+    pub q: Option<String>,
 }
 
 /// `Number(page) || 1` plus the narrowing Prisma applies to `skip` before it
@@ -126,14 +133,19 @@ pub struct PageQuery {
 /// | `2147483648` | `42949672940` | wraps into a u32: `OFFSET 4294967276`, 200 |
 /// | `Infinity`, `1e21` | `Infinity`, `2e22` | does not fit an i64, 500 |
 pub fn parse_page(raw_query: Option<&str>) -> Result<PageQuery, AppError> {
-    let values: Vec<String> = form_urlencoded::parse(raw_query.unwrap_or("").as_bytes())
-        .filter(|(key, _)| key == "page")
-        .map(|(_, value)| value.into_owned())
-        .collect();
+    let mut page_values: Vec<String> = Vec::new();
+    let mut q_values: Vec<String> = Vec::new();
+    for (key, value) in form_urlencoded::parse(raw_query.unwrap_or("").as_bytes()) {
+        match key.as_ref() {
+            "page" => page_values.push(value.into_owned()),
+            "q" => q_values.push(value.into_owned()),
+            _ => {}
+        }
+    }
 
-    let parsed = match values.len() {
+    let parsed = match page_values.len() {
         0 => 1.0,
-        1 => js_number_or_nan(&values[0]),
+        1 => js_number_or_nan(&page_values[0]),
         // Repeated `page` params are handed to `Number()` as an array; arrays
         // with more than one element coerce to NaN, which `|| 1` turns into 1.
         _ => f64::NAN,
@@ -144,7 +156,40 @@ pub fn parse_page(raw_query: Option<&str>) -> Result<PageQuery, AppError> {
     let skip = (page - 1.0) * (PAGE_SIZE as f64);
     let offset = prisma_offset(skip)?;
 
-    Ok(PageQuery { page, skip, offset })
+    // The first occurrence wins so `?q=a&q=c` is deterministic; a repeated
+    // value the shopper pasted twice cannot widen the predicate or change the
+    // cache key.
+    let q = match q_values.into_iter().next() {
+        Some(raw) => parse_search_q(&raw)?,
+        None => None,
+    };
+
+    Ok(PageQuery { page, skip, offset, q })
+}
+
+/// Trim, length-cap, and lower-case `raw` for use as an `ILIKE` value.
+///
+/// A trimmed-empty string is reported as `Ok(None)` so the handler sees the
+/// unfiltered default the same way it sees an absent `?q=`. Lowercasing
+/// happens here (not in the store) because Postgres `ILIKE` already folds case,
+/// and the in-memory implementation needs an explicit lowercase to match — so
+/// doing it once at the boundary keeps the two paths in lockstep.
+fn parse_search_q(raw: &str) -> Result<Option<String>, AppError> {
+    use crate::store::products::MAX_QUERY_LENGTH;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > MAX_QUERY_LENGTH {
+        return Err(AppError::Validation(format!(
+            "q must be at most {MAX_QUERY_LENGTH} characters"
+        )));
+    }
+    // The ILIKE pattern wraps the needle in `%`. The needle is lowercased and
+    // contains no SQL specials a shopper might type, so a literal `%`/`_`
+    // passes through unchanged and remains a wildcard. The cap above bounds how
+    // many a scan can inject.
+    Ok(Some(format!("%{}%", trimmed.to_ascii_lowercase())))
 }
 
 /// Prisma keeps 15 significant digits, truncates toward zero, rejects a
@@ -177,7 +222,7 @@ fn round_to_significant_digits(value: f64, digits: i32) -> f64 {
 pub async fn list(State(state): State<AppState>, request: Request) -> Result<Response, AppError> {
     let (parts, _body) = request.into_parts();
     let query = parse_page(parts.uri.query())?;
-    let key = cache::list_key(state.cache.generation(), query.page);
+    let key = cache::list_key(state.cache.generation(), query.page, query.q.as_deref());
     let conditional = Some((&parts.method, &parts.headers));
 
     if let Some(response) = cached(&state, Kind::List, &key, conditional).await {
@@ -193,8 +238,8 @@ pub async fn list(State(state): State<AppState>, request: Request) -> Result<Res
         return Ok(response);
     }
 
-    let products = state.store.list_page(query.offset, PAGE_SIZE).await?;
-    let total = catalog_total(&state).await?;
+    let products = state.store.list_page(query.offset, PAGE_SIZE, query.q.as_deref()).await?;
+    let total = catalog_total(&state, query.q.as_deref()).await?;
     let body = ProductsPageJson::from_page(products, &query, total);
     let bytes = serde_json::to_vec(&body)?;
     state.cache.set(Kind::List, &key, Bytes::copy_from_slice(&bytes)).await;
@@ -449,11 +494,18 @@ pub(crate) async fn cached(
 /// request — caching it per page would still re-run `COUNT(*)` once per page
 /// per TTL window. It carries the generation too: `total` is the field a new
 /// product changes most visibly, so a retired entry here is the one a shopper
-/// would actually notice.
+/// would actually notice. `q` is part of the key for the same reason
+/// [`cache::list_key`] folds it in: a search-filtered total has to live behind
+/// its own cache entry.
 const COUNT_KEY_PREFIX: &str = "products:count";
 
-fn count_key(state: &AppState) -> String {
-    format!("{COUNT_KEY_PREFIX}:{}", state.cache.generation())
+fn count_key(state: &AppState, q: Option<&str>) -> String {
+    let q_tag = q.unwrap_or("").trim();
+    if q_tag.is_empty() {
+        format!("{COUNT_KEY_PREFIX}:{}", state.cache.generation())
+    } else {
+        format!("{COUNT_KEY_PREFIX}:{}:{q_tag}", state.cache.generation())
+    }
 }
 
 /// `total` for the envelope, evaluated at most once per cache TTL window.
@@ -463,8 +515,8 @@ fn count_key(state: &AppState) -> String {
 /// page. A genuine store error still surfaces as the same 500 it always did.
 /// The flight stops a cold burst across *different* pages from turning into one
 /// `COUNT(*)` per page.
-async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
-    let key = count_key(state);
+async fn catalog_total(state: &AppState, q: Option<&str>) -> Result<i64, AppError> {
+    let key = count_key(state, q);
     let flight = state.cache.flights().for_key(Kind::List, &key).await;
     let _fill = flight.lock().await;
 
@@ -477,7 +529,7 @@ async fn catalog_total(state: &AppState) -> Result<i64, AppError> {
         tracing::warn!("discarding unreadable cached product count");
     }
 
-    let total = state.store.count().await?;
+    let total = state.store.count(q).await?;
     state.cache.set(Kind::List, &key, Bytes::from(total.to_string())).await;
     Ok(total)
 }
@@ -534,6 +586,60 @@ mod tests {
             owner_id: None,
             store_name: None,
         }
+    }
+
+    #[test]
+    fn parse_search_q_normalises_whitespace_and_case() {
+        // Whitespace is trimmed so leading-space variations cannot widen the
+        // predicate or change the cache key.
+        assert_eq!(parse_search_q("  blusa  ").unwrap(), Some("%blusa%".to_string()));
+        // Lowercased once at the boundary: in-memory and SQL paths both see
+        // the same needle.
+        assert_eq!(parse_search_q("BLUSA").unwrap(), Some("%blusa%".to_string()));
+        // Empty / whitespace-only resolves to `None` — the unfiltered default.
+        assert_eq!(parse_search_q("").unwrap(), None);
+        assert_eq!(parse_search_q("   ").unwrap(), None);
+    }
+
+    #[test]
+    fn parse_search_q_caps_the_length_to_the_documented_max() {
+        use crate::store::products::MAX_QUERY_LENGTH;
+        let at_cap = "a".repeat(MAX_QUERY_LENGTH);
+        assert!(parse_search_q(&at_cap).is_ok(), "the cap itself is accepted");
+        let over_cap = "a".repeat(MAX_QUERY_LENGTH + 1);
+        let error = parse_search_q(&over_cap).unwrap_err();
+        assert!(
+            matches!(error, AppError::Validation(ref message) if message.contains(&MAX_QUERY_LENGTH.to_string())),
+            "an over-cap q is a 400-shaped validation, not a 500: {error:?}"
+        );
+    }
+
+    #[test]
+    fn parse_page_reads_q_alongside_page() {
+        let query = parse_page(Some("page=2&q=blusa")).unwrap();
+        assert_eq!(query.page, 2.0);
+        assert_eq!(query.q, Some("%blusa%".to_string()));
+        // q is absent → no search applied, the unfiltered default.
+        let unfiltered = parse_page(Some("page=2")).unwrap();
+        assert_eq!(unfiltered.q, None);
+    }
+
+    #[test]
+    fn parse_page_takes_the_first_q_value() {
+        // A repeated `?q=` is a client bug; the predicate and the cache key
+        // must stay deterministic, not "last wins" or "panic".
+        let query = parse_page(Some("q=blusa&q=keyboard")).unwrap();
+        assert_eq!(query.q, Some("%blusa%".to_string()));
+    }
+
+    #[test]
+    fn parse_page_with_over_cap_q_is_a_validation_error() {
+        use crate::store::products::MAX_QUERY_LENGTH;
+        let over = "a".repeat(MAX_QUERY_LENGTH + 1);
+        assert!(
+            matches!(parse_page(Some(&format!("q={over}"))), Err(AppError::Validation(_))),
+            "an over-cap q is a 400-shaped validation, not a 500"
+        );
     }
 
     #[test]
@@ -623,13 +729,104 @@ mod tests {
     async fn a_bump_changes_the_list_key() {
         let (store, _inner) = counting_store(1);
         let state = counting_state(store);
-        let before = cache::list_key(state.cache.generation(), 1.0);
+        let before = cache::list_key(state.cache.generation(), 1.0, None);
         state.cache.bump_list_generation().await;
-        let after = cache::list_key(state.cache.generation(), 1.0);
+        let after = cache::list_key(state.cache.generation(), 1.0, None);
         assert_ne!(before, after);
         assert!(before.starts_with("products:list:0:"), "{before}");
         assert!(after.starts_with("products:list:1:"), "{after}");
-        assert_ne!(count_key(&state), format!("{COUNT_KEY_PREFIX}:0"));
+        assert_ne!(count_key(&state, None), format!("{COUNT_KEY_PREFIX}:0"));
+    }
+
+    /// `?q=` routes the search through Postgres-style `ILIKE` semantics: a
+    /// catalogue of products where one matches by `description` only and one by
+    /// `title` only still surfaces both, regardless of letter case in the
+    /// query, and `total` reflects the search's filtered count rather than the
+    /// whole catalogue.
+    #[tokio::test]
+    async fn q_search_filters_by_title_and_description_case_insensitively() {
+        let mut title_hit = product("prod-title", 18.0);
+        title_hit.title = "Wireless Headphones".to_string();
+        let mut description_hit = product("prod-desc", 12.0);
+        description_hit.title = "Ceramic Coffee Mug".to_string();
+        description_hit.description = Some("A nice blusa for the morning".to_string());
+        let mut no_match = product("prod-skip", 5.0);
+        no_match.title = "Yoga Mat".to_string();
+        no_match.description = Some("Foam, purple.".to_string());
+
+        let state = AppState::new(
+            base_config(),
+            Arc::new(InMemoryStore::new(vec![title_hit, description_hit, no_match])),
+            None,
+            None,
+        );
+        let app = router(state);
+
+        // Substring on `title`.
+        let body = body_of(app.clone().oneshot(get("/products?q=headphones")).await.unwrap()).await;
+        let ids: Vec<&str> = body["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["prod-title"]);
+        assert_eq!(body["total"], 1);
+
+        // Substring on `description`, case-insensitive — the headline case for
+        // the bug this handler test pins.
+        let body = body_of(app.clone().oneshot(get("/products?q=BLUSA")).await.unwrap()).await;
+        let ids: Vec<&str> = body["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["prod-desc"],
+            "the search reaches products matching by description only"
+        );
+        assert_eq!(body["total"], 1);
+
+        // Empty / absent `q` is the unfiltered default: same envelope, full count.
+        let body = body_of(app.clone().oneshot(get("/products")).await.unwrap()).await;
+        assert_eq!(body["total"], 3);
+    }
+
+    /// Two different `q` values for the same page produce different cache
+    /// entries, so a hit for one query cannot return the other's rows. The
+    /// unfiltered `q=` and a real `q=` are also distinct entries.
+    #[tokio::test]
+    async fn distinct_q_values_have_distinct_cache_keys() {
+        let (store, _inner) = counting_store(20);
+        let state = counting_state(store);
+        let gen = state.cache.generation();
+        // The two queries are independent cache slots: they collide neither
+        // with each other nor with the unfiltered default.
+        assert_ne!(
+            cache::list_key(gen, 1.0, Some("blusa")),
+            cache::list_key(gen, 1.0, Some("keyboard"))
+        );
+        assert_ne!(cache::list_key(gen, 1.0, None), cache::list_key(gen, 1.0, Some("blusa")));
+        // Same query and page, different generation, different slot: the
+        // bump-driven retirement that protects the write path reaches search
+        // results without a separate mechanism.
+        assert_ne!(
+            cache::list_key(gen, 1.0, Some("blusa")),
+            cache::list_key(gen + 1, 1.0, Some("blusa"))
+        );
+    }
+
+    /// `q` is appended to the cache key, so the search-filtered `total` lives
+    /// behind its own slot and a stale unfiltered count cannot leak into a
+    /// search response.
+    #[tokio::test]
+    async fn q_carries_through_to_the_total_cache_key() {
+        let (store, _inner) = counting_store(20);
+        let state = counting_state(store);
+        assert_ne!(count_key(&state, None), count_key(&state, Some("blusa")));
+        assert_ne!(count_key(&state, Some("a")), count_key(&state, Some("b")));
     }
 
     /// The write path and the detail handler must address one key. If they
@@ -702,15 +899,20 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ProductStore for CountingStore {
-        async fn list_page(&self, offset: i64, limit: i64) -> Result<Vec<Product>, StoreError> {
+        async fn list_page(
+            &self,
+            offset: i64,
+            limit: i64,
+            q: Option<&str>,
+        ) -> Result<Vec<Product>, StoreError> {
             self.list_calls.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(self.delay).await;
-            self.inner.list_page(offset, limit).await
+            self.inner.list_page(offset, limit, q).await
         }
 
-        async fn count(&self) -> Result<i64, StoreError> {
+        async fn count(&self, q: Option<&str>) -> Result<i64, StoreError> {
             self.count_calls.fetch_add(1, Ordering::SeqCst);
-            self.inner.count().await
+            self.inner.count(q).await
         }
 
         async fn find_by_id(&self, id: &str) -> Result<Option<Product>, StoreError> {
@@ -1028,7 +1230,10 @@ mod tests {
         let (store, _inner) = counting_store(200);
         let count_calls = Arc::clone(&store.count_calls);
         let state = counting_state(store);
-        state.cache.set(Kind::List, &count_key(&state), Bytes::from_static(b"not-a-number")).await;
+        state
+            .cache
+            .set(Kind::List, &count_key(&state, None), Bytes::from_static(b"not-a-number"))
+            .await;
 
         let response = router(state).oneshot(get("/products")).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);

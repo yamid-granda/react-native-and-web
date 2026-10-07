@@ -66,6 +66,13 @@ export async function getProduct(id: string): Promise<ProductData | null> {
   }
 }
 
+/**
+ * `q` is intentionally not a parameter on this server-side helper: the SSR
+ * pass renders before any user input, so the only value it can usefully seed is
+ * the unfiltered page 1. The web page wrapper holds `q` and drops the SSR seed
+ * when one is set, which keeps the search-empty / search-active transition a
+ * single re-fetch instead of a swap of cached pages.
+ */
 export function getProductsPage(page = 1): Promise<ProductsPage> {
   return api.fetchProducts(page)
 }

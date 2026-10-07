@@ -53,5 +53,17 @@ export function useProductSearch(products: ProductData[]) {
     [products, deferredQuery, sortBy, deferredPriceRange],
   )
 
-  return { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results }
+  return {
+    query,
+    setQuery,
+    sortBy,
+    setSortBy,
+    priceRange,
+    setPriceRange,
+    results,
+    // The deferred query is what the search bar emits upward to drive
+    // `useInfiniteProducts`; exposing it from the hook keeps the debounce
+    // (and the same React-internal id) in one place.
+    deferredQuery,
+  }
 }
