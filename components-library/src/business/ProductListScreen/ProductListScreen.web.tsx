@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ComponentType } from "react"
 import { Text, View, type TextProps, type ViewProps } from "react-native"
 import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
@@ -94,10 +95,8 @@ export function ProductListScreen({
 
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">
-          Marketplace
-        </ClassNameText>
+      <ScreenHeader title="Marketplace" testID="marketplace-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
         <SearchInput value={query} onChangeText={setQuery} />
         <ProductFilterControls
           sortBy={sortBy}

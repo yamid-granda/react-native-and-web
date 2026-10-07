@@ -12,6 +12,7 @@ import {
 } from "react-native"
 import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
@@ -120,6 +121,7 @@ export function ProductListScreen({
 
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
+      <ScreenHeader title="Marketplace" testID="marketplace-title" />
       <FlatList
         // FlatList can't change numColumns on a mounted list (RN invariant),
         // so the count is threaded through as a key to force a remount when
@@ -143,10 +145,7 @@ export function ProductListScreen({
         initialNumToRender={10}
         windowSize={7}
         ListHeaderComponent={
-          <ClassNameView className="gap-4 pt-6 pb-4">
-            <ClassNameText className="text-2xl font-semibold text-foreground">
-              Marketplace
-            </ClassNameText>
+          <ClassNameView className="gap-4 pb-4">
             <SearchInput value={query} onChangeText={setQuery} />
             <ProductFilterControls
               sortBy={sortBy}
