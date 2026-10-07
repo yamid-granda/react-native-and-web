@@ -9,6 +9,7 @@ import {
 } from "react-native"
 import { Button } from "../../common/Button/Button"
 import { FormField } from "../../common/FormField/FormField"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -87,10 +88,11 @@ export function ProductFormScreen({
 
   return (
     <ClassNameScrollView testID="product-form-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">
-          {isEditing ? "Edit product" : "Add product"}
-        </ClassNameText>
+      <ScreenHeader
+        title={isEditing ? "Edit product" : "Add product"}
+        testID="product-form-title"
+      />
+      <ClassNameView className="gap-4 px-6 pb-6">
 
         <FormField
           label="Title"

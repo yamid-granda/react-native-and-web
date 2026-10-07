@@ -64,7 +64,7 @@ describe("useInfiniteProducts", () => {
   })
 
   it("forwards the active query to the server on every page fetch", async () => {
-    const fetchProducts = vi.fn((p: number, q?: string) =>
+    const fetchProducts = vi.fn((p: number, _q?: string) =>
       Promise.resolve(page(p, p < 2)),
     )
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -114,7 +114,7 @@ describe("useInfiniteProducts", () => {
   })
 
   it("normalises whitespace-only q to the empty cache slot", async () => {
-    const fetchProducts = vi.fn((p: number, q?: string) =>
+    const fetchProducts = vi.fn((p: number, _q?: string) =>
       Promise.resolve(page(p, true)),
     )
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
