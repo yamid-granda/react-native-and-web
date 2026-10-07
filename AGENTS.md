@@ -19,6 +19,11 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - `api-rs/src/` — Axum router, handlers, cache tiers, and middleware; `api-rs/migrations/` — the schema (sqlx migrations); `api-rs/src/seed.rs` and `api-rs-db` — the demo seller (`db:seed`) and the e2e fixture products (`db:seed-fixtures`/`db:clear-fixtures`). api-rs is Rust-only and owns all of it; see its `README.md`.
 - `improve-proposals/` — feature proposals and implemented proposal records.
 
+## Visual manual (mandatory for all UI work)
+
+- Read `docs/system-design/index.md` before touching any UI in `components-library/`, `web-application/`, `mobile-application/`, or any future interface. It is binding: tokens, type scale, spacing, controls, product card, responsive breakpoints, and platform-split rules override intuition.
+- Shared view rule: phone and web-mobile render the same shared components; breakpoints only add columns/containment in app wrappers, never fork card internals.
+
 ## Architecture and implementation
 
 - Before changing cross-platform UI or app wiring, read the relevant section of `README.md`, especially **Architecture boundaries and known gotchas**. It records platform constraints that are easy to reintroduce accidentally.
