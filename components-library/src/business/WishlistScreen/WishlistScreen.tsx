@@ -9,6 +9,7 @@ import {
 } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { useCartStore } from "../CartScreen/useCartStore"
 import { useProductLookup, type FetchProductsByIds } from "../ProductLookup/useProductLookup"
 import { useWishlistStore } from "./useWishlistStore"
@@ -61,8 +62,8 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
 
   return (
     <ClassNameScrollView testID="wishlist-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">Wishlist</ClassNameText>
+      <ScreenHeader title="Wishlist" testID="wishlist-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
         ) : null}

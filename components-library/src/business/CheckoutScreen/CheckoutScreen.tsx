@@ -9,6 +9,7 @@ import {
 } from "react-native"
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import {
   useProductLookup,
   type FetchProductsByIds,
@@ -70,8 +71,8 @@ export function CheckoutScreen({
 
   return (
     <ClassNameScrollView testID="checkout-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameText className="text-2xl font-semibold text-foreground">Checkout</ClassNameText>
+      <ScreenHeader title="Checkout" testID="checkout-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
         {error ? (
           <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
         ) : null}

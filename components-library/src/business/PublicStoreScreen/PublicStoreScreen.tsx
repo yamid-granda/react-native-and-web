@@ -9,6 +9,7 @@ import {
   type ViewProps,
 } from "react-native"
 import { Product } from "../../common/Product/Product"
+import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -52,11 +53,8 @@ export function PublicStoreScreen({
 
   return (
     <ClassNameScrollView testID="public-store-screen" className="flex-1 bg-background">
-      <ClassNameView className="gap-4 p-6">
-        <ClassNameView className="gap-1">
-          <ClassNameText className="text-xs uppercase tracking-wide text-muted">Store</ClassNameText>
-          <ClassNameText className="text-2xl font-semibold text-foreground">{storeName}</ClassNameText>
-        </ClassNameView>
+      <ScreenHeader title={storeName} subtitle="Store" testID="public-store-title" />
+      <ClassNameView className="gap-4 px-6 pb-6">
 
         {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
         {error ? (
