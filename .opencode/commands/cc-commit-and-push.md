@@ -5,7 +5,9 @@ agent: git-ops
 
 This command invocation explicitly requests the repository's commit-and-push workflow. Read and follow `.agents/skills/commit-and-push/SKILL.md`, `.agents/rules/commits.md`, `.agents/rules/no-auto-commit.md`, `.agents/rules/git-model.md`, and `.agents/agents/git-ops.md`.
 
-This command already runs as the `git-ops` agent, which is pinned to the Space Bunny Free model, so perform every git operation here instead of delegating further.
+This command already runs as the `git-ops` agent. It intentionally inherits the
+current session model; do not select or override another model. Perform every
+git operation here instead of delegating further.
 
 Review the full working tree, including staged, unstaged, and untracked changes across all workspaces. Follow any additional scope or instructions here: $ARGUMENTS
 

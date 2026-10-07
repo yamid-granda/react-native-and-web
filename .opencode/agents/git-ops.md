@@ -1,7 +1,6 @@
 ---
-description: Executes every git operation — commit, pull, merge, push, rebase, status, diff — using the shared repository role prompt on the Space Bunny Free model. Use whenever a git operation is requested or needed.
+description: Executes every git operation — commit, pull, merge, push, rebase, status, diff — using the shared repository role prompt and the current session model. Use whenever a git operation is requested or needed.
 mode: subagent
-model: opencode-go/space-bunny-free
 permissions:
   - action: edit
     resource: "*"
@@ -15,6 +14,6 @@ Read and follow `.agents/agents/git-ops.md` and the relevant files in
 `.agents/rules/`. The shared role prompt is the source of truth; this file only
 adds OpenCode's agent and model metadata.
 
-All git operations in this repository belong in this agent, so the Space Bunny
-Free model required by `.agents/rules/git-model.md` performs them. Run every git
+All git operations in this repository belong in this agent. Use the current
+session model; do not select or override a model in this agent. Run every git
 command through the shell; do not edit files.
