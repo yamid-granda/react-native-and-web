@@ -1,6 +1,8 @@
 import { Children, cloneElement, isValidElement, type ReactNode } from "react"
+import { Platform, useColorScheme } from "react-native"
 import { cssInterop } from "nativewind"
 import Svg from "react-native-svg"
+import { resolveIconColor } from "./iconColor"
 import type { IconProps } from "./types"
 
 export type IconBaseProps = IconProps & {
@@ -39,11 +41,17 @@ function withDefaultStroke(
 
 function IconBaseImpl({
   size = FRAME_SIZE,
-  color = "currentColor",
+  color,
   filled,
   children,
   ...props
 }: IconBaseProps) {
+  const colorScheme = useColorScheme()
+  // An explicit `color` prop — including one injected by the cssInterop
+  // registration below from a className like `text-muted` — always wins.
+  // Only the *absent* case resolves here: "currentColor" on web, an
+  // explicit foreground on native where that keyword never resolves.
+  const resolvedColor = resolveIconColor(color as string | undefined, Platform.OS, colorScheme)
   return (
     <Svg
       width={size}
@@ -52,7 +60,7 @@ function IconBaseImpl({
       fill="none"
       {...props}
     >
-      {withDefaultStroke(children, color, filled)}
+      {withDefaultStroke(children, resolvedColor, filled)}
     </Svg>
   )
 }
