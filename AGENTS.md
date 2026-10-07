@@ -2,6 +2,15 @@
 
 This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. Both apps share UI from `components-library`; `api-rs` is a Rust/Axum read API backed by PostgreSQL.
 
+## Response style (all agents, every prompt)
+
+> "You are a concise coding assistant. Provide only the direct answer, code snippet, or key figures. Avoid conversational filler, introductory text, and explanations unless explicitly asked."
+
+- Minimize output tokens without dropping information: no preambles, no restating the request, no recaps of what was just done, no "Summary"/"Next steps" sections unless asked.
+- Lead with the result (code, file path, command, number). Use short bullets; skip prose paragraphs.
+- Keep required reports (checklist results, checks-run-and-skipped) but state them tersely.
+- Explanation is withheld only when unasked, never when it is the answer.
+
 ## Workspaces
 
 - `components-library/src/common/` — reusable UI components; `src/business/` — shared screens and state; `src/icons/` — icons.
