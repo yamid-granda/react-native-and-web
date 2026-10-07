@@ -47,4 +47,19 @@ describe("useInfiniteProducts", () => {
     )
     expect(result.current.hasNextPage).toBe(false)
   })
+
+  it("uses a server-provided first page without fetching it again", () => {
+    const fetchProducts = vi.fn((p: number) => Promise.resolve(page(p, false)))
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    })
+    const { result } = renderHook(() => useInfiniteProducts(fetchProducts, page(1, true)), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    })
+
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.products).toEqual(page(1, true).items)
+    expect(result.current.hasNextPage).toBe(true)
+    expect(fetchProducts).not.toHaveBeenCalled()
+  })
 })
