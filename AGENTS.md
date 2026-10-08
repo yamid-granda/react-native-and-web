@@ -21,8 +21,14 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 
 ## Visual manual (mandatory for all UI work)
 
-- Read `docs/system-design/index.md` before touching any UI in `components-library/`, `web-application/`, `mobile-application/`, or any future interface. It is binding: tokens, type scale, spacing, controls, product card, responsive breakpoints, and platform-split rules override intuition.
-- Shared view rule: phone and web-mobile render the same shared components; breakpoints only add columns/containment in app wrappers, never fork card internals.
+`docs/system-design/index.md` is the UI standard for this repository. **Read it before writing, changing, or reviewing any UI** in `components-library/`, `web-application/`, `mobile-application/`, or any interface added later. It is binding and outranks intuition, existing code, and framework defaults: if a component disagrees with the manual, follow the manual and fix the component in the same change.
+
+- It is the single place for color, typography, spacing, shape, elevation, motion, loading/empty/error states, control variants, the product card, marketplace conversion rules, and the phone/tablet/desktop layout ladder. Do not restate or re-derive those values in a component, a scoped `AGENTS.md`, or a Storybook decorator — read them from `components-library/tokens.css` and `tailwind-preset.cjs`.
+- Shared view rule: phone, web-mobile, tablet, and desktop render the same shared components. Breakpoints add columns, containment, and rails in app wrappers and list screens only; they never fork component internals.
+- No new color, type size, spacing value, radius, control variant, or elevation step without an agreed `improve-proposals/` entry first. Reach for the existing token before reaching for a local value.
+- Adding a screen or component means: proposal → `tokens.css` → `tailwind-preset.cjs` → `components-library` → Storybook story → test → both apps.
+- The automated guards are `components-library/src/tokens.parity.test.ts` (palette, contrast floors, literal allowlist) and `components-library/src/common/Button/Button.centralization.test.ts` (single button). A change that trips either is not done.
+- Verify the §12 checklist in the manual before reporting UI work complete.
 
 ## Architecture and implementation
 
