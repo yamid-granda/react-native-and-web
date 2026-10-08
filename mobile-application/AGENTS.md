@@ -1,5 +1,15 @@
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
+## UI is governed by the Visual Manual (read first)
+
+Before creating or changing any screen, layout, class, or style in this app, read `docs/system-design/index.md` at the repository root. It is binding for this app and overrides intuition and existing code.
+
+- Do not restate the manual's values. Colors come from `components-library/tokens.css` (already imported by `src/global.css`); names come from `tailwind-preset.cjs`.
+- Native theme files must reference `tokens.css` values, never re-declare hex (this applies to `src/navHeaderTheme.ts`).
+- Breakpoint classes belong in app wrappers and list screens only, never in a shared `components-library` component.
+- Every screen under the floating tab bar reserves `pb-20` (§8 of the manual), not only the web app.
+- Follow §12 of the manual before reporting UI work complete.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
