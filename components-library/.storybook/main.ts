@@ -6,7 +6,15 @@ import { WEB_RESOLVE_EXTENSIONS, webResolveAlias } from "../web-resolution"
 // requires webpack5, so the alias it would set is configured directly below
 // via viteFinal instead. safe-area-context stub: see README.
 const config: StorybookConfig = {
-  stories: ["../src/**/*.stories.@(ts|tsx)"],
+  stories: [
+    "../src/**/*.stories.@(ts|tsx)",
+    // The `Design System` section is a specimen of docs/system-design/index.md,
+    // not of a shipped component, so it sits beside the Storybook config that
+    // renders it instead of in src/ — where it would be a second owner of the
+    // tokens it only documents. spec.tsx (its shared furniture) is picked up by
+    // this same glob's directory but is not itself a story.
+    "../.storybook/design-system/**/*.stories.@(ts|tsx)",
+  ],
   framework: {
     name: "@storybook/react-vite",
     options: {},
