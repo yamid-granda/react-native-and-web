@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ProductData } from "../../types/Product"
 import type { FetchProductsByIds } from "../ProductLookup/useProductLookup"
 import { ProductListScreen, type ProductListScreenProps } from "./ProductListScreen"
@@ -197,5 +197,18 @@ describe("ProductListScreen (web, via react-native-web)", () => {
     expect(
       screen.getByText('No products match "keyboard" in this price range.'),
     ).toBeInTheDocument()
+  })
+
+  it("wraps the search input in a dedicated sticky landmark ahead of the grid", () => {
+    renderList({ products })
+    const sticky = screen.getByTestId("marketplace-search-sticky")
+    expect(within(sticky).getByLabelText("Search products")).toBeInTheDocument()
+    // DOM order keeps search first so `position: sticky` (asserted in
+    // e2e/desktop.spec.ts, where CSS applies) pins it while the catalogue
+    // scrolls beneath it.
+    const rail = screen.getByTestId("marketplace-filters-rail")
+    const grid = screen.getByTestId("marketplace-grid")
+    expect(sticky.compareDocumentPosition(rail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(sticky.compareDocumentPosition(grid)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 })

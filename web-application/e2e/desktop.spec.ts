@@ -28,6 +28,20 @@ test.describe("desktop layout", () => {
     expect(position).toBe("sticky")
   })
 
+  test("search bar stays pinned while the catalogue scrolls", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByTestId("product-list-screen")).toBeVisible()
+
+    const search = page.getByTestId("marketplace-search-sticky")
+    await expect(search).toBeVisible()
+    expect(await search.evaluate((el) => window.getComputedStyle(el).position)).toBe("sticky")
+
+    await page.evaluate(() => window.scrollBy(0, 1200))
+    await expect(search).toBeVisible()
+    const box = await search.boundingBox()
+    expect(box?.y).toBeLessThanOrEqual(100)
+  })
+
   test("page has no horizontal overflow", async ({ page }) => {
     await page.goto("/")
 

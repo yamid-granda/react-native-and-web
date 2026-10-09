@@ -74,6 +74,8 @@ const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
     "multiline textarea height — padding replaces the fixed height by design (see Input.tsx)",
   "common/Input/Input.tsx py-2":
     "the padding half of the same multiline decision; a single-line input uses h-control",
+  "business/ProductListScreen/ProductListScreen.web.tsx py-2":
+    "sticky search bar vertical padding around h-control",
   "common/MainNav/MainNavItem.tsx h-5": "cart/wishlist badge height",
   "common/MainNav/MainNavItem.tsx py-2": "nav item vertical padding",
   "common/Product/ProductCard.tsx h-32": "product image height",

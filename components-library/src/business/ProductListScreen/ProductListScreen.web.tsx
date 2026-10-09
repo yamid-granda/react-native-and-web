@@ -97,13 +97,25 @@ export function ProductListScreen({
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
       <ScreenHeader title="Marketplace" testID="marketplace-title" />
       <ClassNameView className="gap-4 px-6 pb-6 md:px-8">
-        <SearchInput value={query} onChangeText={setQuery} />
+        {/* Sticky search: stays pinned while the grid scrolls. `top-0` on
+            phone/tablet (no top header), `lg:top-20` clears the sticky
+            DesktopHeader (`z-40`) on desktop. `z-30` floats above cards but
+            below the header; `-mx/px` bleeds the `bg-background` under the
+            parent padding so scrolled cards never show through the gap. */}
+        <ClassNameView
+          testID="marketplace-search-sticky"
+          className="sticky top-0 z-30 -mx-6 bg-background px-6 py-2 md:-mx-8 md:px-8 lg:top-20"
+        >
+          <SearchInput value={query} onChangeText={setQuery} />
+        </ClassNameView>
         {/* Mobile: filters stack above the grid. Desktop (`lg:`): filters become
-            the §8 left rail (`w-60 sticky top-20`), the grid takes the rest. */}
+            the §8 left rail (`w-60 sticky`). Rail `top-40` = header (20) +
+            search bar (h-control + py-2 ≈ 15) + parent gap (4), so the rail
+            never slides under the stuck search. */}
         <ClassNameView className="gap-4 lg:flex-row lg:gap-6">
           <ClassNameView
             testID="marketplace-filters-rail"
-            className="lg:w-60 lg:flex-shrink-0 lg:self-start lg:sticky lg:top-20"
+            className="lg:w-60 lg:flex-shrink-0 lg:self-start lg:sticky lg:top-40"
           >
             <ProductFilterControls
               sortBy={sortBy}
