@@ -350,12 +350,24 @@ importers:
       '@babel/runtime':
         specifier: ^7.29.0
         version: 7.29.7
+      '@testing-library/jest-dom':
+        specifier: ^6.6.0
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@types/jest':
         specifier: 29.5.14
         version: 29.5.14
+      '@types/node':
+        specifier: ^22
+        version: 22.20.4
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.18
+      '@vitejs/plugin-react':
+        specifier: ^4.3.0
+        version: 4.7.0(supports-color@8.1.1)(vite@7.3.6(@types/node@22.20.4)(jiti@2.6.1)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
       babel-jest:
         specifier: ^30.5.2
         version: 30.5.2(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
@@ -371,12 +383,21 @@ importers:
       jest-circus:
         specifier: ^30.5.2
         version: 30.5.2(supports-color@8.1.1)
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1(supports-color@8.1.1)
+      react-native-web:
+        specifier: ^0.21.0
+        version: 0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       tailwindcss:
         specifier: ^3.4.19
         version: 3.4.19(tsx@4.23.15)(yaml@2.9.1)
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.2(@types/node@22.20.4)(jsdom@25.0.1(supports-color@8.1.1))(vite@7.3.6(@types/node@22.20.4)(jiti@2.6.1)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   web-application:
     dependencies:
@@ -9815,6 +9836,15 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
+
+  '@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@testing-library/dom': 10.4.2
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+    optionalDependencies:
+      '@types/react': 19.2.18
 
   '@testing-library/user-event@14.6.7(@testing-library/dom@10.4.2)':
     dependencies:

@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
 import { ProductDetailScreen, productQueryKey } from "@rnw/components-library"
-import { fetchProduct } from "../../../api/client"
+import { fetchProduct } from "../../../../api/client"
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react"
 import { router } from "expo-router"
 import { ProductListScreen, useInfiniteProducts } from "@rnw/components-library"
-import { fetchProducts, fetchProductsByIds } from "../../api/client"
+import { fetchProducts, fetchProductsByIds } from "../../../api/client"
 
 /**
  * Home is the marketplace list: the catalogue every shopper lands on.
