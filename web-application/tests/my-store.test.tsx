@@ -223,6 +223,6 @@ describe("PublicStoreView (the public storefront)", () => {
 
     fireEvent.click(screen.getByTestId("product-card-prd_1"))
 
-    expect(pushedTo()).toContain("/marketplace/prd_1")
+    expect(pushedTo()).toContain("/product/prd_1")
   })
 })

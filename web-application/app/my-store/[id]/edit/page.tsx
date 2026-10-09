@@ -21,7 +21,7 @@ import { revalidateCatalogue } from "../../../actions"
  * can already read it publicly, and a second route would only exist to hide a row
  * the marketplace shows anyway.
  *
- * Shape follows `app/marketplace/[id]/page.tsx` exactly — `params` is a promise,
+ * Shape follows `app/product/[id]/page.tsx` exactly — `params` is a promise,
  * so `use(params)` suspends on the first render.
  *
  * The read sits in a child component because of the rule of hooks: it only runs

@@ -40,7 +40,7 @@ export function DesktopHeader() {
 
   const items: DesktopNavItem[] = [
     { key: "home", title: "Home", icon: HomeIcon, href: "/" },
-    { key: "marketplace", title: "Marketplace", icon: MarketplaceIcon, href: "/marketplace" },
+    { key: "my-store", title: "My Store", icon: MarketplaceIcon, href: "/my-store" },
     {
       key: "wishlist",
       title: "Wishlist",

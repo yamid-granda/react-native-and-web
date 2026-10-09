@@ -26,7 +26,7 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 
 const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: Href }[] = [
   { key: "index", title: "Home", icon: HomeIcon, href: "/" },
-  { key: "marketplace", title: "Marketplace", icon: MarketplaceIcon, href: "/marketplace" },
+  { key: "my-store", title: "My Store", icon: MarketplaceIcon, href: "/my-store" },
   { key: "wishlist", title: "Wishlist", icon: HeartIcon, href: "/wishlist" },
   { key: "cart", title: "Cart", icon: CartIcon, href: "/cart" },
 ]

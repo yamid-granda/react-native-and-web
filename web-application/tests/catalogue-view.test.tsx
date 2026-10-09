@@ -2,7 +2,7 @@ import type { ReactElement } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { MarketplaceView } from "../app/marketplace/marketplace-view"
+import { CatalogueView } from "../app/catalogue-view"
 
 // `lib/api` is a re-export of the shared client (`createApi` in
 // `@rnw/components-library`/api/transport), but the module path and every export
@@ -28,9 +28,9 @@ function renderWithClient(ui: ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
-describe("MarketplaceView", () => {
+describe("CatalogueView", () => {
   it("renders the server-fetched first page", () => {
-    renderWithClient(<MarketplaceView initialPage={initialPage} />)
+    renderWithClient(<CatalogueView initialPage={initialPage} />)
 
     expect(screen.getByText("Wireless Headphones")).toBeInTheDocument()
   })

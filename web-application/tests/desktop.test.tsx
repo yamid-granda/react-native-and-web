@@ -38,9 +38,9 @@ describe("Desktop shell", () => {
 
     expect(screen.getByTestId("desktop-header")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
-    expect(screen.getByRole("link", { name: "Marketplace" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "My Store" })).toHaveAttribute(
       "href",
-      "/marketplace",
+      "/my-store",
     )
     expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument()
   })

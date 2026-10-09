@@ -6,7 +6,7 @@ import {
   useMyStoreMutations,
   useSessionStore,
 } from "@rnw/components-library"
-import { myStoreApi } from "../../api/client"
+import { myStoreApi } from "../../../api/client"
 
 export default function NewProductRoute() {
   const signIn = useCallback(() => router.replace("/login"), [])

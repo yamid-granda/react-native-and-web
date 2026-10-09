@@ -8,7 +8,7 @@ import { PRODUCTS_TAG, productTag, storeProductsTag } from "../lib/catalogue"
  *
  * The client-side mutation already invalidates React Query, so the seller's own
  * screens are fresh; this is the other half — the ISR pages other visitors get
- * (`/marketplace`, `/marketplace/{id}`, `/stores/{id}`) are tagged in
+ * (`/`, `/product/{id}`, `/stores/{id}`) are tagged in
  * `lib/api-server.ts` and are marked stale here. The `"max"` profile means the
  * next visitor is served the stale page while the fresh one regenerates.
  *

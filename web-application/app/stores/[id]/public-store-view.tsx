@@ -24,7 +24,7 @@ export function PublicStoreView({
     <PublicStoreScreen
       storeName={storeName}
       products={products}
-      onSelectProduct={(id) => router.push(`/marketplace/${id}`)}
+      onSelectProduct={(id) => router.push(`/product/${id}`)}
     />
   )
 }

@@ -25,7 +25,7 @@ export default function StoreRoute() {
       isLoading={store.isPending || products.isPending}
       error={store.error ?? products.error}
       onSelectProduct={(productId) =>
-        router.push({ pathname: "/marketplace/[id]", params: { id: productId } })
+        router.push({ pathname: "/product/[id]", params: { id: productId } })
       }
     />
   )

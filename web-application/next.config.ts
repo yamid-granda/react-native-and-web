@@ -13,6 +13,15 @@ const safeAreaContextStubPath = "../components-library/stubs/react-native-safe-a
 const reactNativeSvgStubPath = "../components-library/stubs/react-native-svg.js"
 
 const nextConfig: NextConfig = {
+  // The marketplace used to live at `/marketplace` with details at
+  // `/marketplace/[id]`; it is now the home page (`/`) with details at
+  // `/product/[id]`. Permanent redirects preserve backlinks and crawlers.
+  async redirects() {
+    return [
+      { source: "/marketplace", destination: "/", permanent: true },
+      { source: "/marketplace/:id", destination: "/product/:id", permanent: true },
+    ]
+  },
   // react-native / react-native-web / nativewind ship untranspiled source;
   // Next.js needs to run its own transforms over them.
   transpilePackages: [

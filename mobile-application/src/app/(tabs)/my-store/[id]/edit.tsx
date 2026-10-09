@@ -8,7 +8,7 @@ import {
   useMyStoreMutations,
   useSessionStore,
 } from "@rnw/components-library"
-import { fetchProduct, myStoreApi } from "../../../api/client"
+import { fetchProduct, myStoreApi } from "../../../../api/client"
 
 /**
  * Edit one of the caller's products.
