@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
-import { Input } from "./Input"
+import { Input, inputVerticalAlignStyle } from "./Input"
 
 describe("Input (web, via react-native-web)", () => {
   it("renders the given value", () => {
@@ -77,5 +77,19 @@ describe("Input (web, via react-native-web)", () => {
     expect(screen.getByTestId("notes")).toBe(textarea)
     // A one-line box centres its content; a tall one has to start at the top.
     expect(screen.getByTestId("input-container").className).not.toContain("items-center")
+  })
+
+  it("vertically centers single-line text so native matches web's <input>", () => {
+    // The wrapper's `items-center` only centers the field view; the glyphs
+    // inside need `textAlignVertical` + zero vertical padding on native.
+    expect(inputVerticalAlignStyle(false)).toEqual({ paddingVertical: 0, textAlignVertical: "center" })
+    expect(inputVerticalAlignStyle(undefined)).toEqual({
+      paddingVertical: 0,
+      textAlignVertical: "center",
+    })
+  })
+
+  it("top-aligns multiline text so the first line does not float centered", () => {
+    expect(inputVerticalAlignStyle(true)).toEqual({ paddingVertical: 0, textAlignVertical: "top" })
   })
 })

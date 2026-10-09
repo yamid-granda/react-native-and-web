@@ -1,9 +1,11 @@
 import { useRef, type ComponentType, type RefAttributes } from "react"
 import {
+  Platform,
   Pressable,
   TextInput,
   type PressableProps,
   type TextInputProps,
+  type TextStyle,
   type ViewStyle,
 } from "react-native"
 import { cn } from "../../utils/cn"
@@ -24,6 +26,23 @@ const ClassNamePressable = Pressable as ComponentType<
 // wins deterministically where a competing className's cascade order can't
 // be relied on.
 const textCursorStyle = { cursor: "text" } as unknown as ViewStyle
+// Native centers the glyphs, not the wrapper: `items-center` on the box only
+// centers the TextInput view, while Android's default `includeFontPadding` and
+// non-zero vertical padding push single-line text toward the top of `h-control`
+// (web's <input> centers on its own, which is why only mobile looked off).
+// `paddingVertical: 0` leaves height to the wrapper; `textAlignVertical` picks
+// the line's position inside the stretched field. Style (not className) so the
+// value wins deterministically — same reason as `textCursorStyle` above — and
+// no new literal height for `tokens.parity.test.ts` to pin.
+// Exported for the web test below: the RNW stylesheet mapping is an
+// implementation detail, but the prop contract (zero vertical padding, native
+// vertical centering) is what keeps mobile matching web.
+export function inputVerticalAlignStyle(multiline?: boolean): TextStyle {
+  return {
+    paddingVertical: 0,
+    textAlignVertical: multiline ? "top" : "center",
+  }
+}
 const ClassNameTextInput = TextInput as ComponentType<
   TextInputProps & { className?: string } & RefAttributes<TextInput>
 >
@@ -47,6 +66,7 @@ export function Input({
   className,
   inputTestID,
   multiline,
+  style,
   ...rest
 }: InputProps) {
   const inputRef = useRef<TextInput>(null)
@@ -81,6 +101,13 @@ export function Input({
         {...rest}
         multiline={multiline}
         testID={inputTestID}
+        // `includeFontPadding` is Android-only extra leading that reads as
+        // top-shifted text in a fixed-height box. Gated to native: on web
+        // react-native-web would forward it to the DOM <input>.
+        {...(Platform.OS !== "web" ? { includeFontPadding: false } : null)}
+        // Caller `style` first so the vertical-align above wins on conflict
+        // while any other caller keys are preserved.
+        style={[style, inputVerticalAlignStyle(multiline)] as TextInputProps["style"]}
         // After `{...rest}` and therefore not overridable: a taller box comes from
         // the wrapper's className above, and a textarea aligns to the top.
         // `text-base` (16px) is the default size; `font-normal leading-6` keeps
