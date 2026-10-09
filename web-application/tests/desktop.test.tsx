@@ -8,8 +8,11 @@ import { ProductListScreen } from "@rnw/components-library"
 
 // solito/navigation's useRouter() calls next/navigation's useRouter, which
 // throws outside a real Next.js app router.
+const { pathname } = vi.hoisted(() => ({ pathname: { value: "/" } }))
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => pathname.value,
 }))
 
 vi.mock("solito/navigation", async (importOriginal) => {
@@ -42,10 +45,7 @@ describe("Desktop shell", () => {
 
     expect(screen.getByTestId("desktop-header")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
-    expect(screen.getByRole("link", { name: "My Store" })).toHaveAttribute(
-      "href",
-      "/my-store",
-    )
+    expect(screen.getByRole("link", { name: "My Store" })).toHaveAttribute("href", "/my-store")
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
   })
 
@@ -66,6 +66,28 @@ describe("Desktop shell", () => {
     expect(desktopNav).toBeInTheDocument()
     expect(within(mobileNav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
     expect(within(desktopNav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
+  })
+
+  it("marks the section the user is in as current, on desktop and phone alike", () => {
+    pathname.value = "/cart"
+    render(
+      <>
+        <DesktopHeader />
+        <NavHeader />
+      </>,
+    )
+
+    for (const nav of [
+      screen.getByTestId("desktop-header"),
+      screen.getByTestId("bottom-nav-mobile"),
+    ]) {
+      expect(within(nav).getByRole("link", { name: "Cart" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      )
+      expect(within(nav).getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current")
+    }
+    pathname.value = "/"
   })
 
   it("keeps mobile order (settings left, tabs reversed) while desktop stays Home-first", () => {
