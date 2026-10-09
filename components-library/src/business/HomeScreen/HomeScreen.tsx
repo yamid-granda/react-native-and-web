@@ -1,7 +1,5 @@
 import type { ComponentType } from "react"
 import { Pressable, Text, View, type PressableProps, type TextProps } from "react-native"
-import { Button } from "../../common/Button/Button"
-import { useCounterStore } from "./useCounterStore"
 import { useSessionStore } from "../AuthScreen/useSessionStore"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally.
@@ -23,7 +21,6 @@ export type HomeScreenProps = {
 }
 
 export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
-  const { count, increment } = useCounterStore()
   const user = useSessionStore((state) => (state.status === "authenticated" ? state.user : null))
   const signedIn = Boolean(user)
 
@@ -40,14 +37,6 @@ export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
       testID="home-screen"
       className="min-h-screen flex-1 items-center justify-center gap-6 bg-background p-8"
     >
-      <Text className="text-3xl font-semibold text-foreground">react-native-and-web</Text>
-      <Text className="max-w-xs text-center text-muted">
-        This screen is the exact same @rnw/components-library component, rendered by the Next.js web
-        app (via react-native-web) and the Expo app.
-      </Text>
-      {/* The label counts up, so the test id must not. */}
-      <Button label={`Pressed ${count} times`} testId="home-counter" onPress={increment} />
-
       {/* The entry point for My Store, rather than a fifth bottom-nav tab: the bar
           is already four items plus a theme slot, and mobile-application's
           tab-bar-position.e2e.ts guards its geometry. One row on a screen both
@@ -60,10 +49,10 @@ export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
         onPress={openStore}
         className="w-full max-w-xs items-center gap-1 rounded-lg bg-surface p-4 active:bg-surface-muted"
       >
-        <ClassNameText className="text-base font-semibold text-foreground">
+        <ClassNameText className="text-base font-semibold leading-6 text-foreground">
           {signedIn ? user?.storeName : "My Store"}
         </ClassNameText>
-        <ClassNameText className="text-xs text-muted">
+        <ClassNameText className="text-xs leading-4 text-muted">
           {signedIn ? "Manage your products" : "Sign in to sell"}
         </ClassNameText>
       </ClassNamePressable>
