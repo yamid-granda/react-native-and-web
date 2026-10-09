@@ -31,12 +31,19 @@ export function NavHeader() {
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
   // Phone/tablet only: desktop uses DesktopHeader (`hidden lg:flex`).
+  // Mobile order: settings flush left, the rest flush right in reverse
+  // (left-to-right: cart, wishlist, my-store, home).
   return (
     <ClassNameView testID="bottom-nav-mobile" className="lg:hidden">
       <BottomNav
+        leadingItem={{
+          key: "settings",
+          title: t("navSettings"),
+          icon: SettingsIcon,
+          onPress: () => setSettingsVisible(true),
+        }}
         items={[
-          { key: "home", title: t("navHome"), icon: HomeIcon, href: "/" },
-          { key: "my-store", title: t("homeMyStore"), icon: MarketplaceIcon, href: "/my-store" },
+          { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart", badgeCount: cartCount },
           {
             key: "wishlist",
             title: t("navWishlist"),
@@ -44,14 +51,9 @@ export function NavHeader() {
             href: "/wishlist",
             badgeCount: wishlistCount,
           },
-          { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart", badgeCount: cartCount },
+          { key: "my-store", title: t("homeMyStore"), icon: MarketplaceIcon, href: "/my-store" },
+          { key: "home", title: t("navHome"), icon: HomeIcon, href: "/" },
         ]}
-        trailingItem={{
-          key: "settings",
-          title: t("navSettings"),
-          icon: SettingsIcon,
-          onPress: () => setSettingsVisible(true),
-        }}
       />
       <SettingsSheet
         visible={settingsVisible}

@@ -67,6 +67,25 @@ describe("Desktop shell", () => {
     expect(within(mobileNav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
     expect(within(desktopNav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
   })
+
+  it("keeps mobile order (settings left, tabs reversed) while desktop stays Home-first", () => {
+    render(
+      <>
+        <DesktopHeader />
+        <NavHeader />
+      </>,
+    )
+
+    const mobileOrder = [
+      ...screen.getByTestId("bottom-nav-mobile").querySelectorAll("a,button"),
+    ].map((el) => el.textContent)
+    expect(mobileOrder).toEqual(["Settings", "Cart", "Wishlist", "My Store", "Home"])
+
+    const desktopOrder = [...screen.getByTestId("desktop-header").querySelectorAll("a,button")].map(
+      (el) => el.textContent,
+    )
+    expect(desktopOrder).toEqual(["Home", "My Store", "Wishlist", "Cart", "Settings"])
+  })
 })
 
 describe("Marketplace desktop grid (web split)", () => {

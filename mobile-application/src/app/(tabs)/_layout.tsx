@@ -29,7 +29,11 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 // expo-router/ui's TabList only discovers TabTriggers among its own direct,
 // unwrapped children (see README "Architecture boundaries") — so unlike
 // BottomNav's web usage, the items can't sit inside their own wrapping View;
-// the spacer/trailing Views are fine since neither contains a TabTrigger.
+// the leading/spacer Views are fine since neither contains a TabTrigger.
+//
+// Mobile order: settings flush left, the rest flush right in reverse
+// (left-to-right: cart, wishlist, my-store, home) with a flex-1 spacer
+// between them — the flat TabTriggers can't share a justify-end wrapper.
 //
 // TabList must be asChild-wrapped around a real ClassNameView, not given a
 // className itself — TabList isn't cssInterop-registered, and (being
@@ -54,6 +58,10 @@ export default function TabsLayout() {
     { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart" },
   ]
 
+  // Reversed for the right-aligned cluster: left-to-right cart, wishlist,
+  // my-store, home (Home first from the right).
+  const REVERSED_TAB_ITEMS = [...TAB_ITEMS].reverse()
+
   return (
     <>
       <Tabs>
@@ -63,8 +71,15 @@ export default function TabsLayout() {
             className={`${BOTTOM_NAV_BAR_CLASSNAME} gap-1`}
             style={{ ...getFloatingNavStyle(insets.bottom), justifyContent: "flex-start" }}
           >
+            <ClassNameView className="min-w-14 flex-row justify-start">
+              <MainNav
+                title={t("navSettings")}
+                icon={SettingsIcon}
+                onPress={() => setSettingsVisible(true)}
+              />
+            </ClassNameView>
             <ClassNameView className="flex-1" />
-            {TAB_ITEMS.map((item) => (
+            {REVERSED_TAB_ITEMS.map((item) => (
               <TabTrigger key={item.key} name={item.key} href={item.href} asChild>
                 <MainNav
                   title={item.title}
@@ -75,13 +90,6 @@ export default function TabsLayout() {
                 />
               </TabTrigger>
             ))}
-            <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
-              <MainNav
-                title={t("navSettings")}
-                icon={SettingsIcon}
-                onPress={() => setSettingsVisible(true)}
-              />
-            </ClassNameView>
           </ClassNameView>
         </TabList>
       </Tabs>

@@ -42,21 +42,38 @@ export type BottomNavItem = {
 
 export type BottomNavProps = {
   items: BottomNavItem[]
-  // Rendered flush right (e.g. a theme toggle) without shifting `items`
-  // out of the bar's true center — see the left spacer below.
-  trailingItem?: BottomNavItem
+  // Rendered flush left (e.g. settings) while `items` stay flush right —
+  // see the leading slot below.
+  leadingItem?: BottomNavItem
 }
 
 // The single bottom-nav bar shared by web-application (rendered directly in
 // the layout) and mobile-application (rendered as a custom React Navigation
 // tabBar) — see README "Architecture boundaries" on component reuse.
-export function BottomNav({ items, trailingItem }: BottomNavProps) {
+export function BottomNav({ items, leadingItem }: BottomNavProps) {
   const insets = useSafeAreaInsets()
 
   return (
     <ClassNameView className={BOTTOM_NAV_BAR_CLASSNAME} style={getFloatingNavStyle(insets.bottom)}>
-      <ClassNameView className="flex-1" />
-      <ClassNameView className="flex-row justify-center gap-1">
+      {/* min-w-14 matches MainNav's own floor: react-native-web's base View
+          reset sets min-width: 0 on every flex child regardless of content
+          (unlike plain CSS, which would floor this at leadingItem's own
+          min-content size by default), so without an explicit min-width
+          here this box gets squeezed by flex-1's 50/50 split with the
+          items slot and leadingItem overflows past it — hence
+          MainNav.web.tsx's own shrink/overflow-hidden on the item. */}
+      <ClassNameView className="min-w-14 flex-1 flex-row justify-start">
+        {leadingItem ? (
+          <MainNav
+            title={leadingItem.title}
+            icon={leadingItem.icon}
+            href={leadingItem.href}
+            onPress={leadingItem.onPress}
+            badgeCount={leadingItem.badgeCount}
+          />
+        ) : null}
+      </ClassNameView>
+      <ClassNameView className="flex-1 flex-row justify-end gap-1">
         {items.map((item) => (
           <MainNav
             key={item.key}
@@ -67,24 +84,6 @@ export function BottomNav({ items, trailingItem }: BottomNavProps) {
             badgeCount={item.badgeCount}
           />
         ))}
-      </ClassNameView>
-      {/* min-w-14 matches MainNav's own floor: react-native-web's base View
-          reset sets min-width: 0 on every flex child regardless of content
-          (unlike plain CSS, which would floor this at trailingItem's own
-          min-content size by default), so without an explicit min-width
-          here this box gets squeezed by flex-1's 50/50 split with the
-          empty leading spacer and trailingItem overflows past it — hence
-          MainNav.web.tsx's own shrink/overflow-hidden on the item. */}
-      <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
-        {trailingItem ? (
-          <MainNav
-            title={trailingItem.title}
-            icon={trailingItem.icon}
-            href={trailingItem.href}
-            onPress={trailingItem.onPress}
-            badgeCount={trailingItem.badgeCount}
-          />
-        ) : null}
       </ClassNameView>
     </ClassNameView>
   )
