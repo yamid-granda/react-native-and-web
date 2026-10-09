@@ -3,14 +3,31 @@ import type { DictKey } from "./en"
 import type { Locale } from "./resolveLocale"
 import { translate, type TVars } from "./translate"
 
-const LocaleContext = createContext<{ locale: Locale }>({ locale: "en" })
-
-export function LocaleProvider({ locale, children }: { locale: Locale; children: ReactNode }) {
-  return <LocaleContext.Provider value={{ locale }}>{children}</LocaleContext.Provider>
+type LocaleContextValue = {
+  locale: Locale
+  setLocale: (locale: Locale) => void
 }
 
-/** Current detected locale (`en` when no provider — keeps existing tests green). */
-export function useLocale(): { locale: Locale } {
+const LocaleContext = createContext<LocaleContextValue>({ locale: "en", setLocale: () => {} })
+
+export function LocaleProvider({
+  locale,
+  onLocaleChange,
+  children,
+}: {
+  locale: Locale
+  onLocaleChange?: (locale: Locale) => void
+  children: ReactNode
+}) {
+  return (
+    <LocaleContext.Provider value={{ locale, setLocale: onLocaleChange ?? (() => {}) }}>
+      {children}
+    </LocaleContext.Provider>
+  )
+}
+
+/** Current locale (`en` when no provider — keeps existing tests green). */
+export function useLocale(): LocaleContextValue {
   return useContext(LocaleContext)
 }
 

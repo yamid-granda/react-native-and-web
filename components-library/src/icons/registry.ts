@@ -6,6 +6,7 @@ import { HomeIcon } from "./HomeIcon/HomeIcon"
 import { MarketplaceIcon } from "./MarketplaceIcon/MarketplaceIcon"
 import { MoonIcon } from "./MoonIcon/MoonIcon"
 import { SearchIcon } from "./SearchIcon/SearchIcon"
+import { SettingsIcon } from "./SettingsIcon/SettingsIcon"
 import { SunIcon } from "./SunIcon/SunIcon"
 import type { IconProps } from "./types"
 
@@ -47,6 +48,11 @@ export const iconRegistry: IconRegistryEntry[] = [
     name: "SearchIcon",
     Component: SearchIcon,
     keywords: ["search", "find", "magnify", "lookup"],
+  },
+  {
+    name: "SettingsIcon",
+    Component: SettingsIcon,
+    keywords: ["settings", "gear", "cog", "preferences", "options"],
   },
   {
     name: "CloseIcon",

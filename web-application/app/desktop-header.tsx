@@ -1,6 +1,6 @@
 "use client"
 
-import type { ComponentType } from "react"
+import { useState, type ComponentType } from "react"
 import { View, type ViewProps } from "react-native"
 import {
   CartIcon,
@@ -8,11 +8,12 @@ import {
   HomeIcon,
   MainNav,
   MarketplaceIcon,
-  MoonIcon,
-  SunIcon,
+  SettingsIcon,
+  SettingsSheet,
   getCartTotalCount,
   getWishlistTotalCount,
   useCartStore,
+  useLocale,
   useT,
   useWishlistStore,
   type IconProps,
@@ -35,8 +36,10 @@ type DesktopNavItem = {
 // Phone/tablet keep BottomNav (see nav-header.tsx `lg:hidden`); this bar is
 // `hidden lg:flex` so exactly one nav is visible per viewport.
 export function DesktopHeader() {
-  const { theme, toggleTheme } = useThemeToggle()
+  const { theme, setTheme } = useThemeToggle()
   const t = useT()
+  const { locale, setLocale } = useLocale()
+  const [settingsVisible, setSettingsVisible] = useState(false)
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
@@ -72,11 +75,19 @@ export function DesktopHeader() {
           ))}
         </ClassNameView>
         <MainNav
-          title={t("navTheme")}
-          icon={theme === "dark" ? SunIcon : MoonIcon}
-          onPress={toggleTheme}
+          title={t("navSettings")}
+          icon={SettingsIcon}
+          onPress={() => setSettingsVisible(true)}
         />
       </ClassNameView>
+      <SettingsSheet
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        locale={locale}
+        onLocaleChange={setLocale}
+      />
     </ClassNameView>
   )
 }

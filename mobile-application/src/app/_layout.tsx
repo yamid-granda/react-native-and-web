@@ -1,5 +1,5 @@
 import "../../global.css"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -18,18 +18,20 @@ export default function RootLayout() {
   const validate = useCallback((token: string) => validateSession(token), [])
   useSessionBootstrap({ validate })
 
-  // Auto-detected device locale (en/es, no switcher): read once at launch from
-  // the OS preferred list; anything not Spanish falls back to English.
-  const locale = useMemo(
+  // Auto-detected device locale (en/es): read once at launch from the OS
+  // preferred list; anything not Spanish falls back to English. The settings
+  // sheet can override it for the session via onLocaleChange.
+  const detectedLocale = useMemo(
     () => resolveLocale(getLocales()[0]?.languageCode ?? getLocales()[0]?.languageTag),
     [],
   )
+  const [locale, setLocale] = useState(detectedLocale)
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <LocaleProvider locale={locale}>
+          <LocaleProvider locale={locale} onLocaleChange={setLocale}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             {/* The repo's first root-level non-tab routes. Login and the public

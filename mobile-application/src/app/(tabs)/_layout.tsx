@@ -1,4 +1,4 @@
-import type { ComponentType } from "react"
+import { useState, type ComponentType } from "react"
 import { View, type ViewProps } from "react-native"
 import type { Href } from "expo-router"
 import { TabList, Tabs, TabSlot, TabTrigger } from "expo-router/ui"
@@ -14,9 +14,10 @@ import {
   HomeIcon,
   MainNav,
   MarketplaceIcon,
-  MoonIcon,
-  SunIcon,
+  SettingsIcon,
+  SettingsSheet,
   useCartStore,
+  useLocale,
   useT,
   useWishlistStore,
   type IconProps,
@@ -39,8 +40,10 @@ const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 // defaults to the top-left.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets()
-  const { colorScheme, toggleColorScheme } = useColorScheme()
+  const { colorScheme, setColorScheme } = useColorScheme()
   const t = useT()
+  const { locale, setLocale } = useLocale()
+  const [settingsVisible, setSettingsVisible] = useState(false)
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
@@ -52,34 +55,48 @@ export default function TabsLayout() {
   ]
 
   return (
-    <Tabs>
-      <TabSlot />
-      <TabList asChild>
-        <ClassNameView
-          className={`${BOTTOM_NAV_BAR_CLASSNAME} gap-1`}
-          style={{ ...getFloatingNavStyle(insets.bottom), justifyContent: "flex-start" }}
-        >
-          <ClassNameView className="flex-1" />
-          {TAB_ITEMS.map((item) => (
-            <TabTrigger key={item.key} name={item.key} href={item.href} asChild>
+    <>
+      <Tabs>
+        <TabSlot />
+        <TabList asChild>
+          <ClassNameView
+            className={`${BOTTOM_NAV_BAR_CLASSNAME} gap-1`}
+            style={{ ...getFloatingNavStyle(insets.bottom), justifyContent: "flex-start" }}
+          >
+            <ClassNameView className="flex-1" />
+            {TAB_ITEMS.map((item) => (
+              <TabTrigger key={item.key} name={item.key} href={item.href} asChild>
+                <MainNav
+                  title={item.title}
+                  icon={item.icon}
+                  badgeCount={
+                    item.key === "cart" ? cartCount : item.key === "wishlist" ? wishlistCount : undefined
+                  }
+                />
+              </TabTrigger>
+            ))}
+            <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
               <MainNav
-                title={item.title}
-                icon={item.icon}
-                badgeCount={
-                  item.key === "cart" ? cartCount : item.key === "wishlist" ? wishlistCount : undefined
-                }
+                title={t("navSettings")}
+                icon={SettingsIcon}
+                onPress={() => setSettingsVisible(true)}
               />
-            </TabTrigger>
-          ))}
-          <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
-            <MainNav
-              title={t("navTheme")}
-              icon={colorScheme === "dark" ? SunIcon : MoonIcon}
-              onPress={toggleColorScheme}
-            />
+            </ClassNameView>
           </ClassNameView>
-        </ClassNameView>
-      </TabList>
-    </Tabs>
+        </TabList>
+      </Tabs>
+      {/* Outside Tabs on purpose: Tabs renders its children inside the
+          navigator host, and a Modal-hosting subtree there disturbs tab
+          navigation (product detail stopped opening). Drawer portals above
+          everything on its own, so this placement changes nothing visually. */}
+      <SettingsSheet
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        theme={colorScheme === "dark" ? "dark" : "light"}
+        onThemeChange={setColorScheme}
+        locale={locale}
+        onLocaleChange={setLocale}
+      />
+    </>
   )
 }
