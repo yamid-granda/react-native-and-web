@@ -9,7 +9,7 @@ import {
 import { myStoreApi } from "../../../api/client"
 
 export default function NewProductRoute() {
-  const signIn = useCallback(() => router.replace("/login"), [])
+  const signIn = useCallback(() => router.replace("/my-store/login"), [])
   // The write seam, keyed on the signed-in seller. Read from the session store
   // rather than from the list route's props, so this route needs nothing but the
   // store id to reach it.

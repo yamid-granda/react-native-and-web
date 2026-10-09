@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { router } from "expo-router"
 import { AuthScreen, useT, type AuthInput } from "@rnw/components-library"
-import { login, register } from "../api/client"
+import { login, register } from "../../../api/client"
 
 export default function LoginRoute() {
   const onAuthenticated = useCallback(() => {

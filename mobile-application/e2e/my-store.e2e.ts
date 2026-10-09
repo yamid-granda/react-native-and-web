@@ -27,6 +27,8 @@ describe("My Store flow", () => {
     await element(by.text("My Store")).tap()
 
     await expect(element(by.id("auth-screen"))).toBeVisible()
+    // The bottom bar stays on the sign-in screen.
+    await expect(element(by.text("Home"))).toBeVisible()
   })
 
   it("registers a store, lists a product, and finds it in the catalogue", async () => {
