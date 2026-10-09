@@ -10,6 +10,8 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 import {
   useProductLookup,
   type FetchProductsByIds,
@@ -36,6 +38,9 @@ export function CheckoutScreen({
   const items = useCartStore((state) => state.items)
   const clear = useCartStore((state) => state.clear)
   const [placedTotal, setPlacedTotal] = useState<number | null>(null)
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
 
   const ids = Object.keys(items)
   const { byId, missing, isLoading, error } = useProductLookup(ids, fetchProductsByIds)
@@ -64,28 +69,28 @@ export function CheckoutScreen({
     missing.length > 0 ? (
       <ClassNameText testID="checkout-missing" className="text-sm text-muted">
         {missing.length === 1
-          ? "1 saved item is no longer available, so it is not part of this order."
-          : `${missing.length} saved items are no longer available, so they are not part of this order.`}
+          ? t("checkoutMissingOne")
+          : t("checkoutMissingMany", { count: missing.length })}
       </ClassNameText>
     ) : null
 
   return (
     <ClassNameScrollView testID="checkout-screen" className="flex-1 bg-background">
-      <ScreenHeader title="Checkout" testID="checkout-title" />
+      <ScreenHeader title={t("checkoutTitle")} testID="checkout-title" />
       <ClassNameView className="gap-4 px-6 pb-6">
         {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
         {placedTotal !== null ? (
           <>
             <ClassNameText className="text-lg font-semibold text-foreground">
-              Order placed!
+              {t("checkoutOrderPlaced")}
             </ClassNameText>
             <ClassNameText className="text-lg font-bold text-brand">
-              {formatPrice(placedTotal)}
+              {formatPrice(placedTotal, "USD", tag)}
             </ClassNameText>
             <Button
-              label="Continue Shopping"
+              label={t("checkoutContinueShopping")}
               testId="checkout-continue-shopping"
               className="self-start"
               onPress={() => onContinueShopping?.()}
@@ -97,13 +102,13 @@ export function CheckoutScreen({
         ) : error ? (
           null
         ) : isLoading ? (
-          <ClassNameText className="text-muted">Loading your order…</ClassNameText>
+          <ClassNameText className="text-muted">{t("checkoutLoading")}</ClassNameText>
         ) : lineItems.length === 0 ? (
           <>
-            <ClassNameText className="text-muted">Your cart is empty.</ClassNameText>
+            <ClassNameText className="text-muted">{t("checkoutEmpty")}</ClassNameText>
             {missingNotice}
             <Button
-              label="Go to Cart"
+              label={t("checkoutGoToCart")}
               testId="checkout-go-to-cart"
               variant="secondary"
               className="self-start"
@@ -123,21 +128,21 @@ export function CheckoutScreen({
                       {product.title}
                     </ClassNameText>
                     <ClassNameText className="text-xs text-muted">
-                      {quantity} × {formatPrice(product.price, product.currency)}
+                      {quantity} × {formatPrice(product.price, product.currency, tag)}
                     </ClassNameText>
                   </ClassNameView>
                   <ClassNameText className="text-sm font-semibold text-foreground">
-                    {formatPrice(product.price * quantity, product.currency)}
+                    {formatPrice(product.price * quantity, product.currency, tag)}
                   </ClassNameText>
                 </ClassNameView>
               ))}
             </ClassNameView>
             {missingNotice}
             <ClassNameText className="text-lg font-bold text-brand">
-              Total: {formatPrice(getCartTotalPrice(lineItems))}
+              {t("cartTotal", { total: formatPrice(getCartTotalPrice(lineItems), "USD", tag) })}
             </ClassNameText>
             <Button
-              label="Place Order"
+              label={t("checkoutPlaceOrder")}
               testId="checkout-place-order"
               className="self-start"
               onPress={placeOrder}

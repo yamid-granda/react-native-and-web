@@ -28,6 +28,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // `lang="en"` is the server default for ISR-safe caching; `Providers`
+    // detects the browser locale on hydration and takes over from there.
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
         <SsrStylesWrapper>

@@ -1,3 +1,7 @@
+"use client"
+
+import { useT } from "@rnw/components-library"
+
 /**
  * Shown when a catalogue read fails at request time because the API is
  * unreachable.
@@ -7,9 +11,6 @@
  * opts out of static caching, so the failure is never baked into the ISR cache.
  */
 export function CatalogueUnavailable() {
-  return (
-    <p className="p-6 text-muted">
-      The catalogue is temporarily unavailable. Please try again in a moment.
-    </p>
-  )
+  const t = useT()
+  return <p className="p-6 text-muted">{t("catalogueUnavailable")}</p>
 }

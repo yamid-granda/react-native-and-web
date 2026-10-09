@@ -1,5 +1,6 @@
 import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
 import { Input, type InputProps } from "../Input/Input"
+import { useT } from "../../i18n/LocaleContext"
 
 export type SearchInputProps = Omit<InputProps, "prependIcon">
 
@@ -14,15 +15,16 @@ export type SearchInputProps = Omit<InputProps, "prependIcon">
  * this.
  */
 export function SearchInput({
-  placeholder = "Search products...",
-  accessibilityLabel = "Search products",
+  placeholder,
+  accessibilityLabel,
   ...rest
 }: SearchInputProps) {
+  const t = useT()
   return (
     <Input
       {...rest}
-      placeholder={placeholder}
-      accessibilityLabel={accessibilityLabel}
+      placeholder={placeholder ?? t("searchPlaceholder")}
+      accessibilityLabel={accessibilityLabel ?? t("searchLabel")}
       prependIcon={SearchIcon}
     />
   )

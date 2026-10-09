@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react"
 import { Text, type TextProps } from "react-native"
 import { useRequireSession } from "./useRequireSession"
+import { useT } from "../../i18n/LocaleContext"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
@@ -26,9 +27,10 @@ export type SessionGateProps = {
  */
 export function SessionGate({ onSignIn, children }: SessionGateProps) {
   const session = useRequireSession({ onSignIn })
+  const t = useT()
 
   if (session.status === "loading") {
-    return <ClassNameText className="p-6 text-muted">Checking your session…</ClassNameText>
+    return <ClassNameText className="p-6 text-muted">{t("authCheckingSession")}</ClassNameText>
   }
   return session.status === "anonymous" ? null : children
 }

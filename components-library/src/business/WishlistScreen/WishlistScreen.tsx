@@ -10,6 +10,8 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 import { useCartStore } from "../CartScreen/useCartStore"
 import { useProductLookup, type FetchProductsByIds } from "../ProductLookup/useProductLookup"
 import { useWishlistStore } from "./useWishlistStore"
@@ -28,6 +30,9 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
   const ids = useWishlistStore((state) => state.ids)
   const removeItem = useWishlistStore((state) => state.removeItem)
   const addItem = useCartStore((state) => state.addItem)
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
 
   const { byId, missing, isLoading, error } = useProductLookup(ids, fetchProductsByIds)
 
@@ -47,11 +52,11 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
       <ClassNameView className="gap-2">
         <ClassNameText testID="wishlist-missing" className="text-sm text-muted">
           {missing.length === 1
-            ? "1 saved item is no longer available."
-            : `${missing.length} saved items are no longer available.`}
+            ? t("wishlistMissingOne")
+            : t("wishlistMissingMany", { count: missing.length })}
         </ClassNameText>
         <Button
-          label="Remove unavailable items"
+          label={t("wishlistRemoveUnavailable")}
           testId="wishlist-remove-unavailable"
           variant="secondary"
           className="self-start"
@@ -62,10 +67,10 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
 
   return (
     <ClassNameScrollView testID="wishlist-screen" className="flex-1 bg-background">
-      <ScreenHeader title="Wishlist" testID="wishlist-title" />
+      <ScreenHeader title={t("wishlistTitle")} testID="wishlist-title" />
       <ClassNameView className="gap-4 px-6 pb-6">
         {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
         {unavailableNotice}
         {/* In this order, and the order is the point: a lookup that failed is
@@ -75,9 +80,9 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
             rendered the empty state beside itself, and a pending list flashed
             "empty" before its first paint. */}
         {error ? null : isLoading ? (
-          <ClassNameText className="text-muted">Loading your wishlist…</ClassNameText>
+          <ClassNameText className="text-muted">{t("wishlistLoading")}</ClassNameText>
         ) : products.length === 0 ? (
-          <ClassNameText className="text-muted">Your wishlist is empty.</ClassNameText>
+          <ClassNameText className="text-muted">{t("wishlistEmpty")}</ClassNameText>
         ) : (
           <ClassNameView className="gap-3">
             {products.map((product) => (
@@ -90,18 +95,18 @@ export function WishlistScreen({ fetchProductsByIds }: WishlistScreenProps) {
                     {product.title}
                   </ClassNameText>
                   <ClassNameText className="text-xs text-muted">
-                    {formatPrice(product.price, product.currency)}
+                    {formatPrice(product.price, product.currency, tag)}
                   </ClassNameText>
                 </ClassNameView>
                 <Button
-                  label="Add to Cart"
+                  label={t("wishlistAddToCart")}
                   testId={`wishlist-add-to-cart-${product.id}`}
                   onPress={() => addItem(product.id)}
                 />
                 <Button
-                  label="Remove"
+                  label={t("wishlistRemove")}
                   variant="secondary"
-                  accessibilityLabel={`Remove ${product.title} from wishlist`}
+                  accessibilityLabel={t("wishlistRemoveFrom", { title: product.title })}
                   testId={`wishlist-remove-${product.id}`}
                   onPress={() => removeItem(product.id)}
                 />

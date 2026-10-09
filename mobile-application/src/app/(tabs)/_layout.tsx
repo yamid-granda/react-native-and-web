@@ -17,19 +17,13 @@ import {
   MoonIcon,
   SunIcon,
   useCartStore,
+  useT,
   useWishlistStore,
   type IconProps,
 } from "@rnw/components-library"
 
 // see Button.tsx (components-library) / README "Architecture boundaries" for why this is cast locally
 const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
-
-const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: Href }[] = [
-  { key: "index", title: "Home", icon: HomeIcon, href: "/" },
-  { key: "my-store", title: "My Store", icon: MarketplaceIcon, href: "/my-store" },
-  { key: "wishlist", title: "Wishlist", icon: HeartIcon, href: "/wishlist" },
-  { key: "cart", title: "Cart", icon: CartIcon, href: "/cart" },
-]
 
 // expo-router/ui's TabList only discovers TabTriggers among its own direct,
 // unwrapped children (see README "Architecture boundaries") — so unlike
@@ -46,8 +40,16 @@ const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; h
 export default function TabsLayout() {
   const insets = useSafeAreaInsets()
   const { colorScheme, toggleColorScheme } = useColorScheme()
+  const t = useT()
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
+
+  const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: Href }[] = [
+    { key: "index", title: t("navHome"), icon: HomeIcon, href: "/" },
+    { key: "my-store", title: t("homeMyStore"), icon: MarketplaceIcon, href: "/my-store" },
+    { key: "wishlist", title: t("navWishlist"), icon: HeartIcon, href: "/wishlist" },
+    { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart" },
+  ]
 
   return (
     <Tabs>
@@ -71,7 +73,7 @@ export default function TabsLayout() {
           ))}
           <ClassNameView className="min-w-14 flex-1 flex-row justify-end">
             <MainNav
-              title="Theme"
+              title={t("navTheme")}
               icon={colorScheme === "dark" ? SunIcon : MoonIcon}
               onPress={toggleColorScheme}
             />

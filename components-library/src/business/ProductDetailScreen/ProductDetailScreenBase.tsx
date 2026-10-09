@@ -8,13 +8,15 @@ import { isWishlisted, useWishlistStore } from "../WishlistScreen/useWishlistSto
 import { Drawer } from "../../common/Drawer/Drawer"
 import { Button } from "../../common/Button/Button"
 import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
+import { useLocale, useT, type TFunction } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 
 const LOW_STOCK_THRESHOLD = 5
 
-function stockLabel(stock: number) {
-  if (stock === 0) return "Out of stock"
-  if (stock <= LOW_STOCK_THRESHOLD) return `Only ${stock} left`
-  return "In stock"
+function stockLabel(t: TFunction, stock: number) {
+  if (stock === 0) return t("detailOutOfStock")
+  if (stock <= LOW_STOCK_THRESHOLD) return t("detailOnlyLeft", { count: stock })
+  return t("detailInStock")
 }
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -49,6 +51,9 @@ export function ProductDetailScreen({
   const wishlisted = useWishlistStore((state) => (product ? isWishlisted(state.ids, product.id) : false))
   const toggleWishlistItem = useWishlistStore((state) => state.toggleItem)
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false)
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the id, not the object, so a same-id re-fetch (new object, unchanged id) doesn't re-record it
   useEffect(() => {
@@ -57,12 +62,12 @@ export function ProductDetailScreen({
 
   return (
     <ClassNameView testID="product-detail-screen" className="flex-1 gap-4 bg-background p-6">
-      {isLoading ? <ClassNameText className="text-muted">Loading product…</ClassNameText> : null}
+      {isLoading ? <ClassNameText className="text-muted">{t("detailLoading")}</ClassNameText> : null}
       {error ? (
-        <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+        <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
       ) : null}
       {!isLoading && !error && !product ? (
-        <ClassNameText className="text-muted">Product not found.</ClassNameText>
+        <ClassNameText className="text-muted">{t("detailNotFound")}</ClassNameText>
       ) : null}
       {product ? (
         <>
@@ -81,15 +86,15 @@ export function ProductDetailScreen({
             <ClassNameText className="text-base text-muted">{product.description}</ClassNameText>
           ) : null}
           <ClassNameText className="text-xl font-bold text-brand">
-            {formatPrice(product.price, product.currency)}
+            {formatPrice(product.price, product.currency, tag)}
           </ClassNameText>
-          <ClassNameText className="text-sm text-muted">{stockLabel(product.stock)}</ClassNameText>
+          <ClassNameText className="text-sm text-muted">{stockLabel(t, product.stock)}</ClassNameText>
           {/* Inline rather than a new common/ component: it has exactly one call
               site, and the pressable wrapper is conditional so a seeded product
               with no seller is not focusable at all. */}
           {product.storeName ? (
             <Button
-              label={`Sold by ${product.storeName}`}
+              label={t("detailSoldBy", { name: product.storeName })}
               variant="secondary"
               disabled={!product.storeId || !onOpenStore}
               onPress={() => {
@@ -104,7 +109,7 @@ export function ProductDetailScreen({
           ) : null}
           <ClassNameView className="flex-row items-center gap-3">
             <Button
-              label={product.stock === 0 ? "Out of stock" : "Add to Cart"}
+              label={product.stock === 0 ? t("detailOutOfStock") : t("detailAddToCart")}
               testId="product-detail-add-to-cart"
               disabled={product.stock === 0}
               onPress={() => {
@@ -115,8 +120,8 @@ export function ProductDetailScreen({
             <Button
               label={
                 wishlisted
-                  ? `Remove ${product.title} from wishlist`
-                  : `Add ${product.title} to wishlist`
+                  ? t("detailRemoveFromWishlist", { title: product.title })
+                  : t("detailAddToWishlist", { title: product.title })
               }
               variant="secondary"
               testId={`wishlist-toggle-${product.id}`}
@@ -128,12 +133,12 @@ export function ProductDetailScreen({
         </>
       ) : null}
       <Drawer visible={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)}>
-        <ClassNameText className="text-lg font-semibold text-foreground">Added to cart</ClassNameText>
+        <ClassNameText className="text-lg font-semibold text-foreground">{t("detailAddedToCart")}</ClassNameText>
         <ClassNameText className="text-muted">
-          {product?.title} has been added to your cart.
+          {t("detailAddedToCartBody", { title: product?.title ?? "" })}
         </ClassNameText>
         <Button
-          label="Go to Cart"
+          label={t("detailGoToCart")}
           testId="product-detail-go-to-cart"
           onPress={() => {
             setIsCartDrawerOpen(false)
