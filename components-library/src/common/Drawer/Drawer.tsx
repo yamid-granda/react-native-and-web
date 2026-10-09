@@ -43,7 +43,12 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
             testId="drawer-close"
             variant="secondary"
             onPress={onClose}
-            className="absolute right-4 top-4"
+            // Above the content, not just after it: the button is the first
+            // child and the title stretches full-width beneath it, so without
+            // a z-index the title paints over the button on web (native Text
+            // never claims touches, which is why this only bites on web) and
+            // swallows every tap meant for the X.
+            className="absolute right-4 top-4 z-10"
           >
             <CloseIcon size={20} className="text-muted" />
           </Button>

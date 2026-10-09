@@ -1,4 +1,5 @@
 @import "../../components-library/tokens.css";
+@import "../../components-library/drawer.css";
 
 @tailwind base;
 @tailwind components;
