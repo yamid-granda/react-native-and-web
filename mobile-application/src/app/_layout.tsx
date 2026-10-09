@@ -34,10 +34,9 @@ export default function RootLayout() {
           <LocaleProvider locale={locale} onLocaleChange={setLocale}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
-            {/* The repo's first root-level non-tab routes. Login and the public
-                storefront live outside `(tabs)`; My Store is a tab now, so the
-                bottom bar stays at four items — see the TAB_ITEMS above. */}
-            <Stack.Screen name="login" />
+            {/* Only the public storefront lives outside `(tabs)`. Login sits
+                inside the My Store tab (`(tabs)/my-store/login`), so the bottom
+                bar stays visible while signing in — see the TAB_ITEMS above. */}
             <Stack.Screen name="stores/[id]" />
           </Stack>
           <StatusBar style="auto" />

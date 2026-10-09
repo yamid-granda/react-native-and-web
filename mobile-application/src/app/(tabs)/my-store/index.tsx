@@ -11,7 +11,7 @@ import { myStoreApi } from "../../../api/client"
  * is UX only — the API's 401 is the boundary.
  */
 export default function MyStoreRoute() {
-  const signIn = useCallback(() => router.replace("/login"), [])
+  const signIn = useCallback(() => router.replace("/my-store/login"), [])
 
   return (
     <SessionGate onSignIn={signIn}>

@@ -114,7 +114,8 @@ describe("mobile route tree", () => {
     expect(screenPath("index")).toBe("/")
     expect(screenPath("cart")).toBe("/cart")
     expect(screenPath("wishlist")).toBe("/wishlist")
-    expect(screenPath("my-store/index")).toBe("/my-store")
+    expect(screenPath("my-store")).toBe("/my-store")
+    expect(screenPath("login")).toBe("/my-store/login")
   })
 
   it("keeps the four tab roots directly under the tabs group", () => {
@@ -123,7 +124,7 @@ describe("mobile route tree", () => {
 
     // Each TabTrigger in (tabs)/_layout.tsx resolves to a route directly under
     // the group; anything else there would need a trigger or stay unmounted.
-    for (const tabRoot of ["(home)", "my-store/index", "wishlist", "cart"]) {
+    for (const tabRoot of ["(home)", "my-store", "wishlist", "cart"]) {
       expect(directChildren, `tab root ${tabRoot} must sit directly under (tabs)`).toContain(
         tabRoot,
       )
@@ -132,5 +133,14 @@ describe("mobile route tree", () => {
     // The detail screen must never become a sibling again: it is reachable
     // through the Home tab's subtree, not as a fifth tab.
     expect(directChildren).not.toContain("product")
+  })
+
+  it("keeps login inside the My Store tab, not beside the tabs", () => {
+    // Regression guard: a root-level login screen replaces the whole (tabs)
+    // group on redirect, so the bottom bar disappears on the sign-in page.
+    const myStore = child(child(routes(), "(tabs)"), "my-store")
+
+    expect(child(myStore, "login"), "login must nest under the My Store tab").toBeDefined()
+    expect(child(routes(), "login"), "login must not be a root-level screen").toBeUndefined()
   })
 })

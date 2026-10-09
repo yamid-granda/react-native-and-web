@@ -23,7 +23,7 @@ import { fetchProduct, myStoreApi } from "../../../../api/client"
  * no `enabled` gate of its own.
  */
 export default function EditProductRoute() {
-  const signIn = useCallback(() => router.replace("/login"), [])
+  const signIn = useCallback(() => router.replace("/my-store/login"), [])
 
   return (
     <SessionGate onSignIn={signIn}>
