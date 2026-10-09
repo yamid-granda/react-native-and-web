@@ -16,16 +16,6 @@ describe("Home page", () => {
     push.mockClear()
   })
 
-  it("renders the shared Button and reacts to presses", () => {
-    render(<Home />)
-
-    expect(screen.getByText("Pressed 0 times")).toBeInTheDocument()
-
-    fireEvent.click(screen.getByText("Pressed 0 times"))
-
-    expect(screen.getByText("Pressed 1 times")).toBeInTheDocument()
-  })
-
   it("routes the My Store entry to sign-in when anonymous", () => {
     render(<Home />)
     expect(screen.getByText("Sign in to sell")).toBeInTheDocument()

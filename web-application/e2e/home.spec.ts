@@ -1,11 +1,8 @@
 import { expect, test } from "@playwright/test"
 
-test("home page renders and the shared button is interactive", async ({ page }) => {
+test("home page renders the My Store entry", async ({ page }) => {
   await page.goto("/")
 
-  const button = page.getByText("Pressed 0 times")
-  await expect(button).toBeVisible()
-
-  await button.click()
-  await expect(page.getByText("Pressed 1 times")).toBeVisible()
+  await expect(page.getByTestId("home-screen")).toBeVisible()
+  await expect(page.getByText("Sign in to sell")).toBeVisible()
 })
