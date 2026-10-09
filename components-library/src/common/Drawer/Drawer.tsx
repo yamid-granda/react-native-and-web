@@ -1,11 +1,12 @@
 import type { ComponentType, ReactNode } from "react"
-import { Modal, Pressable, type PressableProps } from "react-native"
+import { Modal, Pressable, View, type PressableProps, type ViewProps } from "react-native"
 import { CloseIcon } from "../../icons/CloseIcon/CloseIcon"
 import { Button } from "../Button/Button"
 import { useT } from "../../i18n/LocaleContext"
 
 // see Button.tsx / README "Architecture boundaries" for why this is cast locally
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
+const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
 
 export type DrawerProps = {
   visible: boolean
@@ -21,19 +22,20 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
   const t = useT()
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <ClassNamePressable
-        testID="drawer-overlay"
-        accessibilityRole="button"
-        accessibilityLabel={t("drawerCloseLabel")}
-        onPress={onClose}
-        className="flex-1 justify-end bg-black/50"
-      >
-        {/* stops the press reaching the overlay's onPress via DOM click
-            bubbling on web; native already scopes it via the responder
-            system, so this is a no-op there, not a workaround. */}
+      {/* Overlay and content are siblings: the overlay <button> must never wrap
+          content, otherwise any Button inside becomes a <button> descendant of
+          a <button> on web (react-native-web maps accessibilityRole="button"
+          to a <button> element) and Next.js throws a hydration error. */}
+      <ClassNameView className="relative flex-1 justify-end">
         <ClassNamePressable
+          testID="drawer-overlay"
+          accessibilityRole="button"
+          accessibilityLabel={t("drawerCloseLabel")}
+          onPress={onClose}
+          className="absolute inset-0 bg-black/50"
+        />
+        <ClassNameView
           testID="drawer-content"
-          onPress={(e) => e.stopPropagation()}
           className="relative max-h-[50%] gap-4 rounded-t-2xl bg-surface p-6"
         >
           <Button
@@ -46,8 +48,8 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
             <CloseIcon size={20} className="text-muted" />
           </Button>
           {children}
-        </ClassNamePressable>
-      </ClassNamePressable>
+        </ClassNameView>
+      </ClassNameView>
     </Modal>
   )
 }
