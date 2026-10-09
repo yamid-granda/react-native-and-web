@@ -4,9 +4,14 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { LocaleProvider, SettingsSheet } from "@rnw/components-library"
 import TabsLayout from "../src/app/(tabs)/_layout"
 
-const { tabsChildrenSpy, setColorScheme } = vi.hoisted(() => ({
+const { tabsChildrenSpy, setColorScheme, pathname } = vi.hoisted(() => ({
   tabsChildrenSpy: vi.fn(),
   setColorScheme: vi.fn(),
+  pathname: { value: "/" },
+}))
+
+vi.mock("expo-router", () => ({
+  usePathname: () => pathname.value,
 }))
 
 // Regression guard: the settings sheet once lived inside <Tabs> and product
@@ -55,9 +60,7 @@ describe("TabsLayout", () => {
     renderLayout()
 
     expect(tabsChildrenSpy).toHaveBeenCalledTimes(1)
-    expect(tabsKids().some((kid) => isValidElement(kid) && kid.type === SettingsSheet)).toBe(
-      false,
-    )
+    expect(tabsKids().some((kid) => isValidElement(kid) && kid.type === SettingsSheet)).toBe(false)
   })
 
   it("keeps the tab triggers navigable", () => {
@@ -74,6 +77,15 @@ describe("TabsLayout", () => {
       .map((el) => el.textContent)
       .filter((name) => ["Settings", "Cart", "Wishlist", "My Store", "Home"].includes(name ?? ""))
     expect(order).toEqual(["Settings", "Cart", "Wishlist", "My Store", "Home"])
+  })
+
+  it("marks the active tab from the current route", () => {
+    pathname.value = "/cart"
+    renderLayout()
+
+    expect(screen.getByRole("link", { name: "Cart" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current")
+    pathname.value = "/"
   })
 
   it("opens the settings sheet with theme and language options", () => {
