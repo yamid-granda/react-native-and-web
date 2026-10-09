@@ -16,3 +16,11 @@ Before creating or changing any screen, layout, class, or style in this app, rea
 - Breakpoint classes (`md:`, `lg:`, `xl:`) belong in `app/**` wrappers and in the shared list screens' web splits only — never in a `components-library` component.
 - Content is centred by the container ladder in §8 of the manual (`max-w-3xl` / `max-w-6xl` / `max-w-7xl`); no route defines its own container today, so add one only as the manual describes.
 - Follow §12 of the manual before reporting UI work complete.
+
+## Desktop (web-only, mobile-first)
+
+- Phone first: every screen must work at 320px/360px with `BottomNav` before any `lg:` work.
+- Desktop nav is `app/desktop-header.tsx` (`hidden lg:flex sticky top-0 z-40 border-b bg-surface`); `app/nav-header.tsx` stays phone/tablet (`lg:hidden`). Exactly one visible per viewport.
+- Containment lives once in `app/layout.tsx` (`mx-auto max-w-3xl lg:max-w-6xl xl:max-w-7xl`); routes do not add their own. Content keeps `pb-20 lg:pb-8`.
+- Catalogue columns/rail live in the `ProductListScreen.web.tsx` list-screen split (`grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`, rail `lg:w-60 lg:sticky lg:top-20`). Never put breakpoints in shared `*.tsx`.
+- Never import `desktop-header` (or any `lg:`/`xl:` class) from `mobile-application/`.

@@ -11,5 +11,6 @@ Shared React Native + NativeWind UI for both `web-application/` (Next.js) and `m
 - `Button` has exactly two variants and one height (`h-control`); it is the only component allowed to set `accessibilityRole="button"` (see `src/common/Button/Button.centralization.test.ts`).
 - The product card, screen shells, and row classes come from the exported `SCREEN_*_CLASSNAME` constants — extend those rather than repeating the strings.
 - Shared components never take breakpoint classes. Columns, containment, and rails are added by the apps.
+- The only `md:`/`lg:`/`xl:` allowed in this package are inside `*.web.tsx` list-screen splits (catalogue grid + filters rail). Shared `*.tsx` internals stay breakpoint-free; `mobile-application/` stays entirely breakpoint-free.
 - Every new or changed component ships with a Storybook story and a test, and keeps the two guard tests green: `src/tokens.parity.test.ts` and `src/common/Button/Button.centralization.test.ts`.
 - `.storybook/design-system/` is the specimen of `docs/system-design/index.md` — one story file per manual section, each sample printing the exact class string it was built from. It documents tokens, so it must never restate one. When a manual rule changes, its specimen changes with it; when a planned rule ships, its badge flips from `planned` to `shipped`.
