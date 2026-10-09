@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react"
 import { useState } from "react"
-import { Button, BUTTON_VARIANTS } from "../../src/common/Button/Button"
+import { Button, BUTTON_SIZES, BUTTON_VARIANTS } from "../../src/common/Button/Button"
 import { FormField } from "../../src/common/FormField/FormField"
 import { Label } from "../../src/common/Label/Label"
 import { SearchInput } from "../../src/common/SearchInput/SearchInput"
@@ -31,21 +31,24 @@ export const Buttons: Story = {
   render: () => (
     <Sheet>
       <Spec
-        label="Two variants, no sizes"
+        label="Two variants, two sizes"
         status="shipped"
-        hint="primary is the single call to action on a screen. secondary is everything else. A third variant or a size is an improve-proposals/ entry, not a local union."
+        hint="primary is the single call to action on a screen. secondary is everything else. sm is the compact filter density: shorter, smaller label, tighter padding."
       >
-        <Row className="gap-3">
-          {BUTTON_VARIANTS.map((variant) => (
-            <Button
-              key={variant}
-              label={variant}
-              variant={variant}
-              testId={`controls-${variant}`}
-            />
-          ))}
-        </Row>
-        <Sample value="primary: rounded-lg bg-brand active:bg-brand-dark + text-white  ·  secondary: rounded-lg border border-control-border bg-control-bg active:bg-surface-muted + text-control-text" />
+        {BUTTON_SIZES.map((size) => (
+          <Row key={size} className="gap-3">
+            {BUTTON_VARIANTS.map((variant) => (
+              <Button
+                key={`${variant}-${size}`}
+                label={`${variant} ${size}`}
+                variant={variant}
+                size={size}
+                testId={`controls-${variant}-${size}`}
+              />
+            ))}
+          </Row>
+        ))}
+        <Sample value="md: h-control + text-base leading-6, primary px-4 · secondary px-3  ·  sm: h-8 + text-sm leading-5, primary px-3 · secondary px-2 (mirrors Input)" />
       </Spec>
 
       <Spec
@@ -117,7 +120,18 @@ export const Fields: Story = {
             onChangeText={() => {}}
           />
         </ClassNameView>
-        <Sample value="FormField gap-1 → Label(text-xs uppercase tracking-wide) → Input(h-control rounded-lg border-control-border bg-control-bg px-3)" />
+        <Sample value="FormField gap-1 → Label(text-xs uppercase tracking-wide) → Input(md: h-control + text-base, px-3 · sm: h-8 + text-sm, px-2)" />
+        <ClassNameView className="w-72 gap-6">
+          <FormField
+            label="Min price"
+            size="sm"
+            inputTestID="controls-min-price-sm"
+            value=""
+            onChangeText={() => {}}
+            placeholder="Min"
+          />
+        </ClassNameView>
+        <Sample value="sm keeps the Meta field (text-sm) at h-8, px-2 (marketplace filters)" />
       </Spec>
 
       <Spec

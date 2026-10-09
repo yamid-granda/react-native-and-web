@@ -1,8 +1,13 @@
 # Button variants
 
 `components-library/src/common/Button/Button.tsx` has exactly **two** variants,
-`primary` and `secondary`, and **no size variants** — every button is the one
-default size (`h-control` height, `px-4`, `text-base` label).
+`primary` and `secondary`, and exactly **two** sizes, `md` and `sm`.
+`md` is the default size (`h-control` height, `px-4`/`px-3` per variant,
+`text-base` label); `sm` is the compact filter density (`h-8` height,
+`text-sm` label, `px-3`/`px-2`) for dense rows like the marketplace
+filters (`improve-proposals/2026-10-09-button-input-sm.md`). `Input` mirrors
+the same two sizes with the same contract. `sm` sits below the 44px
+touch-target guidance, so it stays in filter rows and nowhere else.
 
 **Pick one of the existing variants. Do not add a new one as part of a feature.**
 
@@ -13,9 +18,9 @@ it is for, which existing variant it replaces or sits beside, how it behaves
 pressed/disabled/loading, its contrast against the surfaces it lands on, and
 which existing call sites would move to it.
 
-The same goes for sizes. They are a known gap, not an oversight, and they come
-back the same way — as a proposal, with the padding/label/height decisions
-written down — not as a `size` prop added in passing.
+The same goes for further sizes. `md`/`sm` landed as a proposal, with the
+padding/label/height decisions written down (`improve-proposals/2026-10-09-button-input-sm.md`)
+— not as a `size` value added in passing. A third size comes back the same way.
 
 ## Why
 
@@ -29,10 +34,10 @@ which `Button` already supports.
 
 ## What enforces it
 
-`Button.variants.web.test.tsx` pins the variant list to the approved two, checks
-each one has its own Storybook story, and fails if a `size` prop reappears. Adding
-a variant means updating that list in the same change as the proposal lands, so
-the diff shows the list deliberately moving.
+`Button.variants.web.test.tsx` pins the variant list to the approved two and the
+size list to the approved two (`md`, `sm`), and checks each variant has its own
+Storybook story. Adding a variant or size means updating that list in the same
+change as the proposal lands, so the diff shows the list deliberately moving.
 
 Reach for `className` / `labelClassName` at the call site before reaching for a
 variant — but not to restate a height or a radius, which `h-control` and the

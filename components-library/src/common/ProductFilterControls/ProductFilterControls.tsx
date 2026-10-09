@@ -49,6 +49,9 @@ export function ProductFilterControls({
               // everything else. `selected` then only has to announce which is
               // current.
               variant={selected ? "primary" : "secondary"}
+              // Compact density for the filter row: shorter, smaller label,
+              // tighter padding — the sm pair still lines up with each other.
+              size="sm"
               selected={selected}
               // The visible text ("Relevance") is a poor standalone name
               // for a screen reader, which announces the control's purpose.
@@ -65,6 +68,7 @@ export function ProductFilterControls({
         <FormField
           className="flex-1"
           label={t("minPriceLabel")}
+          size="sm"
           value={priceRange.min !== undefined ? String(priceRange.min) : ""}
           onChangeText={(text) =>
             onPriceRangeChange({ ...priceRange, min: parseOptionalNumber(text) })
@@ -76,6 +80,7 @@ export function ProductFilterControls({
         <FormField
           className="flex-1"
           label={t("maxPriceLabel")}
+          size="sm"
           value={priceRange.max !== undefined ? String(priceRange.max) : ""}
           onChangeText={(text) =>
             onPriceRangeChange({ ...priceRange, max: parseOptionalNumber(text) })
