@@ -1,0 +1,74 @@
+/**
+ * Entry animation for the drawer (`common/Drawer/Drawer.web.tsx`), owned once
+ * and imported by both web stylesheets (`components-library/global.css` for
+ * Storybook, `web-application/app/globals.css` for Next.js) — the same sharing
+ * shape as `tokens.css`.
+ *
+ * RN `Modal`'s `animationType="slide"` only moves bottom-up, which is the
+ * wrong axis for the desktop right-side panel, so the web split sets
+ * `animationType="none"` and this file supplies the axis per breakpoint:
+ * bottom-up below `lg`, right-to-left at `lg` and up (`min-width: 1024px`,
+ * the same floor as Tailwind's `lg:`). One duration, 250ms, the sheet/modal
+ * budget from §3 of the manual — no new motion token.
+ *
+ * Entry only: `Modal` unmounts its content the moment `visible` flips to
+ * false, so there is nothing to animate out to. Reduced motion means the end
+ * state instantly (§3), via the `reduce` block below.
+ */
+
+@keyframes drawer-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawer-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The sliding sheet/panel itself. Plain classes (not Tailwind utilities) so
+   no new utility value is invented; NativeWind passes unknown classes through
+   to the DOM on web. */
+.drawer-panel {
+  animation-duration: 250ms;
+  animation-timing-function: ease-out;
+  animation-name: drawer-sheet-in;
+}
+
+@media (min-width: 1024px) {
+  .drawer-panel {
+    animation-name: drawer-panel-in;
+  }
+}
+
+/* The scrim fades in over 150ms (the hover/opacity budget, §3) while the
+   panel slides — previously both moved together inside Modal's slide. */
+.drawer-fade {
+  animation-duration: 150ms;
+  animation-timing-function: ease-out;
+  animation-name: drawer-fade-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel,
+  .drawer-fade {
+    animation: none;
+  }
+}

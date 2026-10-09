@@ -16,6 +16,7 @@ const NOT_A_BUTTON: Record<string, string> = {
   "business/HomeScreen/HomeScreen.tsx":
     '"My Store" card: a title plus a subtitle, not a single action label',
   "common/Drawer/Drawer.tsx": "overlay click-catcher that dismisses the drawer",
+  "common/Drawer/Drawer.web.tsx": "overlay click-catcher that dismisses the drawer (web right-panel half)",
   "common/MainNav/MainNav.tsx": "nav item, onPress wiring",
   "common/MainNav/MainNav.web.tsx": "nav item, href wiring",
   "common/Product/ProductCard.tsx": "the product card itself, which navigates",

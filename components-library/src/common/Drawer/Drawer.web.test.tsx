@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { Drawer } from "./Drawer"
 
 describe("Drawer (web, via react-native-web)", () => {
@@ -52,5 +54,69 @@ describe("Drawer (web, via react-native-web)", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("docks to the right edge on desktop while staying a bottom sheet below lg", () => {
+    // NativeWind compiles class names away under jsdom, so the responsive
+    // layout is pinned at the source instead (same precedent as
+    // ProductCard.web.test.tsx's body-padding assertion).
+    const dir = import.meta.dirname
+    const web = readFileSync(join(dir, "Drawer.web.tsx"), "utf8")
+
+    // Overlay switches from bottom-anchored column to right-anchored row.
+    expect(web).toMatch(/lg:flex-row lg:justify-end/)
+    // Panel: full-height fixed-width right rail, left corners rounded,
+    // right edge flush, overlay elevation per §3.
+    for (const token of [
+      "lg:ml-auto",
+      "lg:h-full",
+      "lg:max-h-none",
+      "lg:w-96",
+      "lg:rounded-l-2xl",
+      "lg:rounded-r-none",
+      "lg:shadow-md",
+    ]) {
+      expect(web).toContain(token)
+    }
+    expect(web).toContain("lg:border-surface-muted")
+  })
+
+  it("keeps the shared Drawer free of breakpoint classes", () => {
+    // §8: breakpoints live in app wrappers and `*.web.tsx` splits only.
+    const dir = import.meta.dirname
+    const shared = readFileSync(join(dir, "Drawer.tsx"), "utf8")
+    expect(shared).not.toMatch(/\b(md|lg|xl):/)
+  })
+
+  it("slides right-to-left on desktop via CSS, not Modal's bottom-up slide", () => {
+    // RN Modal's `slide` is vertical-only, the wrong axis for a right-docked
+    // panel — so the web split disables it and animates in drawer.css.
+    // Pinned at the source: NativeWind compiles class names away under jsdom.
+    const dir = import.meta.dirname
+    const web = readFileSync(join(dir, "Drawer.web.tsx"), "utf8")
+    const css = readFileSync(join(dir, "../../../drawer.css"), "utf8")
+
+    expect(web).toContain('animationType="none"')
+    expect(web).toContain("drawer-panel")
+    expect(web).toContain("drawer-fade")
+    // Desktop axis: off the right edge to docked, in the 250ms sheet budget.
+    expect(css).toMatch(/translateX\(100%\)/)
+    expect(css).toMatch(/min-width:\s*1024px/)
+    expect(css).toContain("250ms")
+    // Phone/tablet web keeps the bottom-up axis.
+    expect(css).toMatch(/translateY\(100%\)/)
+    // Reduced motion means the end state instantly (§3).
+    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/)
+  })
+
+  it("keeps the X button above the content in both drawer halves", () => {
+    // Regression: the close button is the first child while the title spans
+    // full-width beneath it — without `z-10` the title paints over the X on
+    // web and eats every tap. Pinned in both files so the halves can't drift.
+    const dir = import.meta.dirname
+    for (const file of ["Drawer.tsx", "Drawer.web.tsx"]) {
+      const source = readFileSync(join(dir, file), "utf8")
+      expect(source, file).toMatch(/testId="drawer-close"[\s\S]*?z-10/)
+    }
   })
 })
