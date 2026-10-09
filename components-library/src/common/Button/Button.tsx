@@ -24,24 +24,25 @@ export type ButtonVariant =
 
 // Height comes from the shared `h-control` token (tailwind-preset.cjs) and is
 // deliberately the only height any button may use, so buttons and inputs line
-// up everywhere. The horizontal padding and label scale sit here rather than in
-// a per-variant table because there is nothing to choose between: the default
-// size is the only size, for both variants.
-const BUTTON_BASE_CLASSNAME = "h-control items-center justify-center px-4"
-
-const LABEL_CLASSNAME = "text-base font-semibold"
+// up everywhere. Horizontal padding lives per variant so `secondary` can share
+// `Input`'s `px-3` finish while `primary` keeps the default `px-4` size.
+const BUTTON_BASE_CLASSNAME = "h-control items-center justify-center"
 
 type ButtonStyle = { container: string; label: string }
 
 const variantStyle: Record<ButtonVariant, ButtonStyle> = {
   primary: {
-    container: "rounded-lg bg-brand active:bg-brand-dark",
-    label: "text-white",
+    container: "rounded-lg bg-brand px-4 active:bg-brand-dark",
+    label: "text-base font-semibold leading-6 text-white",
   },
   secondary: {
+    // Mirrors `Input`'s wrapper + inner text: same `h-control` height (from the
+    // base above), same `px-3` padding, same border/fill/text tokens, and the
+    // same `text-base font-normal leading-6` label so a secondary button beside
+    // a field reads as one control finish.
     container:
-      "rounded-lg border border-control-border bg-control-bg active:bg-surface-muted",
-    label: "text-control-text",
+      "rounded-lg border border-control-border bg-control-bg px-3 active:bg-surface-muted",
+    label: "text-base font-normal leading-6 text-control-text",
   },
 }
 
@@ -151,7 +152,7 @@ export function Button({
       className={cn(BUTTON_BASE_CLASSNAME, style.container, iconOnly && "w-control px-0", inert && "opacity-50", className)}
     >
       {children ?? (
-        <ClassNameText className={cn(style.label, LABEL_CLASSNAME, labelClassName)}>
+        <ClassNameText className={cn(style.label, labelClassName)}>
           {loading ? "…" : label}
         </ClassNameText>
       )}

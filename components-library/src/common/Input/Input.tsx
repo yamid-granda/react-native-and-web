@@ -83,8 +83,10 @@ export function Input({
         testID={inputTestID}
         // After `{...rest}` and therefore not overridable: a taller box comes from
         // the wrapper's className above, and a textarea aligns to the top.
+        // `text-base` (16px) is the default size; `font-normal leading-6` keeps
+        // it on the Body role and matches `Button`'s secondary label.
         className={cn(
-          "flex-1 text-sm text-control-text outline-none placeholder:text-muted",
+          "flex-1 text-base font-normal leading-6 text-control-text outline-none placeholder:text-muted",
           multiline && "min-h-20 text-left",
         )}
       />
