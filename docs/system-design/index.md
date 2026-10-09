@@ -29,8 +29,8 @@ Six neutrals form an **elevation ramp** — each step must be visible against th
 | `bg-surface` | `#ffffff` | `#202024` | Cards, sheets, nav bars, fields |
 | `bg-surface-muted` | `#eaeaec` | `#2e2e34` | Image placeholder, skeleton, pressed fill, decorative |
 | `text-foreground` | zinc-900 | zinc-50 | Titles, body, non-price numbers |
-| `text-muted` | `#686871` | zinc-400 | Descriptions, helpers, placeholders, prepend icons, inactive icons |
-| `bg-brand` / `active:bg-brand-dark` | `#2563eb` | `#1d4ed8` | **Only**: price, primary CTA, active nav icon, badge |
+| `text-muted` | `#686871` | zinc-400 | Descriptions, helpers, placeholders, prepend icons, inactive nav icons + labels |
+| `bg-brand` / `active:bg-brand-dark` | `#2563eb` | `#1d4ed8` | **Only**: price, primary CTA, active nav icon + label, badge |
 | `text-success` / `bg-success` | `#166534` | `#4ade80` | In stock, order confirmed, save/delete confirmations |
 | `text-warning` / `bg-warning` | `#b45309` | `#fbbf24` | Low stock only (`stock ≤ 5`), pending states |
 | `text-danger` / `bg-danger` | `#b91c1c` | `#f87171` | Out of stock, validation + server errors, destructive confirm |
@@ -94,7 +94,7 @@ Set it once via the preset's `fontFamily.sans`; `<body>`/`Stack` must not restat
 
 Use the exported constants — `SCREEN_SHELL_CLASSNAME`, `SCREEN_CONTENT_CLASSNAME`, `SCREEN_CONTENT_TABBED_CLASSNAME`, `SCREEN_CARD_CLASSNAME`, `SCREEN_ROW_CLASSNAME` — instead of restating these strings. A new `ScreenShell` component is preferred over either.
 
-**Shape:** `rounded-md`=6 images/icons · `rounded-lg`=8 cards, inputs, buttons, rows, sheets' corners · `rounded-xl`=12 nav items, chips · `rounded-2xl`=16 dialogs/bottom sheets (`rounded-t-2xl`) · `rounded-full` badges, pills, avatars. Never `rounded-none`, never a pill button, no custom `borderRadius`.
+**Shape:** `rounded-md`=6 images/icons · `rounded-lg`=8 cards, inputs, buttons, rows, sheets' corners · `rounded-xl`=12 chips (nav items are square, no radius) · `rounded-2xl`=16 dialogs/bottom sheets (`rounded-t-2xl`) · `rounded-full` badges, pills, avatars. Never `rounded-none`, never a pill button, no custom `borderRadius`.
 
 **Controls:** default height `h-control` (44px) for every `Button` and `Input`. The one deliberate exception is the `sm` filter density at `h-8` (32px) — marketplace filters only, documented deviation: it clears WCAG 2.5.8's 24px floor but sits below the 44px touch-target guidance, so it must never spread beyond dense filter rows. `w-control` is its square counterpart (`w-8` at `sm`). No other control height, ever.
 
@@ -182,11 +182,12 @@ Catalogue mechanism: one shared constant, `CATALOGUE_MIN_CARD_WIDTH = 168`, with
 
 Non-negotiables:
 
+- **Nav item (`MainNavItem`):** every item is the same `h-16 w-16` (64×64px) square whatever its label, so bar columns never shift with translation length, and it fills the bar's full height so the active fill spans it. Items have no border and `px-0.5` (2px) horizontal inner padding, the most a 56px-wide tile could spare while "My Store" still fits at 320px. Label `text-xs leading-4` regular weight, same colour as a product-card description (`text-muted`). Active icon + label `text-brand` on a `bg-brand/10` fill that cross-fades in and out over 150ms (opacity; instant under reduced motion, via `useReducedMotion`), marked `aria-current="page"` (web links) or `accessibilityState.selected` (native). Hover and active fills cross-fade over 150ms (opacity) on the same `useReducedMotion` path; press is `active:bg-surface-muted`. Keyboard focus ring (`focus-visible:ring-2 ring-brand`) is web-only. Left/right placement is set by the bar's slots, never by item width. Items sit edge to edge with no gap between them.
 - Breakpoint classes appear **only** in app wrappers and list screens. A shared component that receives `md:`/`lg:` classes is a bug.
 - Prose column `max-w-[72ch]`; rails never wider than 288px; nothing stretches full-bleed on desktop.
 - Catalogue lists virtualize: native `FlatList` (`columnWrapperStyle={{ gap: 16 }}`, `onEndReachedThreshold 0.5`, `key={numColumns}`), web CSS grid + `IntersectionObserver` sentinel.
 - Horizontal rails: `flex-row gap-4 overflow-x-auto pb-2`, items `w-36 flex-shrink-0`.
-- `BottomNav` bar: `fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2`, offset `insets.bottom + 12` (`getFloatingNavStyle`); native `absolute` via `nativeOverlayStyle`. Every screen under it reserves `pb-20` — **on mobile too**, not only web.
+- `BottomNav` bar: `fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface px-2` (no vertical padding, so nav items fill its height), offset `insets.bottom + 12` (`getFloatingNavStyle`); native `absolute` via `nativeOverlayStyle`. Every screen under it reserves `pb-20` — **on mobile too**, not only web.
 - `ScreenHeader`: `gap-1 px-6 pb-3 md:px-8`, `paddingTop = min(insets.top, 48) + 8`, title `text-2xl font-bold`. Detail screens use `p-6` without `ScreenHeader` — the web wrapper supplies the `<h1>`.
 - Test at **320px and 360px** before 1280px. If a layout only works on a phone, it is broken.
 

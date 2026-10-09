@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from "react"
 import { View, type ViewProps } from "react-native"
-import type { Href } from "expo-router"
+import { usePathname } from "expo-router"
 import { TabList, Tabs, TabSlot, TabTrigger } from "expo-router/ui"
 import { useColorScheme } from "nativewind"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -12,6 +12,7 @@ import {
   getWishlistTotalCount,
   HeartIcon,
   HomeIcon,
+  isNavPathActive,
   MainNav,
   MarketplaceIcon,
   SettingsIcon,
@@ -50,13 +51,15 @@ export default function TabsLayout() {
   const [settingsVisible, setSettingsVisible] = useState(false)
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
+  const pathname = usePathname()
 
-  const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: Href }[] = [
-    { key: "index", title: t("navHome"), icon: HomeIcon, href: "/" },
-    { key: "my-store", title: t("homeMyStore"), icon: MarketplaceIcon, href: "/my-store" },
-    { key: "wishlist", title: t("navWishlist"), icon: HeartIcon, href: "/wishlist" },
-    { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart" },
-  ]
+  const TAB_ITEMS: { key: string; title: string; icon: ComponentType<IconProps>; href: string }[] =
+    [
+      { key: "index", title: t("navHome"), icon: HomeIcon, href: "/" },
+      { key: "my-store", title: t("homeMyStore"), icon: MarketplaceIcon, href: "/my-store" },
+      { key: "wishlist", title: t("navWishlist"), icon: HeartIcon, href: "/wishlist" },
+      { key: "cart", title: t("navCart"), icon: CartIcon, href: "/cart" },
+    ]
 
   // Reversed for the right-aligned cluster: left-to-right cart, wishlist,
   // my-store, home (Home first from the right).
@@ -68,7 +71,7 @@ export default function TabsLayout() {
         <TabSlot />
         <TabList asChild>
           <ClassNameView
-            className={`${BOTTOM_NAV_BAR_CLASSNAME} gap-1`}
+            className={BOTTOM_NAV_BAR_CLASSNAME}
             style={{ ...getFloatingNavStyle(insets.bottom), justifyContent: "flex-start" }}
           >
             <ClassNameView className="min-w-14 flex-row justify-start">
@@ -76,6 +79,7 @@ export default function TabsLayout() {
                 title={t("navSettings")}
                 icon={SettingsIcon}
                 onPress={() => setSettingsVisible(true)}
+                active={settingsVisible}
               />
             </ClassNameView>
             <ClassNameView className="flex-1" />
@@ -84,8 +88,13 @@ export default function TabsLayout() {
                 <MainNav
                   title={item.title}
                   icon={item.icon}
+                  active={isNavPathActive(pathname, item.href)}
                   badgeCount={
-                    item.key === "cart" ? cartCount : item.key === "wishlist" ? wishlistCount : undefined
+                    item.key === "cart"
+                      ? cartCount
+                      : item.key === "wishlist"
+                        ? wishlistCount
+                        : undefined
                   }
                 />
               </TabTrigger>

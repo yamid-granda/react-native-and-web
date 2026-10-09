@@ -81,7 +81,8 @@ const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
   "business/ProductListScreen/ProductListScreen.web.tsx py-2":
     "sticky search bar vertical padding around h-control",
   "common/MainNav/MainNavItem.tsx h-5": "cart/wishlist badge height",
-  "common/MainNav/MainNavItem.tsx py-2": "nav item vertical padding",
+  "common/MainNav/MainNavItem.tsx h-16":
+    "nav item tile height (64px, uniform across labels); a navigation box, not a control, so it does not share h-control's 44px",
   "common/Product/ProductCard.tsx py-1": "product card badge padding",
   "common/Product/ProductCard.web.tsx py-1": "product card badge padding",
 }

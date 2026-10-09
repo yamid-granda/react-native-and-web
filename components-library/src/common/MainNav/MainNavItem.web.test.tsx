@@ -38,6 +38,18 @@ describe("MainNavItem (shared body, via react-native-web)", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument()
   })
 
+  it("passes aria-current from the adapter through to the link", () => {
+    render(
+      <MainNavItem
+        navProps={{ href: "/cart", "aria-current": "page" }}
+        icon={HomeIcon}
+        title="Cart"
+        active
+      />,
+    )
+    expect(screen.getByText("Cart").closest("a")).toHaveAttribute("aria-current", "page")
+  })
+
   it("renders the platform-supplied navProps onto the pressable", () => {
     const onPress = vi.fn()
     render(

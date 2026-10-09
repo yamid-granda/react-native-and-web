@@ -10,13 +10,20 @@ export type { MainNavProps } from "./MainNavItem"
 // instead of a full page reload, while still rendering a real <a href> for
 // modifier-clicks/middle-clicks/right-click-copy-link to keep working.
 export const MainNav = forwardRef<View, MainNavProps>(function MainNav(
-  { href, onPress, icon, title, badgeCount },
+  { href, onPress, icon, title, badgeCount, active },
   ref,
 ) {
   // "#" is solito's own documented no-op sentinel for a conditionally-absent href.
   const link = useLink({ href: href ?? "#" })
+  // aria-current marks the section the user is in; a button with no href
+  // (Settings, which opens a sheet) has no page to be current on.
   const navProps = href
-    ? { href: link.href, onPress: link.onPress, accessibilityRole: link.accessibilityRole }
+    ? {
+        href: link.href,
+        onPress: link.onPress,
+        accessibilityRole: link.accessibilityRole,
+        "aria-current": active ? ("page" as const) : undefined,
+      }
     : { onPress, accessibilityRole: "button" as const }
 
   return (
@@ -25,16 +32,11 @@ export const MainNav = forwardRef<View, MainNavProps>(function MainNav(
       icon={icon}
       title={title}
       badgeCount={badgeCount}
+      active={active}
       navProps={navProps}
-      // overflow-hidden lets this shrink below its label's natural width
-      // instead of overflowing past min-w-14 — without it, CSS flexbox
-      // treats a flex item's min-width as its content's min-content size
-      // by default, which stops one item's label from truncating to make
-      // room for a sibling once the bar has enough items to overflow at
-      // narrow (mobile) widths. Web-only for now: hoisting these into
-      // MainNavItem's own classes is a native layout change, so they stay
-      // here until it can be checked on a simulator.
-      className="shrink overflow-hidden"
+      // Keyboard focus ring is web-only; it stays out of the shared item so
+      // native doesn't render it as a stray outline on every tab.
+      className="focus-visible:ring-2 focus-visible:ring-brand"
     />
   )
 })
