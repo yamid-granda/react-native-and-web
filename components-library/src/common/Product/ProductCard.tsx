@@ -53,34 +53,36 @@ export const ProductCard = memo(function ProductCard({
         accessibilityRole="button"
         onPress={onPress}
         className={cn(
-          "w-full gap-2 rounded-lg bg-surface p-3 shadow-sm active:opacity-80",
+          "w-full overflow-hidden rounded-lg bg-surface shadow-sm active:opacity-80",
           outOfStock && "opacity-70",
         )}
       >
         {image ? (
-          <ClassNameView className="relative h-32 w-full overflow-hidden rounded-md bg-surface-muted">
+          <ClassNameView className="relative aspect-[4/3] w-full overflow-hidden bg-surface-muted">
             {image}
             {outOfStock ? (
-              <ClassNameView className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-1">
+              <ClassNameView className="absolute left-4 top-4 rounded-full bg-foreground/80 px-2 py-1">
                 <Text className="text-xs font-semibold text-white">{t("detailOutOfStock")}</Text>
               </ClassNameView>
             ) : null}
           </ClassNameView>
         ) : null}
-        {outOfStock && !image ? (
-          <ClassNameView className="self-start rounded-full bg-foreground/80 px-2 py-1">
-            <Text className="text-xs font-semibold text-white">{t("detailOutOfStock")}</Text>
-          </ClassNameView>
-        ) : null}
-        <Text numberOfLines={1} className="text-sm font-semibold text-foreground">
-          {title}
-        </Text>
-        {description ? (
-          <Text numberOfLines={2} className="text-xs text-muted">
-            {description}
+        <ClassNameView className="w-full gap-2 p-4">
+          {outOfStock && !image ? (
+            <ClassNameView className="self-start rounded-full bg-foreground/80 px-2 py-1">
+              <Text className="text-xs font-semibold text-white">{t("detailOutOfStock")}</Text>
+            </ClassNameView>
+          ) : null}
+          <Text numberOfLines={1} className="text-sm font-semibold text-foreground">
+            {title}
           </Text>
-        ) : null}
-        <Text className="text-base font-bold text-brand">{formatPrice(price, currency, tag)}</Text>
+          {description ? (
+            <Text numberOfLines={2} className="text-xs text-muted">
+              {description}
+            </Text>
+          ) : null}
+          <Text className="text-base font-bold text-brand">{formatPrice(price, currency, tag)}</Text>
+        </ClassNameView>
       </ClassNamePressable>
     </ClassNameView>
   )

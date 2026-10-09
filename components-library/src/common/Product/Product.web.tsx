@@ -23,8 +23,8 @@ export const Product = memo(function Product(props: ProductProps) {
             accessibilityLabel={title}
             resizeMode="cover"
             width={300}
-            height={128}
-            className="h-32 w-full rounded-md bg-surface-muted"
+            height={225}
+            className="aspect-[4/3] w-full bg-surface-muted"
           />
         ) : null
       }
