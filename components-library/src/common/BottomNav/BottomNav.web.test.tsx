@@ -30,12 +30,12 @@ describe("BottomNav (web, via react-native-web)", () => {
     expect(onPress).toHaveBeenCalledTimes(1)
   })
 
-  it("renders a trailingItem alongside the main items, without changing them", () => {
+  it("renders a leadingItem alongside the main items, without changing them", () => {
     const onPress = vi.fn()
     render(
       <BottomNav
+        leadingItem={{ key: "theme", title: "Theme", icon: SunIcon, onPress }}
         items={[{ key: "home", title: "Home", icon: HomeIcon, href: "/" }]}
-        trailingItem={{ key: "theme", title: "Theme", icon: SunIcon, onPress }}
       />,
     )
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
@@ -43,7 +43,7 @@ describe("BottomNav (web, via react-native-web)", () => {
     expect(onPress).toHaveBeenCalledTimes(1)
   })
 
-  it("renders nothing extra when trailingItem is omitted", () => {
+  it("renders nothing extra when leadingItem is omitted", () => {
     render(<BottomNav items={[{ key: "home", title: "Home", icon: HomeIcon, href: "/" }]} />)
     expect(screen.queryByText("Theme")).not.toBeInTheDocument()
   })

@@ -67,6 +67,15 @@ describe("TabsLayout", () => {
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
   })
 
+  it("renders settings first, then the tabs right-aligned in reverse (Home last)", () => {
+    const { container } = renderLayout()
+
+    const order = [...container.querySelectorAll("a,button")]
+      .map((el) => el.textContent)
+      .filter((name) => ["Settings", "Cart", "Wishlist", "My Store", "Home"].includes(name ?? ""))
+    expect(order).toEqual(["Settings", "Cart", "Wishlist", "My Store", "Home"])
+  })
+
   it("opens the settings sheet with theme and language options", () => {
     renderLayout()
 
