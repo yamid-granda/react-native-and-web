@@ -10,6 +10,11 @@ Before creating or changing any screen, layout, class, or style in this app, rea
 - Every screen under the floating tab bar reserves `pb-20` (§8 of the manual), not only the web app.
 - Follow §12 of the manual before reporting UI work complete.
 
+## Desktop ban (this app stays phone-first)
+
+- Never add `md:`/`lg:`/`xl:` classes, desktop-only components, or imports from `web-application/` (e.g. `desktop-header`) here. Desktop enhancement lives only in `web-application/app/**` + `components-library/*.web.tsx`.
+- Keep `FlatList numColumns` derived from window width and `pb-20` under the floating tab bar. Verify a change with `grep -r "lg:\|xl:\|md:" src` returning nothing.
+
 ## Expo has changed — do not trust your training data
 
 Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:

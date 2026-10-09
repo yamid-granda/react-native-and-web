@@ -30,6 +30,14 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - The automated guards are `components-library/src/tokens.parity.test.ts` (palette, contrast floors, literal allowlist) and `components-library/src/common/Button/Button.centralization.test.ts` (single button). A change that trips either is not done.
 - Verify the §12 checklist in the manual before reporting UI work complete.
 
+## Mobile-first + desktop (mandatory for all UI work)
+
+- Build phone first (verify at 320px and 360px), then enhance upward. Tablet/desktop only add columns, containment, and rails — they never fork component internals.
+- Desktop styles live only in `web-application/app/**` wrappers and `components-library/*.web.tsx` list-screen splits. Never add `md:`/`lg:`/`xl:` to a shared `*.tsx` component, and never add breakpoint classes, desktop imports, or desktop-only components to `mobile-application/`.
+- Web shell rule: `BottomNav` is phone/tablet only (`lg:hidden`); `DesktopHeader` is desktop only (`hidden lg:flex`). Exactly one nav is visible per viewport.
+- Catalogue ladder: `grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`; filters rail `lg:w-60 lg:sticky lg:top-20`. Containment `max-w-3xl lg:max-w-6xl xl:max-w-7xl` lives once in `web-application/app/layout.tsx`.
+- Verify with `grep -r "lg:\|xl:" mobile-application/src components-library/src --include="*.tsx" | grep -v ".web.tsx"` returning only allowed hits, plus `tests/desktop.test.tsx` and `e2e/desktop.spec.ts`.
+
 ## Architecture and implementation
 
 - Before changing cross-platform UI or app wiring, read the relevant section of `README.md`, especially **Architecture boundaries and known gotchas**. It records platform constraints that are easy to reintroduce accidentally.
