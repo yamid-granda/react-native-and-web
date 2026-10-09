@@ -96,14 +96,23 @@ export function ProductListScreen({
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
       <ScreenHeader title="Marketplace" testID="marketplace-title" />
-      <ClassNameView className="gap-4 px-6 pb-6">
+      <ClassNameView className="gap-4 px-6 pb-6 md:px-8">
         <SearchInput value={query} onChangeText={setQuery} />
-        <ProductFilterControls
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          priceRange={priceRange}
-          onPriceRangeChange={setPriceRange}
-        />
+        {/* Mobile: filters stack above the grid. Desktop (`lg:`): filters become
+            the §8 left rail (`w-60 sticky top-20`), the grid takes the rest. */}
+        <ClassNameView className="gap-4 lg:flex-row lg:gap-6">
+          <ClassNameView
+            testID="marketplace-filters-rail"
+            className="lg:w-60 lg:flex-shrink-0 lg:self-start lg:sticky lg:top-20"
+          >
+            <ProductFilterControls
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              priceRange={priceRange}
+              onPriceRangeChange={setPriceRange}
+            />
+          </ClassNameView>
+          <ClassNameView className="flex-1 gap-4 lg:min-w-0">
         {showRecentlyViewed ? (
           <ClassNameView className="gap-2">
             <ClassNameText className="text-base font-semibold text-foreground">
@@ -137,13 +146,20 @@ export function ProductListScreen({
                 : `No products match "${query}".`}
           </ClassNameText>
         ) : null}
-        <ClassNameView className="grid grid-cols-[repeat(auto-fill,minmax(192px,1fr))] gap-4">
+        {/* Catalogue columns (§8): exactly 2 on phone — including 320/360px,
+            where auto-fill/minmax(168px) collapses to 1 — then 3/4/5. */}
+        <ClassNameView
+          testID="marketplace-grid"
+          className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        >
           {productElements}
         </ClassNameView>
         <View ref={sentinelRef} testID="product-list-sentinel" />
         {isFetchingNextPage ? (
           <ClassNameText className="text-muted">Loading more…</ClassNameText>
         ) : null}
+          </ClassNameView>
+        </ClassNameView>
       </ClassNameView>
     </ClassNameView>
   )

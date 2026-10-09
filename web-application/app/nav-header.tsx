@@ -1,5 +1,7 @@
 "use client"
 
+import type { ComponentType } from "react"
+import { View, type ViewProps } from "react-native"
 import {
   BottomNav,
   CartIcon,
@@ -15,13 +17,18 @@ import {
 } from "@rnw/components-library"
 import { useThemeToggle } from "./use-theme-toggle"
 
+// see Button.tsx (components-library) / README "Architecture boundaries" for why this is cast locally
+const ClassNameView = View as ComponentType<ViewProps & { className?: string }>
+
 export function NavHeader() {
   const { theme, toggleTheme } = useThemeToggle()
   const cartCount = useCartStore((state) => getCartTotalCount(state.items))
   const wishlistCount = useWishlistStore((state) => getWishlistTotalCount(state.ids))
 
+  // Phone/tablet only: desktop uses DesktopHeader (`hidden lg:flex`).
   return (
-    <BottomNav
+    <ClassNameView testID="bottom-nav-mobile" className="lg:hidden">
+      <BottomNav
       items={[
         { key: "home", title: "Home", icon: HomeIcon, href: "/" },
         { key: "marketplace", title: "Marketplace", icon: MarketplaceIcon, href: "/marketplace" },
@@ -40,6 +47,7 @@ export function NavHeader() {
         icon: theme === "dark" ? SunIcon : MoonIcon,
         onPress: toggleTheme,
       }}
-    />
+      />
+    </ClassNameView>
   )
 }
