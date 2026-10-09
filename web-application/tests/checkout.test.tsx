@@ -54,7 +54,7 @@ describe("CheckoutPage", () => {
     expect(screen.getByText("Total: $129.99")).toBeInTheDocument()
   })
 
-  it("places the order then navigates to /marketplace on Continue Shopping", async () => {
+  it("places the order then navigates to / on Continue Shopping", async () => {
     useCartStore.getState().addItem("prod-1")
     renderCheckoutPage()
     await waitFor(() => expect(screen.getByText("Place Order")).toBeInTheDocument())
@@ -63,6 +63,6 @@ describe("CheckoutPage", () => {
     expect(screen.getByText("Order placed!")).toBeInTheDocument()
 
     fireEvent.click(screen.getByText("Continue Shopping"))
-    expect(push).toHaveBeenCalledWith("/marketplace")
+    expect(push).toHaveBeenCalledWith("/")
   })
 })

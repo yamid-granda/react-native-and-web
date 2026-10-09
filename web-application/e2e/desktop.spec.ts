@@ -6,14 +6,14 @@ test.describe("desktop layout", () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test("shows the desktop header and hides the bottom nav", async ({ page }) => {
-    await page.goto("/marketplace")
+    await page.goto("/")
 
     await expect(page.getByTestId("desktop-header")).toBeVisible()
     await expect(page.getByTestId("bottom-nav-mobile")).toBeHidden()
   })
 
   test("catalogue renders 4+ columns with a sticky filters rail", async ({ page }) => {
-    await page.goto("/marketplace")
+    await page.goto("/")
     await expect(page.getByTestId("product-list-screen")).toBeVisible()
 
     const columns = await page.getByTestId("marketplace-grid").evaluate((el) => {
@@ -29,7 +29,7 @@ test.describe("desktop layout", () => {
   })
 
   test("page has no horizontal overflow", async ({ page }) => {
-    await page.goto("/marketplace")
+    await page.goto("/")
 
     const overflow = await page.evaluate(() => {
       return document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -42,14 +42,14 @@ test.describe("mobile layout unchanged", () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
   test("shows the bottom nav and hides the desktop header", async ({ page }) => {
-    await page.goto("/marketplace")
+    await page.goto("/")
 
     await expect(page.getByTestId("bottom-nav-mobile")).toBeVisible()
     await expect(page.getByTestId("desktop-header")).toBeHidden()
   })
 
   test("catalogue renders exactly 2 columns", async ({ page }) => {
-    await page.goto("/marketplace")
+    await page.goto("/")
     await expect(page.getByTestId("product-list-screen")).toBeVisible()
 
     const columns = await page.getByTestId("marketplace-grid").evaluate((el) => {

@@ -99,7 +99,7 @@ Run the narrowest relevant checks for a change, then broader checks when practic
 
 ## SEO policy (web application)
 
-The public catalogue routes (`/marketplace`, `/marketplace/[id]`, `/stores/[id]`) are server-rendered for SEO. When changing components or pages that affect these routes, follow these rules:
+The public catalogue routes (`/`, `/product/[id]`, `/stores/[id]`) are server-rendered for SEO. When changing components or pages that affect these routes, follow these rules:
 
 ### Crawlable links
 
@@ -115,7 +115,7 @@ The public catalogue routes (`/marketplace`, `/marketplace/[id]`, `/stores/[id]`
 
 ### Structured data (JSON-LD)
 
-- **Product and store pages must include JSON-LD structured data.** The product detail page (`app/marketplace/[id]/page.tsx`) already emits a `Product` schema with `offers` (price, currency, availability). Keep it in sync with the `ProductData` type.
+- **Product and store pages must include JSON-LD structured data.** The product detail page (`app/product/[id]/page.tsx`) already emits a `Product` schema with `offers` (price, currency, availability). Keep it in sync with the `ProductData` type.
 - If you add new fields to `ProductData` that are SEO-relevant (e.g., `brand`, `sku`, `rating`), add them to the JSON-LD.
 - Use `https://schema.org` types. For products: `Product` + `Offer`. For stores: `Store` + `Place`.
 

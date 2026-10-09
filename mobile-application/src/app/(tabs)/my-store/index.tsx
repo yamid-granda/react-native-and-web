@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { router } from "expo-router"
 import { SessionGate, StoreScreen, useMyStoreRoute } from "@rnw/components-library"
-import { myStoreApi } from "../../api/client"
+import { myStoreApi } from "../../../api/client"
 
 /**
  * My Store: the seller's own product list.

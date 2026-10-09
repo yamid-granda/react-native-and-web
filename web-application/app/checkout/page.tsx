@@ -10,7 +10,7 @@ export default function CheckoutPage() {
   return (
     <CheckoutScreen
       onGoToCart={() => router.push("/cart")}
-      onContinueShopping={() => router.push("/marketplace")}
+      onContinueShopping={() => router.push("/")}
       fetchProductsByIds={fetchProductsByIds}
     />
   )

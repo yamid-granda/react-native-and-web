@@ -23,11 +23,10 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
-            {/* The repo's first root-level non-tab routes. My Store lives outside
-                `(tabs)` precisely so the bottom bar stays at four items, which is
-                what mobile-application/e2e/tab-bar-position.e2e.ts guards. */}
+            {/* The repo's first root-level non-tab routes. Login and the public
+                storefront live outside `(tabs)`; My Store is a tab now, so the
+                bottom bar stays at four items — see the TAB_ITEMS above. */}
             <Stack.Screen name="login" />
-            <Stack.Screen name="my-store" />
             <Stack.Screen name="stores/[id]" />
           </Stack>
           <StatusBar style="auto" />

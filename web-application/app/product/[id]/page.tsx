@@ -16,7 +16,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({
   params,
-}: PageProps<"/marketplace/[id]">): Promise<Metadata> {
+}: PageProps<"/product/[id]">): Promise<Metadata> {
   const { id } = await params
   let product: ProductData | null
   try {
@@ -33,12 +33,12 @@ export async function generateMetadata({
   return {
     title: product.title,
     description,
-    alternates: { canonical: `/marketplace/${id}` },
+    alternates: { canonical: `/product/${id}` },
     openGraph: {
       title: product.title,
       description,
       type: "website",
-      url: `/marketplace/${id}`,
+      url: `/product/${id}`,
       siteName: "react-native-and-web",
       images: product.imageUrl ? [product.imageUrl] : undefined,
     },
@@ -60,7 +60,7 @@ export async function generateMetadata({
  *
  * Includes JSON-LD structured data for rich snippets in search results.
  */
-export default async function ProductDetailPage({ params }: PageProps<"/marketplace/[id]">) {
+export default async function ProductDetailPage({ params }: PageProps<"/product/[id]">) {
   const { id } = await params
 
   let product: ProductData | null

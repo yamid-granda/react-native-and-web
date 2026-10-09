@@ -9,8 +9,7 @@ describe("Home screen", () => {
     await device.reloadReactNative()
   })
 
-  it("shows the My Store entry", async () => {
-    await expect(element(by.id("home-screen"))).toBeVisible()
-    await expect(element(by.text("Sign in to sell"))).toBeVisible()
+  it("shows the marketplace catalogue", async () => {
+    await expect(element(by.id("product-list-screen"))).toBeVisible()
   })
 })

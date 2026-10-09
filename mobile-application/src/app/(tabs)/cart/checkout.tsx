@@ -6,7 +6,7 @@ export default function CheckoutRoute() {
   return (
     <CheckoutScreen
       onGoToCart={() => router.back()}
-      onContinueShopping={() => router.push("/marketplace")}
+      onContinueShopping={() => router.push("/")}
       fetchProductsByIds={fetchProductsByIds}
     />
   )

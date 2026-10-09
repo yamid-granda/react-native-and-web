@@ -60,7 +60,7 @@ test("a seller registers, lists a product, and sees it in the marketplace", asyn
   // Searched for rather than scrolled to: the list is `createdAt ASC`, so a
   // product created *now* sorts last, behind the seeded fixtures. Searching is
   // also what a shopper would actually do.
-  await page.goto("/marketplace")
+  await page.goto("/")
   await page.getByLabel("Search products").fill(title)
   // By role, not by text: the title `Text` is inside the card's Pressable, and
   // clicking the inner node does not reach the button's own handler.
@@ -140,7 +140,7 @@ test("a seller's price change reaches a cart that already holds the product", as
   // The shopper's half: find it in the shared marketplace and put it in the cart.
   // Searched for rather than scrolled to, for the same reason as above: a product
   // created now sorts last.
-  await page.goto("/marketplace")
+  await page.goto("/")
   await page.getByLabel("Search products").fill(priceTitle)
   await page.getByRole("button", { name: new RegExp(`^${priceTitle} `) }).click()
   await expect(page.getByTestId("product-detail-screen")).toBeVisible()
@@ -170,12 +170,11 @@ test("a seller's price change reaches a cart that already holds the product", as
   await expect(page.getByText(/You have no products yet/)).toBeVisible()
 })
 
-test("an anonymous visitor is sent from Home to the login screen", async ({ page }) => {
+test("an anonymous visitor is sent from the My Store nav entry to the login screen", async ({ page }) => {
   await page.goto("/")
-  await expect(page.getByTestId("home-screen")).toBeVisible()
-  await expect(page.getByText("Sign in to sell")).toBeVisible()
+  await expect(page.getByTestId("product-list-screen")).toBeVisible()
 
-  await page.getByLabel("My Store").click()
+  await page.getByLabel("My Store").first().click()
 
   await expect(page).toHaveURL("/login")
   await expect(page.getByTestId("auth-screen")).toBeVisible()

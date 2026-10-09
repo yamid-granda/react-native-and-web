@@ -49,9 +49,8 @@ ISR-first hybrid. Shared screens are `"use client"` (NativeWind has no RSC suppo
 
 | Route | Rendering |
 | --- | --- |
-| `/` | Static shell (interactive `HomeScreen`) |
-| `/marketplace` | ISR 60s: server fetches page 1, `useInfiniteProducts` from page 2 |
-| `/marketplace/[id]`, `/stores/[id]` | ISR 300s + on-demand (`generateStaticParams: []`; `next build` never needs API; unreachable API → per-request fallback) |
+| `/` | ISR 60s: the home page is the marketplace list — server fetches page 1, `useInfiniteProducts` from page 2 |
+| `/product/[id]`, `/stores/[id]` | ISR 300s + on-demand (`generateStaticParams: []`; `next build` never needs API; unreachable API → per-request fallback) |
 | `/login`, `/cart`, `/checkout`, `/wishlist`, `/my-store/**` | CSR (private; `robots.txt` disallows `/my-store`) |
 | `/sitemap.xml`, `/robots.txt` | Static (sitemap from catalogue page 1) |
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
-import { ProductDetailView } from "../app/marketplace/[id]/product-detail-view"
+import { ProductDetailView } from "../app/product/[id]/product-detail-view"
 
 // solito/navigation's useRouter() calls next/navigation's useRouter, which
 // throws outside a real Next.js app router (see MainNav.web.test.tsx).

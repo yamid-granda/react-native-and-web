@@ -1,6 +1,6 @@
 import { by, device, element, expect } from "detox"
 
-describe("Marketplace flow", () => {
+describe("Catalogue flow", () => {
   beforeAll(async () => {
     await device.launchApp()
   })
@@ -10,7 +10,7 @@ describe("Marketplace flow", () => {
   })
 
   it("browses from Home to a product's detail screen", async () => {
-    await element(by.text("Marketplace")).tap()
+    await element(by.text("Home")).tap()
     await expect(element(by.id("product-list-screen"))).toBeVisible()
 
     await element(by.id("product-card-prod-1")).tap()

@@ -10,7 +10,7 @@ describe("Cart flow", () => {
   })
 
   it("adds a product to the cart and shows it on the Cart screen", async () => {
-    await element(by.text("Marketplace")).tap()
+    await element(by.text("Home")).tap()
     await element(by.id("product-card-prod-1")).tap()
 
     await element(by.text("Add to Cart")).tap()

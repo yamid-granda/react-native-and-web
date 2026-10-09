@@ -15,7 +15,7 @@ describe("Tab bar position", () => {
   // dropped those insets once). Assert the bar renders in the lower half of
   // the screen, not pinned to the top.
   it("renders at the bottom of the screen, not the top", async () => {
-    const homeScreen = (await element(by.id("home-screen")).getAttributes()) as { frame: { y: number; height: number } }
+    const homeScreen = (await element(by.id("product-list-screen")).getAttributes()) as { frame: { y: number; height: number } }
     const homeTab = (await element(by.text("Home")).getAttributes()) as { frame: { y: number } }
 
     const screenMidpoint = homeScreen.frame.y + homeScreen.frame.height / 2

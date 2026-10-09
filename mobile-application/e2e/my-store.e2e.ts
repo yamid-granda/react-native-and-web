@@ -21,17 +21,16 @@ describe("My Store flow", () => {
     await device.reloadReactNative()
   })
 
-  it("sends an anonymous Home visitor to the login screen", async () => {
-    await expect(element(by.id("home-screen"))).toBeVisible()
-    await expect(element(by.text("Sign in to sell"))).toBeVisible()
+  it("sends an anonymous visitor from the My Store tab to the login screen", async () => {
+    await expect(element(by.id("product-list-screen"))).toBeVisible()
 
-    await element(by.id("home-my-store")).tap()
+    await element(by.text("My Store")).tap()
 
     await expect(element(by.id("auth-screen"))).toBeVisible()
   })
 
-  it("registers a store, lists a product, and finds it in the marketplace", async () => {
-    await element(by.id("home-my-store")).tap()
+  it("registers a store, lists a product, and finds it in the catalogue", async () => {
+    await element(by.text("My Store")).tap()
     await element(by.text("Create a store")).tap()
 
     await element(by.id("auth-email")).replaceText(email)
@@ -52,8 +51,8 @@ describe("My Store flow", () => {
     await expect(element(by.id("store-screen"))).toBeVisible()
     await expect(element(by.text(title))).toBeVisible()
 
-    // It is in the shared marketplace, and it names its seller.
-    await element(by.text("Marketplace")).tap()
+    // It is in the shared catalogue, and it names its seller.
+    await element(by.text("Home")).tap()
     await element(by.id("product-list-screen")).waitFor().scroll(2000, "down")
     await element(by.text(title)).tap()
     await expect(element(by.text(`Sold by ${storeName}`))).toBeVisible()
@@ -68,7 +67,7 @@ describe("My Store flow", () => {
     // journey starts again from Home.
     await device.reloadReactNative()
     await element(by.text("Home")).tap()
-    await element(by.id("home-my-store")).tap()
+    await element(by.text("My Store")).tap()
     await expect(element(by.id("store-screen"))).toBeVisible()
 
     await element(by.label(`Edit ${title}`)).tap()

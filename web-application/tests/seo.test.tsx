@@ -35,7 +35,6 @@ describe("sitemap", () => {
     const urls = (await sitemap()).map((entry) => entry.url)
 
     expect(urls).toContain(`${SITE_URL}/`)
-    expect(urls).toContain(`${SITE_URL}/marketplace`)
-    expect(urls).toContain(`${SITE_URL}/marketplace/prod-1`)
+    expect(urls).toContain(`${SITE_URL}/product/prod-1`)
   })
 })
