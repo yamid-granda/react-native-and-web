@@ -70,6 +70,10 @@ const PALETTE_BLOCKS: Record<string, string> = {
  */
 const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
   "business/ProductDetailScreen/ProductDetailScreenBase.tsx h-64": "product image height",
+  "common/Button/Button.tsx h-8":
+    "sm compact filter density — the one deliberate exception to h-control (see improve-proposals/2026-10-09-button-input-sm.md)",
+  "common/Input/Input.tsx h-8":
+    "sm compact filter density, matching Button sm at the same size",
   "common/Input/Input.tsx min-h-20":
     "multiline textarea height — padding replaces the fixed height by design (see Input.tsx)",
   "common/Input/Input.tsx py-2":

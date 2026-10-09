@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react"
 import { useState } from "react"
 import { View } from "react-native"
 import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
-import { Input } from "./Input"
+import { Input, INPUT_SIZES } from "./Input"
 import { FormField } from "../FormField/FormField"
 
 const meta: Meta<typeof Input> = {
@@ -20,11 +20,41 @@ type Story = StoryObj<typeof Input>
 
 export const Default: Story = {}
 
+export const Small: Story = {
+  args: {
+    placeholder: "Min",
+    accessibilityLabel: "Minimum price",
+    size: "sm",
+  },
+}
+
 export const WithPrependIcon: Story = {
   args: {
     placeholder: "Search...",
     prependIcon: SearchIcon,
   },
+}
+
+// Every size at once, driven off `INPUT_SIZES` — so adding a size to the
+// component puts it on screen before it can reach an app. `sm` is the compact
+// filter density (`h-8` wrapper, `text-sm` field); `md` is the default.
+export const AllSizes: Story = {
+  render: () => (
+    <View className="w-72 gap-4 p-6">
+      {INPUT_SIZES.map((size) => (
+        <Input
+          key={size}
+          inputTestID={`example-${size}`}
+          value=""
+          size={size}
+          onChangeText={() => {}}
+          placeholder={size === "sm" ? "Min" : "Type something..."}
+          accessibilityLabel={`Example input ${size}`}
+          prependIcon={SearchIcon}
+        />
+      ))}
+    </View>
+  ),
 }
 
 /**

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react"
 import { View } from "react-native"
 import { HeartIcon } from "../../icons/HeartIcon/HeartIcon"
 import { Input } from "../Input/Input"
-import { Button, BUTTON_VARIANTS } from "./Button"
+import { Button, BUTTON_SIZES, BUTTON_VARIANTS } from "./Button"
 
 const meta: Meta<typeof Button> = {
   title: "common/Button",
@@ -31,13 +31,24 @@ export const AllVariants: Story = {
   ),
 }
 
-// Every button is `h-control` — the same token Input uses — so buttons and
-// inputs line up in a form without anyone restating a height.
+// Every default button is `h-control` — the same token Input uses — so buttons
+// and inputs line up in a form without anyone restating a height. The `sm`
+// pair below is the compact filter density (`h-8` + `text-sm` on both), so the
+// two still line up with each other.
 export const HeightMatchesInput: Story = {
   render: () => (
     <View className="gap-2">
       <Button label="Default" className="self-start" testId="height-default" />
       <Input value="" onChangeText={() => {}} accessibilityLabel="Example input" />
+    </View>
+  ),
+}
+
+export const SmallHeightMatchesInput: Story = {
+  render: () => (
+    <View className="gap-2">
+      <Button label="Default" size="sm" className="self-start" testId="height-default-sm" />
+      <Input value="" size="sm" onChangeText={() => {}} accessibilityLabel="Example input" />
     </View>
   ),
 }
@@ -50,6 +61,32 @@ export const Primary: Story = {
 
 export const Secondary: Story = {
   args: { label: "Remove", variant: "secondary", testId: "remove" },
+}
+
+export const Small: Story = {
+  args: { label: "Relevance", variant: "secondary", size: "sm", testId: "relevance-sm" },
+}
+
+// Every size at once, driven off `BUTTON_SIZES` like `AllVariants` above — so
+// adding a size to the component puts it on screen before it can reach an app.
+export const AllSizes: Story = {
+  render: () => (
+    <View className="gap-3">
+      {BUTTON_SIZES.map((size) => (
+        <View key={size} className="flex-row flex-wrap items-center gap-3">
+          {BUTTON_VARIANTS.map((variant) => (
+            <Button
+              key={`${variant}-${size}`}
+              label={`${variant} ${size}`}
+              variant={variant}
+              size={size}
+              testId={`${variant}-${size}`}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  ),
 }
 
 export const Disabled: Story = {

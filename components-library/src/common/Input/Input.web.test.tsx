@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { SearchIcon } from "../../icons/SearchIcon/SearchIcon"
-import { Input, inputVerticalAlignStyle } from "./Input"
+import { INPUT_SIZES, Input, inputVerticalAlignStyle } from "./Input"
+
+const COMPONENT_SOURCE = readFileSync(join(import.meta.dirname, "Input.tsx"), "utf8")
 
 describe("Input (web, via react-native-web)", () => {
   it("renders the given value", () => {
@@ -91,5 +95,32 @@ describe("Input (web, via react-native-web)", () => {
 
   it("top-aligns multiline text so the first line does not float centered", () => {
     expect(inputVerticalAlignStyle(true)).toEqual({ paddingVertical: 0, textAlignVertical: "top" })
+  })
+
+  it("exposes exactly the approved sizes", () => {
+    expect([...INPUT_SIZES]).toEqual(["md", "sm"])
+  })
+
+  it("renders at both sizes without changing the accessible field", () => {
+    for (const size of INPUT_SIZES) {
+      const { unmount } = render(
+        <Input value="" size={size} onChangeText={vi.fn()} accessibilityLabel="Example" />,
+      )
+      expect(screen.getByLabelText("Example")).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it("keeps md on the shared height/type and compacts sm", () => {
+    // Asserted on source: react-native-web compiles `className` to atomic CSS,
+    // so the utilities are not visible on the rendered DOM node.
+    expect(COMPONENT_SOURCE).toContain('md: "h-control"')
+    expect(COMPONENT_SOURCE).toContain('sm: "h-8"')
+    expect(COMPONENT_SOURCE).toContain('md: "px-3"')
+    expect(COMPONENT_SOURCE).toContain('sm: "px-2"')
+    expect(COMPONENT_SOURCE).toContain("gap-2 rounded-lg border border-control-border bg-control-bg")
+    expect(COMPONENT_SOURCE).toContain('md: "text-base leading-6"')
+    expect(COMPONENT_SOURCE).toContain('sm: "text-sm leading-5"')
+    expect(COMPONENT_SOURCE).toMatch(/^\s*size\??:/m)
   })
 })

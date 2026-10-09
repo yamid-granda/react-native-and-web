@@ -96,7 +96,7 @@ Use the exported constants — `SCREEN_SHELL_CLASSNAME`, `SCREEN_CONTENT_CLASSNA
 
 **Shape:** `rounded-md`=6 images/icons · `rounded-lg`=8 cards, inputs, buttons, rows, sheets' corners · `rounded-xl`=12 nav items, chips · `rounded-2xl`=16 dialogs/bottom sheets (`rounded-t-2xl`) · `rounded-full` badges, pills, avatars. Never `rounded-none`, never a pill button, no custom `borderRadius`.
 
-**Controls:** one height, `h-control` (44px), for every `Button` and `Input`. `w-control` is its square counterpart. No other control height, ever; 44px is also the minimum touch target — icons and checkboxes need padding or a hit-slop to reach it.
+**Controls:** default height `h-control` (44px) for every `Button` and `Input`. The one deliberate exception is the `sm` filter density at `h-8` (32px) — marketplace filters only, documented deviation: it clears WCAG 2.5.8's 24px floor but sits below the 44px touch-target guidance, so it must never spread beyond dense filter rows. `w-control` is its square counterpart (`w-8` at `sm`). No other control height, ever.
 
 **Elevation:** two steps only. `shadow-sm` on resting cards; `shadow-md` on overlays (drawer sheet, sticky buy box, dropdown). Overlays also carry `border-surface-muted`, which is what carries elevation in dark mode.
 
@@ -121,9 +121,9 @@ Every async result change announces itself: `accessibilityLiveRegion="polite"` o
 
 ## 5. Controls (closed set)
 
-- **`Button` is the only button.** `primary` (`bg-brand text-white`) or `secondary` (`border border-control-border bg-control-bg text-control-text`). No third variant, no size variant — see `.agents/rules/button-variants.md`. `loading` swaps the label for `…` and sets `aria-busy`.
+- **`Button` is the only button.** `primary` (`bg-brand text-white`) or `secondary` (`border border-control-border bg-control-bg text-control-text`). No third variant — see `.agents/rules/button-variants.md`. Two sizes: `md` (default, `h-control` + `text-base leading-6`, `primary px-4` / `secondary px-3`) and `sm` (compact filter density, `h-8` + `text-sm leading-5`, `primary px-3` / `secondary px-2`). `loading` swaps the label for `…` and sets `aria-busy`.
 - **Selection** (sort chips, filters, tabs, quantity chips): selected = `primary`, unselected = `secondary`. Never a filled/outlined mix of your own.
-- **`Input`:** `gap-2 rounded-lg border border-control-border bg-control-bg px-3` + `h-control flex-row items-center`; inner `flex-1 text-sm leading-5 text-control-text outline-none placeholder:text-muted`. Multiline: `items-start py-2 min-h-20 text-left`. Always wrapped in `FormField` (`gap-1`, `Label` above). Errors go through `FormField`/`Label` in `text-danger` — not an ad-hoc red string.
+- **`Input`:** `gap-2 rounded-lg border border-control-border bg-control-bg` + `flex-row items-center`; `md` default (`h-control`, wrapper `px-3`, inner `flex-1 text-base leading-6`) or `sm` filter density (`h-8`, wrapper `px-2`, inner `flex-1 text-sm leading-5` — mirrors `Button secondary` at each size); inner `text-control-text outline-none placeholder:text-muted`. Multiline: `items-start py-2 min-h-20 text-left`. Always wrapped in `FormField` (`gap-1`, `Label` above). Errors go through `FormField`/`Label` in `text-danger` — not an ad-hoc red string.
 - **`SearchInput`** = `Input` + prepend icon. Placeholder and label are `Search products…` (with ellipsis, everywhere).
 - **Icon-only controls:** `w-control` square, `h-control`, `rounded-lg`, icon 20–22px, `accessibilityLabel` required, state shown by color **and** fill (`filled` prop) — never color alone.
 - **kebab-case screen-scoped `testId`** on every `Button`/`Input`, never derived from the label.
@@ -226,7 +226,7 @@ Never split for styling alone — `className` runs on both through NativeWind. N
 ## 12. Verify before you call it done
 
 - [ ] Every color is a token from §1; no `dark:`; no new hex; no `text-[Npx]`/`[Npx]` arbitrary values; every text size has an explicit `leading-*`.
-- [ ] Only `Button primary|secondary`, `h-control` everywhere, `secondary` finished with all three control tokens, kebab-case `testId`.
+- [ ] Only `Button primary|secondary` + `md|sm`, `h-control` default (`h-8` only at `sm` in filter rows), `secondary` finished with all three control tokens, kebab-case `testId`.
 - [ ] Screen is `SCREEN_SHELL` + `SCREEN_CONTENT`; cards `bg-surface rounded-lg shadow-sm` (generic `p-3`; product card `overflow-hidden` with text `gap-2 p-4` = `gap-4` gutter); image 4:3 full-bleed with `surface-muted` fallback, `alt`, and web `width`/`height`.
 - [ ] Price is `text-brand font-bold` with currency, visible without scroll; stock uses the honest wording; exactly one primary CTA per screen.
 - [ ] Loading/empty/error use §4 — skeleton matches final dimensions, error is `text-danger` with a retry, count is a live region.

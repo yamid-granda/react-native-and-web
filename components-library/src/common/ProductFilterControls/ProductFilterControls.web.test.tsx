@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ProductFilterControls } from "./ProductFilterControls"
+
+const COMPONENT_SOURCE = readFileSync(join(import.meta.dirname, "ProductFilterControls.tsx"), "utf8")
 
 describe("ProductFilterControls (web, via react-native-web)", () => {
   it("calls onSortByChange when a sort option is pressed", () => {
@@ -72,5 +76,25 @@ describe("ProductFilterControls (web, via react-native-web)", () => {
     )
     fireEvent.change(screen.getByLabelText("Maximum price"), { target: { value: "" } })
     expect(onPriceRangeChange).toHaveBeenCalledWith({ max: undefined })
+  })
+
+  it("uses the compact sm density for the filter row", () => {
+    // Asserted on source: react-native-web compiles `className` to atomic CSS,
+    // so the `px-*` utilities are not visible on the rendered DOM nodes. The
+    // render half below proves the controls themselves are still all present.
+    const smUsages = COMPONENT_SOURCE.match(/size="sm"/g) ?? []
+    // One sort-button row plus the two price fields.
+    expect(smUsages.length).toBeGreaterThanOrEqual(3)
+    render(
+      <ProductFilterControls
+        sortBy="relevance"
+        onSortByChange={vi.fn()}
+        priceRange={{}}
+        onPriceRangeChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText("Sort by Relevance")).toBeInTheDocument()
+    expect(screen.getByLabelText("Minimum price")).toBeInTheDocument()
+    expect(screen.getByLabelText("Maximum price")).toBeInTheDocument()
   })
 })
