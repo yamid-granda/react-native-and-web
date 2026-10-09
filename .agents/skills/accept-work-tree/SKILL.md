@@ -83,8 +83,15 @@ that matches the commits; use `chore(repo)` when the work spans the repository.
 The `commit-msg` hook runs commitlint on merge commits too, so the message must
 be Conventional Commits.
 
-If `origin/main` has moved such that main cannot fast-forward, or the merge
-conflicts, stop and ask. Do not resolve conflicts by discarding anyone's work.
+If `origin/main` has moved such that main cannot fast-forward, fast-forward
+main first, then retry the merge.
+
+If the merge conflicts, resolve at maximum effort — Muse Spark 1.3 Contributor
+xhigh effort (or current session model at maximum thoroughness when unavailable):
+list conflicted files, inspect `diff`/`log` on both sides for intent, merge both
+functionalities, never `checkout --ours/--theirs` wholesale. Re-run the
+narrowest relevant `typecheck`/`test` for touched workspaces before completing
+the merge commit above, then push.
 
 ## Phase 3 — Confirm before deleting anything
 
