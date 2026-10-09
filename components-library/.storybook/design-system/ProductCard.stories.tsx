@@ -46,8 +46,9 @@ export const Anatomy: Story = {
             <Product {...PRODUCT} />
           </ClassNameView>
           <ClassNameView className="max-w-[72ch] flex-1 gap-2">
-            <Sample value="image — w-full rounded-md bg-surface-muted, aspect-[4/3], cover, accessibilityLabel, web width/height" />
-            <Sample value="badge — absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-1 text-xs font-semibold uppercase text-white" />
+            <Sample value="card — w-full overflow-hidden rounded-lg bg-surface shadow-sm, text w-full gap-2 p-4 (= gap-4 gutter)" />
+            <Sample value="image — w-full aspect-[4/3] bg-surface-muted, cover, full-bleed, accessibilityLabel, web width/height" />
+            <Sample value="badge — absolute left-4 top-4 rounded-full bg-foreground/80 px-2 py-1 text-xs font-semibold uppercase text-white" />
             <Sample value="title — text-sm font-semibold leading-5 text-foreground, clamped 2 lines" />
             <Sample value="description — text-xs leading-4 text-muted, clamped 2 lines, ≤ ~60 chars" />
             <Sample value="price — text-base font-bold leading-6 text-brand" />

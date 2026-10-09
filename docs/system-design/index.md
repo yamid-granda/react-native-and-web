@@ -136,9 +136,10 @@ Every async result change announces itself: `accessibilityLiveRegion="polite"` o
 Identical everywhere. Never reorder, never restyle per screen, never fork per platform beyond the link/image adapter.
 
 ```
-card      w-full gap-2 rounded-lg bg-surface p-3 shadow-sm  (+ active:opacity-80)
-image     w-full rounded-md bg-surface-muted, aspect-[4/3], cover
-badge     absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-1
+card      w-full overflow-hidden rounded-lg bg-surface shadow-sm  (+ active:opacity-80)
+image     w-full aspect-[4/3] bg-surface-muted, cover, full-bleed (no inset, no rounding — the card clips it)
+text      w-full gap-2 p-4 (= gap-4 grid gutter)
+badge     absolute left-4 top-4 rounded-full bg-foreground/80 px-2 py-1
           text-xs font-semibold uppercase tracking-wide text-white
 title     text-sm font-semibold leading-5  (clamp 2 lines)
 desc      text-xs leading-4 text-muted    (clamp 2 lines, ≤ ~60 chars)
@@ -146,7 +147,7 @@ price     text-base font-bold leading-6 text-brand
 cta row   one primary Button (label varies by surface) + icon-only wishlist
 ```
 
-Image rules: the image is the product — always present or filled with `bg-surface-muted`, never a broken-icon placeholder; always `accessibilityLabel` (= `alt`) from the title; web adapter passes explicit `width`/`height` matching the 4:3 ratio to hold CLS; native uses `expo-image` (`memory-disk`, 150ms fade).
+Image rules: the image is the product — full-bleed to the card edges (no inset, no rounding; the card's `overflow-hidden` clips it), always present or filled with `bg-surface-muted`, never a broken-icon placeholder; always `accessibilityLabel` (= `alt`) from the title; web adapter passes explicit `width`/`height` matching the 4:3 ratio to hold CLS; native uses `expo-image` (`memory-disk`, 150ms fade).
 
 ---
 
@@ -226,7 +227,7 @@ Never split for styling alone — `className` runs on both through NativeWind. N
 
 - [ ] Every color is a token from §1; no `dark:`; no new hex; no `text-[Npx]`/`[Npx]` arbitrary values; every text size has an explicit `leading-*`.
 - [ ] Only `Button primary|secondary`, `h-control` everywhere, `secondary` finished with all three control tokens, kebab-case `testId`.
-- [ ] Screen is `SCREEN_SHELL` + `SCREEN_CONTENT`; cards `bg-surface rounded-lg p-3 shadow-sm`; image 4:3 with `surface-muted` fallback, `alt`, and web `width`/`height`.
+- [ ] Screen is `SCREEN_SHELL` + `SCREEN_CONTENT`; cards `bg-surface rounded-lg shadow-sm` (generic `p-3`; product card `overflow-hidden` with text `gap-2 p-4` = `gap-4` gutter); image 4:3 full-bleed with `surface-muted` fallback, `alt`, and web `width`/`height`.
 - [ ] Price is `text-brand font-bold` with currency, visible without scroll; stock uses the honest wording; exactly one primary CTA per screen.
 - [ ] Loading/empty/error use §4 — skeleton matches final dimensions, error is `text-danger` with a retry, count is a live region.
 - [ ] 2 columns at 320px and 360px; tablet/desktop only add columns, containment, rails — no shared component gained a breakpoint class.

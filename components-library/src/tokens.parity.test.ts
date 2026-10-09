@@ -78,11 +78,8 @@ const CONTROL_HEIGHT_EXCEPTIONS: Record<string, string> = {
     "sticky search bar vertical padding around h-control",
   "common/MainNav/MainNavItem.tsx h-5": "cart/wishlist badge height",
   "common/MainNav/MainNavItem.tsx py-2": "nav item vertical padding",
-  "common/Product/ProductCard.tsx h-32": "product image height",
-  "common/Product/ProductCard.tsx py-1": "product card padding",
-  "common/Product/ProductCard.web.tsx h-32": "product image height",
-  "common/Product/ProductCard.web.tsx py-1": "product card padding",
-  "common/Product/Product.web.tsx h-32": "product image height",
+  "common/Product/ProductCard.tsx py-1": "product card badge padding",
+  "common/Product/ProductCard.web.tsx py-1": "product card badge padding",
 }
 
 // `min-`/`max-` count as heights too. The lookbehind stops `h-20` matching
