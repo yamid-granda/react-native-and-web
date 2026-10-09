@@ -20,13 +20,16 @@ export const BOTTOM_NAV_MIN_GAP = 12
 // component directly — see README "Architecture boundaries") still matches
 // its exact look.
 export const BOTTOM_NAV_BAR_CLASSNAME =
-  "fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface p-2"
+  "fixed inset-x-0 bottom-0 z-50 flex-row items-center border-t border-surface-muted bg-surface px-2"
 
 // Shared by this component and mobile-application's tab bar so the
 // positioning can't drift between them — see BottomNav.web.test.tsx and
 // README "Architecture boundaries".
 export function getFloatingNavStyle(insetBottom: number): ViewStyle {
-  return StyleSheet.flatten([nativeOverlayStyle, { marginBottom: BOTTOM_NAV_MIN_GAP + insetBottom }])
+  return StyleSheet.flatten([
+    nativeOverlayStyle,
+    { marginBottom: BOTTOM_NAV_MIN_GAP + insetBottom },
+  ])
 }
 
 export type BottomNavItem = {
@@ -38,6 +41,7 @@ export type BottomNavItem = {
   href?: string
   onPress?: () => void
   badgeCount?: number
+  active?: boolean
 }
 
 export type BottomNavProps = {
@@ -55,13 +59,12 @@ export function BottomNav({ items, leadingItem }: BottomNavProps) {
 
   return (
     <ClassNameView className={BOTTOM_NAV_BAR_CLASSNAME} style={getFloatingNavStyle(insets.bottom)}>
-      {/* min-w-14 matches MainNav's own floor: react-native-web's base View
-          reset sets min-width: 0 on every flex child regardless of content
-          (unlike plain CSS, which would floor this at leadingItem's own
-          min-content size by default), so without an explicit min-width
-          here this box gets squeezed by flex-1's 50/50 split with the
-          items slot and leadingItem overflows past it — hence
-          MainNav.web.tsx's own shrink/overflow-hidden on the item. */}
+      {/* min-w-14 matches MainNav's own 56px item width: react-native-web's
+          base View reset sets min-width: 0 on every flex child regardless of
+          content (unlike plain CSS, which would floor this at leadingItem's
+          own min-content size by default), so without an explicit min-width
+          here this box gets squeezed by flex-1's 50/50 split with the items
+          slot and leadingItem overflows past it. */}
       <ClassNameView className="min-w-14 flex-1 flex-row justify-start">
         {leadingItem ? (
           <MainNav
@@ -70,10 +73,11 @@ export function BottomNav({ items, leadingItem }: BottomNavProps) {
             href={leadingItem.href}
             onPress={leadingItem.onPress}
             badgeCount={leadingItem.badgeCount}
+            active={leadingItem.active}
           />
         ) : null}
       </ClassNameView>
-      <ClassNameView className="flex-1 flex-row justify-end gap-1">
+      <ClassNameView className="flex-1 flex-row justify-end">
         {items.map((item) => (
           <MainNav
             key={item.key}
@@ -82,6 +86,7 @@ export function BottomNav({ items, leadingItem }: BottomNavProps) {
             href={item.href}
             onPress={item.onPress}
             badgeCount={item.badgeCount}
+            active={item.active}
           />
         ))}
       </ClassNameView>

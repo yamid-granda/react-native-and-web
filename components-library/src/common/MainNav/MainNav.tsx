@@ -9,7 +9,7 @@ export type { MainNavProps } from "./MainNavItem"
 // asChild, the same mechanism the Theme toggle's plain onPress already
 // relies on. See MainNav.web.tsx for the web implementation.
 export const MainNav = forwardRef<View, MainNavProps>(function MainNav(
-  { onPress, icon, title, badgeCount },
+  { onPress, icon, title, badgeCount, active },
   ref,
 ) {
   return (
@@ -18,7 +18,8 @@ export const MainNav = forwardRef<View, MainNavProps>(function MainNav(
       icon={icon}
       title={title}
       badgeCount={badgeCount}
-      navProps={{ accessibilityRole: "button", onPress }}
+      active={active}
+      navProps={{ accessibilityRole: "button", accessibilityState: { selected: active }, onPress }}
     />
   )
 })

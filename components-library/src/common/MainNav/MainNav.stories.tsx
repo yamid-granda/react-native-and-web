@@ -25,3 +25,12 @@ export const Default: Story = {
     </ClassNameView>
   ),
 }
+
+export const Active: Story = {
+  render: () => (
+    <ClassNameView className="flex-row gap-1 self-start rounded-2xl bg-surface p-2">
+      <MainNav href="/" icon={HomeIcon} title="Home" active />
+      <MainNav href="/marketplace" icon={MarketplaceIcon} title="Marketplace" />
+    </ClassNameView>
+  ),
+}
