@@ -10,6 +10,8 @@ import {
 import { formatPrice } from "../../utils/formatPrice"
 import { Button } from "../../common/Button/Button"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 import {
   useProductLookup,
   type FetchProductsByIds,
@@ -32,6 +34,9 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
   const removeItem = useCartStore((state) => state.removeItem)
   const incrementQuantity = useCartStore((state) => state.incrementQuantity)
   const decrementQuantity = useCartStore((state) => state.decrementQuantity)
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
 
   const ids = Object.keys(items)
   const { byId, missing, isLoading, error } = useProductLookup(ids, fetchProductsByIds)
@@ -46,10 +51,10 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
 
   return (
     <ClassNameScrollView testID="cart-screen" className="flex-1 bg-background">
-      <ScreenHeader title="Cart" testID="cart-title" />
+      <ScreenHeader title={t("cartTitle")} testID="cart-title" />
       <ClassNameView className="gap-4 px-6 pb-6">
         {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
         {/* A line that silently disappears is worse than one that says so: the
             shopper would have no idea what the total just stopped counting. */}
@@ -57,11 +62,11 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
           <ClassNameView className="gap-2">
             <ClassNameText testID="cart-missing" className="text-sm text-muted">
               {missing.length === 1
-                ? "1 saved item is no longer available."
-                : `${missing.length} saved items are no longer available.`}
+                ? t("cartMissingOne")
+                : t("cartMissingMany", { count: missing.length })}
             </ClassNameText>
             <Button
-              label="Remove unavailable items"
+              label={t("cartRemoveUnavailable")}
               testId="cart-remove-unavailable"
               variant="secondary"
               className="self-start"
@@ -74,9 +79,9 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
             also claim the cart is empty, and a cart still resolving has not
             answered yet. */}
         {error ? null : isLoading ? (
-          <ClassNameText className="text-muted">Loading your cart…</ClassNameText>
+          <ClassNameText className="text-muted">{t("cartLoading")}</ClassNameText>
         ) : lineItems.length === 0 ? (
-          <ClassNameText className="text-muted">Your cart is empty.</ClassNameText>
+          <ClassNameText className="text-muted">{t("cartEmpty")}</ClassNameText>
         ) : (
           <>
             <ClassNameView className="gap-3">
@@ -90,12 +95,12 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                       {product.title}
                     </ClassNameText>
                     <ClassNameText className="text-xs text-muted">
-                      {formatPrice(product.price, product.currency)} each
+                      {formatPrice(product.price, product.currency, tag)} {t("cartEach")}
                     </ClassNameText>
                   </ClassNameView>
                   <ClassNameView className="flex-row items-center gap-2">
                     <Button
-                      label={`Decrease ${product.title} quantity`}
+                      label={t("cartDecrease", { title: product.title })}
                       testId={`cart-decrease-${product.id}`}
                       variant="secondary"
                       onPress={() => decrementQuantity(product.id)}
@@ -104,7 +109,7 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                     </Button>
                     <ClassNameText className="text-sm text-foreground">{quantity}</ClassNameText>
                     <Button
-                      label={`Increase ${product.title} quantity`}
+                      label={t("cartIncrease", { title: product.title })}
                       testId={`cart-increase-${product.id}`}
                       variant="secondary"
                       onPress={() => incrementQuantity(product.id)}
@@ -113,9 +118,9 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
                     </Button>
                   </ClassNameView>
                   <Button
-                    label="Remove"
+                    label={t("cartRemove")}
                     variant="secondary"
-                    accessibilityLabel={`Remove ${product.title} from cart`}
+                    accessibilityLabel={t("cartRemoveFromCart", { title: product.title })}
                     testId={`cart-remove-${product.id}`}
                     onPress={() => removeItem(product.id)}
                   />
@@ -123,10 +128,10 @@ export function CartScreen({ onCheckout, fetchProductsByIds }: CartScreenProps) 
               ))}
             </ClassNameView>
             <ClassNameText className="text-lg font-bold text-brand">
-              Total: {formatPrice(getCartTotalPrice(lineItems))}
+              {t("cartTotal", { total: formatPrice(getCartTotalPrice(lineItems), "USD", tag) })}
             </ClassNameText>
             <Button
-              label="Proceed to Checkout"
+              label={t("cartCheckout")}
               testId="cart-checkout"
               className="self-start"
               onPress={() => onCheckout?.()}

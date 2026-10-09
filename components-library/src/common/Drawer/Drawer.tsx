@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react"
 import { Modal, Pressable, type PressableProps } from "react-native"
 import { CloseIcon } from "../../icons/CloseIcon/CloseIcon"
 import { Button } from "../Button/Button"
+import { useT } from "../../i18n/LocaleContext"
 
 // see Button.tsx / README "Architecture boundaries" for why this is cast locally
 const ClassNamePressable = Pressable as ComponentType<PressableProps & { className?: string }>
@@ -17,12 +18,13 @@ export type DrawerProps = {
 // platform, and wires Escape/back-button via onRequestClose — no bespoke
 // z-index/fixed-position scheme needed, unlike BottomNav.
 export function Drawer({ visible, onClose, children }: DrawerProps) {
+  const t = useT()
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <ClassNamePressable
         testID="drawer-overlay"
         accessibilityRole="button"
-        accessibilityLabel="Close drawer"
+        accessibilityLabel={t("drawerCloseLabel")}
         onPress={onClose}
         className="flex-1 justify-end bg-black/50"
       >
@@ -35,7 +37,7 @@ export function Drawer({ visible, onClose, children }: DrawerProps) {
           className="relative max-h-[50%] gap-4 rounded-t-2xl bg-surface p-6"
         >
           <Button
-            label="Close"
+            label={t("drawerClose")}
             testId="drawer-close"
             variant="secondary"
             onPress={onClose}

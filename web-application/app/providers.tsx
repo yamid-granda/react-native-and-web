@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useSessionBootstrap } from "@rnw/components-library"
+import { LocaleProvider, resolveLocale, useSessionBootstrap, type Locale } from "@rnw/components-library"
 import { validateSession } from "../lib/api"
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -20,5 +20,20 @@ export function Providers({ children }: { children: ReactNode }) {
   const validate = useCallback((token: string) => validateSession(token), [])
   useSessionBootstrap({ validate })
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  // Auto-detected browser locale (en/es, no switcher). Server HTML stays English
+  // so ISR caches never bake one visitor's language for the next; the client
+  // takes over on hydration and keeps `<html lang>` in sync for AT/crawlers.
+  const [locale, setLocale] = useState<Locale>("en")
+  useEffect(() => {
+    setLocale(resolveLocale(typeof navigator !== "undefined" ? navigator.language : undefined))
+  }, [])
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LocaleProvider locale={locale}>{children}</LocaleProvider>
+    </QueryClientProvider>
+  )
 }

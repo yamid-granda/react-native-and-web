@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 import { Text, type TextProps } from "react-native"
 import type { ProductData } from "../../types/Product"
 import { ProductFormScreen, type ProductFormValues } from "./ProductFormScreen"
+import { useT } from "../../i18n/LocaleContext"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameText = Text as ComponentType<TextProps & { className?: string }>
@@ -53,10 +54,11 @@ export function ProductEditorScreen({
   onDone,
   onCancel,
 }: ProductEditorScreenProps) {
+  const t = useT()
   if (isLoading) {
-    return <ClassNameText className="p-6 text-muted">Loading product…</ClassNameText>
+    return <ClassNameText className="p-6 text-muted">{t("formLoadingProduct")}</ClassNameText>
   }
-  if (!product) return <ClassNameText className="p-6 text-muted">Product not found.</ClassNameText>
+  if (!product) return <ClassNameText className="p-6 text-muted">{t("formProductNotFound")}</ClassNameText>
 
   const save = async (values: ProductFormValues) => {
     setError(null)
@@ -65,7 +67,7 @@ export function ProductEditorScreen({
       await update(product.id, values)
       onDone()
     } catch (cause) {
-      setError(cause instanceof Error ? cause : new Error("Could not save the product"))
+      setError(cause instanceof Error ? cause : new Error(t("formCouldNotSave")))
       setSubmitting(false)
     }
   }

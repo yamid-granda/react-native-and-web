@@ -2,6 +2,8 @@ import { memo, type ComponentType, type ReactNode } from "react"
 import { Pressable, Text, View, type PressableProps, type ViewProps } from "react-native"
 import { cn } from "../../utils/cn"
 import { formatPrice } from "../../utils/formatPrice"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -38,6 +40,9 @@ export const ProductCard = memo(function ProductCard({
   className,
 }: ProductCardProps) {
   const outOfStock = stock === 0
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
 
   return (
     // A plain View wraps the card content. The wishlist toggle that used to
@@ -57,14 +62,14 @@ export const ProductCard = memo(function ProductCard({
             {image}
             {outOfStock ? (
               <ClassNameView className="absolute left-2 top-2 rounded-full bg-foreground/80 px-2 py-1">
-                <Text className="text-xs font-semibold text-white">Out of stock</Text>
+                <Text className="text-xs font-semibold text-white">{t("detailOutOfStock")}</Text>
               </ClassNameView>
             ) : null}
           </ClassNameView>
         ) : null}
         {outOfStock && !image ? (
           <ClassNameView className="self-start rounded-full bg-foreground/80 px-2 py-1">
-            <Text className="text-xs font-semibold text-white">Out of stock</Text>
+            <Text className="text-xs font-semibold text-white">{t("detailOutOfStock")}</Text>
           </ClassNameView>
         ) : null}
         <Text numberOfLines={1} className="text-sm font-semibold text-foreground">
@@ -75,7 +80,7 @@ export const ProductCard = memo(function ProductCard({
             {description}
           </Text>
         ) : null}
-        <Text className="text-base font-bold text-brand">{formatPrice(price, currency)}</Text>
+        <Text className="text-base font-bold text-brand">{formatPrice(price, currency, tag)}</Text>
       </ClassNamePressable>
     </ClassNameView>
   )

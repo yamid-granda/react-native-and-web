@@ -1,15 +1,16 @@
 "use client"
 
 import { useRouter } from "solito/navigation"
-import { AuthScreen, type AuthInput } from "@rnw/components-library"
+import { AuthScreen, useT, type AuthInput } from "@rnw/components-library"
 import { login, register } from "../../lib/api"
 
 export default function LoginPage() {
   const router = useRouter()
+  const t = useT()
 
   return (
     <AuthScreen
-      subtitle="Sign in to manage your products, or open a storefront of your own."
+      subtitle={t("authSubtitle")}
       onSubmit={(input: AuthInput) =>
         input.storeName === undefined
           ? login({ email: input.email, password: input.password })

@@ -10,6 +10,8 @@ import {
 import { Button } from "../../common/Button/Button"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { formatPrice } from "../../utils/formatPrice"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { localeTag } from "../../i18n/resolveLocale"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -47,20 +49,22 @@ export function StoreScreen({
   onEdit,
   onDelete,
 }: StoreScreenProps) {
+  const t = useT()
+  const { locale } = useLocale()
+  const tag = localeTag(locale)
   return (
     <ClassNameScrollView testID="store-screen" className="flex-1 bg-background">
       <ScreenHeader title={storeName} testID="store-title" />
       <ClassNameView className="gap-4 px-6 pb-6">
 
-        {isLoading ? <ClassNameText className="text-muted">Loading your products…</ClassNameText> : null}
+        {isLoading ? <ClassNameText className="text-muted">{t("storeLoading")}</ClassNameText> : null}
         {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
 
         {!isLoading && !error && products.length === 0 ? (
           <ClassNameText className="text-muted">
-            You have no products yet. Add one and it shows up in the marketplace next to everyone
-            else&apos;s.
+            {t("storeEmpty")}
           </ClassNameText>
         ) : null}
 
@@ -76,21 +80,23 @@ export function StoreScreen({
                     {product.title}
                   </ClassNameText>
                   <ClassNameText className="text-xs text-muted">
-                    {formatPrice(product.price, product.currency)}
-                    {product.stock === 0 ? " · out of stock" : ` · ${product.stock} in stock`}
+                    {formatPrice(product.price, product.currency, tag)}
+                    {product.stock === 0
+                      ? ` · ${t("storeOutOfStock")}`
+                      : ` · ${t("storeInStock", { count: product.stock })}`}
                   </ClassNameText>
                 </ClassNameView>
                 <Button
-                  label="Edit"
+                  label={t("storeEdit")}
                   variant="secondary"
-                  accessibilityLabel={`Edit ${product.title}`}
+                  accessibilityLabel={t("storeEditAria", { title: product.title })}
                   testId={`store-edit-${product.id}`}
                   onPress={() => onEdit(product.id)}
                 />
                 <Button
-                  label="Delete"
+                  label={t("storeDelete")}
                   variant="secondary"
-                  accessibilityLabel={`Delete ${product.title}`}
+                  accessibilityLabel={t("storeDeleteAria", { title: product.title })}
                   testId={`store-delete-${product.id}`}
                   disabled={isMutating}
                   onPress={() => onDelete(product.id)}
@@ -101,7 +107,7 @@ export function StoreScreen({
         ) : null}
 
         <Button
-          label="Add product"
+          label={t("storeAddProduct")}
           testId="store-add-product"
           onPress={onCreate}
           disabled={isMutating}

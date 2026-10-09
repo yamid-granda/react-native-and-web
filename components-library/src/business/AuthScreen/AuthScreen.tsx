@@ -14,6 +14,10 @@ import { FormField } from "../../common/FormField/FormField"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { useSessionStore } from "./useSessionStore"
 import type { AuthSession } from "../../types/Store"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { en } from "../../i18n/en"
+import { es } from "../../i18n/es"
+import type { Locale } from "../../i18n/resolveLocale"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
 const ClassNameScrollView = ScrollView as ComponentType<ScrollViewProps & { className?: string }>
@@ -55,6 +59,8 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenProps) {
   const setSession = useSessionStore((state) => state.setSession)
+  const t = useT()
+  const { locale } = useLocale()
   const [mode, setMode] = useState<AuthMode>("sign-in")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -65,7 +71,7 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
   const isSignUp = mode === "sign-up"
 
   async function submit() {
-    const problem = validate({ mode, email, password, storeName })
+    const problem = validate({ mode, email, password, storeName }, locale)
     if (problem) {
       setError(problem)
       return
@@ -81,7 +87,7 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
       setSession(session)
       onAuthenticated?.(session)
     } catch (cause) {
-      setError(messageFor(cause))
+      setError(messageFor(cause, locale))
     } finally {
       setIsSubmitting(false)
     }
@@ -96,29 +102,29 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
     <ClassNameKeyboardAvoidingView className="flex-1 bg-background" behavior="padding">
       <ClassNameScrollView testID="auth-screen" className="flex-1 bg-background">
         <ScreenHeader
-          title={isSignUp ? "Open your store" : "Sign in"}
+          title={isSignUp ? t("authOpenStore") : t("authSignIn")}
           subtitle={subtitle}
           testID="auth-title"
         />
         <ClassNameView className="gap-4 px-6 pb-6">
 
           <FormField
-            label="Email"
+            label={t("authEmail")}
             inputTestID="auth-email"
             value={email}
             onChangeText={setEmail}
-            placeholder="seller@example.com"
+            placeholder={t("authEmailPlaceholder")}
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"
           />
 
           <FormField
-            label="Password"
+            label={t("authPassword")}
             inputTestID="auth-password"
             value={password}
             onChangeText={setPassword}
-            placeholder="At least 8 characters"
+            placeholder={t("authPasswordPlaceholder")}
             secureTextEntry
             autoCapitalize="none"
             autoComplete={isSignUp ? "new-password" : "current-password"}
@@ -126,11 +132,11 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
 
           {isSignUp ? (
             <FormField
-              label="Store name"
+              label={t("authStoreName")}
               inputTestID="auth-store-name"
               value={storeName}
               onChangeText={setStoreName}
-              placeholder="Riverbend Vintage"
+              placeholder={t("authStoreNamePlaceholder")}
             />
           ) : null}
 
@@ -141,17 +147,17 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
           ) : null}
 
           <Button
-            label={isSignUp ? "Create store" : "Sign in"}
+            label={isSignUp ? t("authCreateStore") : t("authSignIn")}
             testId="auth-submit"
             onPress={submit}
             loading={isSubmitting}
           />
 
           <ClassNameText className="text-sm text-muted">
-            {isSignUp ? "Already selling here?" : "New to the marketplace?"}
+            {isSignUp ? t("authAlreadySelling") : t("authNewToMarketplace")}
           </ClassNameText>
           <Button
-            label={isSignUp ? "Sign in instead" : "Create a store"}
+            label={isSignUp ? t("authSignInInstead") : t("authCreateAStore")}
             testId="auth-switch-mode"
             onPress={() => switchMode(isSignUp ? "sign-in" : "sign-up")}
             variant="secondary"
@@ -168,20 +174,29 @@ export function AuthScreen({ subtitle, onAuthenticated, onSubmit }: AuthScreenPr
  * Exported so the app-level tests can assert the same rules without driving the
  * whole screen — a form's validation is worth testing without a rendering.
  */
-export function validate(input: {
-  mode: AuthMode
-  email: string
-  password: string
-  storeName: string
-}): string | null {
-  const email = input.email.trim()
-  if (!email) return "Email is required"
-  if (!EMAIL_PATTERN.test(email)) return "Enter a valid email address"
-  if (!input.password) return "Password is required"
-  if (input.password.length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+export function validate(
+  input: {
+    mode: AuthMode
+    email: string
+    password: string
+    storeName: string
+  },
+  locale: Locale = "en",
+): string | null {
+  const dict = locale === "es" ? es : en
+  const fill = (template: string, vars?: Record<string, string | number>) => {
+    let out = template
+    if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, String(v))
+    return out
   }
-  if (input.mode === "sign-up" && !input.storeName.trim()) return "Store name is required"
+  const email = input.email.trim()
+  if (!email) return dict.authEmailRequired
+  if (!EMAIL_PATTERN.test(email)) return dict.authEmailInvalid
+  if (!input.password) return dict.authPasswordRequired
+  if (input.password.length < MIN_PASSWORD_LENGTH) {
+    return fill(dict.authPasswordTooShort, { min: MIN_PASSWORD_LENGTH })
+  }
+  if (input.mode === "sign-up" && !input.storeName.trim()) return dict.authStoreNameRequired
   return null
 }
 
@@ -192,7 +207,7 @@ export function validate(input: {
  * for a wrong password and an unknown address, so the client cannot say more
  * than "those credentials did not work" either.
  */
-export function messageFor(cause: unknown): string {
+export function messageFor(cause: unknown, locale: Locale = "en"): string {
   if (cause instanceof Error && cause.message) return cause.message
-  return "Something went wrong. Please try again."
+  return locale === "es" ? es.authGenericError : en.authGenericError
 }

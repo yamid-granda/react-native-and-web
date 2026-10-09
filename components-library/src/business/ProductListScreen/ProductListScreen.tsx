@@ -14,6 +14,7 @@ import { Product } from "../../common/Product/Product"
 import { SearchInput } from "../../common/SearchInput/SearchInput"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
 import { ProductFilterControls } from "../../common/ProductFilterControls/ProductFilterControls"
+import { useT } from "../../i18n/LocaleContext"
 import type { ProductData } from "../../types/Product"
 import { useProductSearch } from "./useProductSearch"
 import { useRecentlyViewedStore } from "../ProductDetailScreen/useRecentlyViewedStore"
@@ -82,6 +83,7 @@ export function ProductListScreen({
 }: ProductListScreenProps) {
   const { query, setQuery, sortBy, setSortBy, priceRange, setPriceRange, results, deferredQuery } =
     useProductSearch(products)
+  const t = useT()
   const isPriceRangeActive = priceRange.min !== undefined || priceRange.max !== undefined
   const { width } = useWindowDimensions()
   const numColumns = getColumnCount(width)
@@ -121,7 +123,7 @@ export function ProductListScreen({
 
   return (
     <ClassNameView testID="product-list-screen" className="flex-1 bg-background">
-      <ScreenHeader title="Marketplace" testID="marketplace-title" />
+      <ScreenHeader title={t("listMarketplace")} testID="marketplace-title" />
       <FlatList
         // FlatList can't change numColumns on a mounted list (RN invariant),
         // so the count is threaded through as a key to force a remount when
@@ -156,7 +158,7 @@ export function ProductListScreen({
             {showRecentlyViewed ? (
               <ClassNameView className="gap-2">
                 <ClassNameText className="text-base font-semibold text-foreground">
-                  Recently viewed
+                  {t("listRecentlyViewed")}
                 </ClassNameText>
                 <ClassNameScrollView
                   horizontal
@@ -175,28 +177,28 @@ export function ProductListScreen({
               </ClassNameView>
             ) : null}
             {isLoading ? (
-              <ClassNameText className="text-muted">Loading products…</ClassNameText>
+              <ClassNameText className="text-muted">{t("listLoading")}</ClassNameText>
             ) : null}
             {error ? (
-              <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+              <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
             ) : null}
             {!isLoading && !error && products.length === 0 ? (
-              <ClassNameText className="text-muted">No products yet.</ClassNameText>
+              <ClassNameText className="text-muted">{t("listNoProducts")}</ClassNameText>
             ) : null}
             {!isLoading && !error && products.length > 0 && results.length === 0 ? (
               <ClassNameText className="text-muted">
                 {query && isPriceRangeActive
-                  ? `No products match "${query}" in this price range.`
+                  ? t("listNoMatchQueryPrice", { query })
                   : isPriceRangeActive
-                    ? "No products match this price range."
-                    : `No products match "${query}".`}
+                    ? t("listNoMatchPrice")
+                    : t("listNoMatchQuery", { query })}
               </ClassNameText>
             ) : null}
           </ClassNameView>
         }
         ListFooterComponent={
           isFetchingNextPage ? (
-            <ClassNameText className="text-muted">Loading more…</ClassNameText>
+            <ClassNameText className="text-muted">{t("listLoadingMore")}</ClassNameText>
           ) : null
         }
       />

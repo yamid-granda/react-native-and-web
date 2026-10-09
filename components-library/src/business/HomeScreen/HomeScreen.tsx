@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
 import { Pressable, Text, View, type PressableProps, type TextProps } from "react-native"
 import { useSessionStore } from "../AuthScreen/useSessionStore"
+import { useT } from "../../i18n/LocaleContext"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally.
 // The outer View is left as plain `View` because it carries no className beyond
@@ -23,6 +24,7 @@ export type HomeScreenProps = {
 export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
   const user = useSessionStore((state) => (state.status === "authenticated" ? state.user : null))
   const signedIn = Boolean(user)
+  const t = useT()
 
   function openStore() {
     if (signedIn) {
@@ -45,15 +47,15 @@ export function HomeScreen({ onOpenStore, onSignIn }: HomeScreenProps) {
       <ClassNamePressable
         testID="home-my-store"
         accessibilityRole="button"
-        accessibilityLabel="My Store"
+        accessibilityLabel={t("homeMyStore")}
         onPress={openStore}
         className="w-full max-w-xs items-center gap-1 rounded-lg bg-surface p-4 active:bg-surface-muted"
       >
         <ClassNameText className="text-base font-semibold leading-6 text-foreground">
-          {signedIn ? user?.storeName : "My Store"}
+          {signedIn ? user?.storeName : t("homeMyStore")}
         </ClassNameText>
         <ClassNameText className="text-xs leading-4 text-muted">
-          {signedIn ? "Manage your products" : "Sign in to sell"}
+          {signedIn ? t("homeManageProducts") : t("homeSignInToSell")}
         </ClassNameText>
       </ClassNamePressable>
     </View>

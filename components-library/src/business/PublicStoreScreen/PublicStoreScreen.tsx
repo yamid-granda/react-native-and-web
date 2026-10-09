@@ -10,6 +10,7 @@ import {
 } from "react-native"
 import { Product } from "../../common/Product/Product"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
+import { useT } from "../../i18n/LocaleContext"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -46,6 +47,7 @@ export function PublicStoreScreen({
   onSelectProduct,
 }: PublicStoreScreenProps) {
   const { width } = useWindowDimensions()
+  const t = useT()
   const columns = useMemo(() => {
     const available = width - HORIZONTAL_PADDING * 2
     return Math.max(1, Math.floor((available + GRID_GAP) / (CARD_MIN_WIDTH + GRID_GAP)))
@@ -53,15 +55,15 @@ export function PublicStoreScreen({
 
   return (
     <ClassNameScrollView testID="public-store-screen" className="flex-1 bg-background">
-      <ScreenHeader title={storeName} subtitle="Store" testID="public-store-title" />
+      <ScreenHeader title={storeName} subtitle={t("publicStoreSubtitle")} testID="public-store-title" />
       <ClassNameView className="gap-4 px-6 pb-6">
 
-        {isLoading ? <ClassNameText className="text-muted">Loading products…</ClassNameText> : null}
+        {isLoading ? <ClassNameText className="text-muted">{t("publicStoreLoading")}</ClassNameText> : null}
         {error ? (
-          <ClassNameText className="text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
         {!isLoading && !error && products.length === 0 ? (
-          <ClassNameText className="text-muted">This store has no products yet.</ClassNameText>
+          <ClassNameText className="text-muted">{t("publicStoreEmpty")}</ClassNameText>
         ) : null}
 
         <ClassNameView className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>

@@ -10,6 +10,10 @@ import {
 import { Button } from "../../common/Button/Button"
 import { FormField } from "../../common/FormField/FormField"
 import { ScreenHeader } from "../../common/ScreenHeader/ScreenHeader"
+import { useLocale, useT } from "../../i18n/LocaleContext"
+import { en } from "../../i18n/en"
+import { es } from "../../i18n/es"
+import type { Locale } from "../../i18n/resolveLocale"
 import type { ProductData } from "../../types/Product"
 
 // see Button.tsx / README "Architecture boundaries" for why these are cast locally
@@ -69,6 +73,8 @@ export function ProductFormScreen({
   onCancel,
 }: ProductFormScreenProps) {
   const isEditing = Boolean(product)
+  const t = useT()
+  const { locale } = useLocale()
   const [title, setTitle] = useState(product?.title ?? "")
   const [description, setDescription] = useState(product?.description ?? "")
   const [price, setPrice] = useState(product ? String(product.price) : "")
@@ -77,7 +83,7 @@ export function ProductFormScreen({
   const [problem, setProblem] = useState<string | null>(null)
 
   async function submit() {
-    const values = parse({ title, description, price, imageUrl, stock })
+    const values = parse({ title, description, price, imageUrl, stock }, locale)
     if ("error" in values) {
       setProblem(values.error)
       return
@@ -89,55 +95,55 @@ export function ProductFormScreen({
   return (
     <ClassNameScrollView testID="product-form-screen" className="flex-1 bg-background">
       <ScreenHeader
-        title={isEditing ? "Edit product" : "Add product"}
+        title={isEditing ? t("formEditProduct") : t("formAddProduct")}
         testID="product-form-title"
       />
       <ClassNameView className="gap-4 px-6 pb-6">
 
         <FormField
-          label="Title"
+          label={t("formTitleLabel")}
           inputTestID="product-title"
           value={title}
           onChangeText={setTitle}
-          placeholder="Leather Weekender Bag"
+          placeholder={t("formTitlePlaceholder")}
         />
 
         <FormField
-          label="Description"
+          label={t("formDescriptionLabel")}
           inputTestID="product-description"
           multiline
           value={description}
           onChangeText={setDescription}
-          placeholder="What should a shopper know about it?"
+          placeholder={t("formDescriptionPlaceholder")}
         />
 
         <ClassNameView className="flex-row gap-3">
           <FormField
             className="flex-1"
-            label="Price"
+            label={t("formPriceLabel")}
             inputTestID="product-price"
             value={price}
             onChangeText={setPrice}
-            placeholder="24.99"
+            placeholder={t("formPricePlaceholder")}
             keyboardType="decimal-pad"
           />
           <FormField
             className="flex-1"
-            label="Stock"
+            label={t("formStockLabel")}
             inputTestID="product-stock"
             value={stock}
             onChangeText={setStock}
-            placeholder="0"
+            placeholder={t("formStockPlaceholder")}
             keyboardType="number-pad"
           />
         </ClassNameView>
 
         <FormField
-          label="Image URL"
+          label={t("formImageUrlLabel")}
           inputTestID="product-image-url"
           value={imageUrl}
           onChangeText={setImageUrl}
-          placeholder="https://…"
+          placeholder={t("formImageUrlPlaceholder")}
           autoCapitalize="none"
         />
 
@@ -147,18 +153,18 @@ export function ProductFormScreen({
           </ClassNameText>
         ) : null}
         {error ? (
-          <ClassNameText className="text-sm text-foreground">Error: {error.message}</ClassNameText>
+          <ClassNameText className="text-sm text-foreground">{t("cartError")}: {error.message}</ClassNameText>
         ) : null}
 
         <Button
-          label={submitLabel ?? (isEditing ? "Save changes" : "Create product")}
+          label={submitLabel ?? (isEditing ? t("formSaveChanges") : t("formCreateProduct"))}
           testId="product-form-submit"
           onPress={submit}
           loading={isSubmitting}
         />
         {onCancel ? (
           <Button
-            label="Cancel"
+            label={t("formCancel")}
             testId="product-form-cancel"
             onPress={onCancel}
             className="bg-surface-muted"
@@ -177,40 +183,49 @@ export function ProductFormScreen({
  * have caught is a worse experience, and a second set of rules is a second thing
  * to keep correct. The server stays the authority.
  */
-export function parse(fields: {
-  title: string
-  description: string
-  price: string
-  imageUrl: string
-  stock: string
-}): ProductFormValues | { error: string } {
+export function parse(
+  fields: {
+    title: string
+    description: string
+    price: string
+    imageUrl: string
+    stock: string
+  },
+  locale: Locale = "en",
+): ProductFormValues | { error: string } {
+  const dict = locale === "es" ? es : en
+  const fill = (template: string, vars?: Record<string, string | number>) => {
+    let out = template
+    if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, String(v))
+    return out
+  }
   const title = fields.title.trim()
-  if (!title) return { error: "Title is required" }
+  if (!title) return { error: dict.formTitleRequired }
   if (title.length > MAX_TITLE_LENGTH) {
-    return { error: `Title must be at most ${MAX_TITLE_LENGTH} characters` }
+    return { error: fill(dict.formTitleTooLong, { max: MAX_TITLE_LENGTH }) }
   }
 
   const rawPrice = fields.price.trim()
-  if (!rawPrice) return { error: "Price is required" }
+  if (!rawPrice) return { error: dict.formPriceRequired }
   const price = Number(rawPrice)
   // `Number("abc")` is NaN; the empty-string check above is what stops `Number("")`
   // from reading as a valid price of zero.
-  if (!Number.isFinite(price)) return { error: "Price must be a number" }
-  if (price < 0) return { error: "Price must not be negative" }
+  if (!Number.isFinite(price)) return { error: dict.formPriceMustBeNumber }
+  if (price < 0) return { error: dict.formPriceNegative }
 
   const rawStock = fields.stock.trim()
   const stock = rawStock === "" ? 0 : Number(rawStock)
-  if (!Number.isInteger(stock)) return { error: "Stock must be a whole number" }
-  if (stock < 0) return { error: "Stock must not be negative" }
+  if (!Number.isInteger(stock)) return { error: dict.formStockWhole }
+  if (stock < 0) return { error: dict.formStockNegative }
 
   const description = fields.description.trim()
   if (description.length > MAX_DESCRIPTION_LENGTH) {
-    return { error: `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters` }
+    return { error: fill(dict.formDescriptionTooLong, { max: MAX_DESCRIPTION_LENGTH }) }
   }
 
   const imageUrl = fields.imageUrl.trim()
   if (imageUrl.length > MAX_IMAGE_URL_LENGTH) {
-    return { error: `Image URL must be at most ${MAX_IMAGE_URL_LENGTH} characters` }
+    return { error: fill(dict.formImageUrlTooLong, { max: MAX_IMAGE_URL_LENGTH }) }
   }
 
   return {
