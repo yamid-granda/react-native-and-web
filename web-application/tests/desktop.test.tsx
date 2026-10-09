@@ -20,7 +20,11 @@ vi.mock("solito/navigation", async (importOriginal) => {
 // useThemeToggle reads NativeWind's useColorScheme, which the vitest
 // nativewind stub does not provide — the header only needs its return shape.
 vi.mock("../app/use-theme-toggle", () => ({
-  useThemeToggle: () => ({ theme: "light" as const, toggleTheme: vi.fn() }),
+  useThemeToggle: () => ({
+    theme: "light" as const,
+    toggleTheme: vi.fn(),
+    setTheme: vi.fn(),
+  }),
 }))
 
 const fetchProductsByIds = async (ids: string[]) => ({ items: [], missing: ids })
@@ -33,7 +37,7 @@ function renderWithClient(ui: ReactElement) {
 }
 
 describe("Desktop shell", () => {
-  it("renders the desktop header with crawlable links and a theme toggle", () => {
+  it("renders the desktop header with crawlable links and a settings entry point", () => {
     render(<DesktopHeader />)
 
     expect(screen.getByTestId("desktop-header")).toBeInTheDocument()
@@ -42,7 +46,7 @@ describe("Desktop shell", () => {
       "href",
       "/my-store",
     )
-    expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
   })
 
   it("renders the bottom nav for phone/tablet alongside the desktop header", () => {

@@ -5,6 +5,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { LocaleProvider, resolveLocale, useSessionBootstrap, type Locale } from "@rnw/components-library"
 import { validateSession } from "../lib/api"
 
+const LOCALE_STORAGE_KEY = "locale"
+
+function readStoredLocale(): Locale | null {
+  try {
+    const stored = localStorage.getItem(LOCALE_STORAGE_KEY)
+    return stored === "en" || stored === "es" ? stored : null
+  } catch {
+    return null
+  }
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   // v5's default staleTime is 0, so every remount/refocus can trigger a
   // background refetch of every already-loaded product page — wasted work
@@ -20,20 +31,34 @@ export function Providers({ children }: { children: ReactNode }) {
   const validate = useCallback((token: string) => validateSession(token), [])
   useSessionBootstrap({ validate })
 
-  // Auto-detected browser locale (en/es, no switcher). Server HTML stays English
-  // so ISR caches never bake one visitor's language for the next; the client
-  // takes over on hydration and keeps `<html lang>` in sync for AT/crawlers.
-  const [locale, setLocale] = useState<Locale>("en")
+  // Server HTML stays English so ISR caches never bake one visitor's language
+  // for the next; the client takes over on hydration (stored choice first,
+  // then browser detection) and keeps `<html lang>` in sync for AT/crawlers.
+  const [locale, setLocaleState] = useState<Locale>("en")
   useEffect(() => {
-    setLocale(resolveLocale(typeof navigator !== "undefined" ? navigator.language : undefined))
+    const stored = readStoredLocale()
+    setLocaleState(
+      stored ?? resolveLocale(typeof navigator !== "undefined" ? navigator.language : undefined),
+    )
   }, [])
   useEffect(() => {
     document.documentElement.lang = locale
   }, [locale])
 
+  const setLocale = useCallback((next: Locale) => {
+    setLocaleState(next)
+    try {
+      localStorage.setItem(LOCALE_STORAGE_KEY, next)
+    } catch {
+      // Storage-blocked browsers keep the in-memory choice for the session.
+    }
+  }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
-      <LocaleProvider locale={locale}>{children}</LocaleProvider>
+      <LocaleProvider locale={locale} onLocaleChange={setLocale}>
+        {children}
+      </LocaleProvider>
     </QueryClientProvider>
   )
 }

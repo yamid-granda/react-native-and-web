@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useColorScheme } from "nativewind"
 
 const STORAGE_KEY = "theme"
@@ -14,7 +14,7 @@ function applyTheme(theme: "light" | "dark") {
 // trust NativeWind's own colorScheme and persists to localStorage.
 export function useThemeToggle() {
   const { setColorScheme } = useColorScheme()
-  const [theme, setTheme] = useState<"light" | "dark">("light")
+  const [theme, setThemeState] = useState<"light" | "dark">("light")
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -26,16 +26,22 @@ export function useThemeToggle() {
           : "light"
     applyTheme(initial)
     setColorScheme(initial)
-    setTheme(initial)
+    setThemeState(initial)
   }, [setColorScheme])
 
-  function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark"
-    applyTheme(next)
-    localStorage.setItem(STORAGE_KEY, next)
-    setColorScheme(next)
-    setTheme(next)
-  }
+  const setTheme = useCallback(
+    (next: "light" | "dark") => {
+      applyTheme(next)
+      localStorage.setItem(STORAGE_KEY, next)
+      setColorScheme(next)
+      setThemeState(next)
+    },
+    [setColorScheme],
+  )
 
-  return { theme, toggleTheme }
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }, [setTheme, theme])
+
+  return { theme, toggleTheme, setTheme }
 }
