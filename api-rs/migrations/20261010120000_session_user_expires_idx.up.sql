@@ -1,0 +1,23 @@
+-- "Session" per-user reads filter on "userId" plus a range on "expiresAt"
+-- (LIST_SESSIONS: "> now()" + ORDER BY "expiresAt" DESC; DELETE_EXPIRED_FOR_USER:
+-- "<= now()"). The single-column "Session_userId_idx" leaves the "expiresAt"
+-- predicate plus the sort to the heap, which degrades as rows per seller grow —
+-- the table is append-one-per-login and bounded by age, not by count, so design
+-- for high volume, not for a small table.
+--
+-- The composite covers both shapes: equality prefix on "userId", range + order
+-- on "expiresAt". DESC matches LIST_SESSIONS so no Sort node is needed
+-- (Postgres could scan an ASC index backward, but the explicit direction makes
+-- the intent match the query). It also covers SELECT "userId", "expiresAt",
+-- enabling an index-only scan once the visibility map settles.
+--
+-- Replaces "Session_userId_idx" via the leftmost prefix instead of keeping
+-- both: every login does an INSERT plus a DELETE, so a second index is pure
+-- write amplification. "Session_expiresAt_idx" stays for a future global sweep
+-- (ARCHITECTURE.md §11).
+--
+-- Plain CREATE INDEX, not CONCURRENTLY: sqlx runs each migration in a
+-- transaction and CONCURRENTLY cannot run inside one. Same precedent as
+-- Product_createdAt_id_idx; brief ACCESS EXCLUSIVE lock is acceptable.
+DROP INDEX "Session_userId_idx";
+CREATE INDEX "Session_userId_expiresAt_idx" ON "Session"("userId", "expiresAt" DESC);

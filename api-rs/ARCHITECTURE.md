@@ -590,7 +590,7 @@ A reading order that follows the request path:
   row per login until it expires, because capping *live* sessions would revoke a
   device the seller is still using and that is not a change to make silently.
   And `Session_expiresAt_idx` is now read by no query at all — the per-user
-  delete filters on `"userId"`, which is why `Session_userId_idx` was added —
+  reads filter on `("userId", "expiresAt")`, which is why `Session_userId_expiresAt_idx` replaced `Session_userId_idx` (leftmost prefix covers the single-column shape; keeping both would tax every login INSERT + DELETE) —
   so it is kept on the expectation that a *global* sweep is the right thing to
   add eventually, at the cost of a write per login on an append-only table. The
   cleanup is fail-open: a sweep that errors is warned and counted, never

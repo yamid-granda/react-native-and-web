@@ -45,6 +45,7 @@ This is a pnpm/Turborepo monorepo for a Next.js web app and an Expo mobile app. 
 - Shared components use React Native primitives and NativeWind. Follow nearby component, test, and Storybook patterns rather than introducing a second styling or state approach.
 - Keep route definitions in each app's existing router. Do not move app-specific routing into the shared library.
 - Use pnpm (version pinned in the root `package.json`) and the existing workspace scripts. To change the database schema, add a reversible migration pair under `api-rs/migrations/` and run `api-rs`'s `db:migrate`/`db:seed` scripts — that is the only supported path, and adding a second migration toolchain is not.
+- Design every DB table and index for high volume, never for small-table scenarios: composite indexes for filter + sort shapes, covering indexes where the projection allows, `EXPLAIN ANALYZE` evidence for index choice, bounded growth (TTL/sweep) over unbounded append.
 - Check the relevant scoped `AGENTS.md` and installed framework documentation before changing Next.js or Expo APIs; versions and conventions may differ from prior releases.
 
 ## Common commands
